@@ -5,7 +5,7 @@
 -- ============================================================================
 
 -- ---- Extensions ------------------------------------------------------------
--- pgcrypto gives us crypt()/gen_salt() for PIN hashing and gen_random_uuid().
+-- pgcrypto gives us gen_random_uuid().
 create extension if not exists pgcrypto;
 
 -- ============================================================================
@@ -13,8 +13,8 @@ create extension if not exists pgcrypto;
 -- ============================================================================
 --  Teachers log in through Supabase Auth (auth.users), so we do NOT store a
 --  teacher password here — Supabase hashes and manages it. Each business is
---  owned by exactly one auth user. Student PINs ARE stored here, but only as
---  bcrypt hashes (see the trigger below); the plaintext is never persisted.
+--  owned by exactly one auth user. Student PINs are stored as plain text on
+--  purpose — they are teacher-assigned, shareable 4-digit codes (not passwords).
 --
 --  payments / history / levels / inactive_months are kept as JSONB so the
 --  existing front-end calculation helpers keep working unchanged.
@@ -41,8 +41,7 @@ create table if not exists public.cards (
   name         text not null,
   level        jsonb,                                   -- {id,name,fee} snapshot or null
   share_code   text unique not null,                    -- globally unique student code
-  pin          text,                                    -- transient input only; cleared by trigger
-  pin_hash     text not null,                           -- bcrypt hash of the 4-digit PIN
+  pin          text not null,                           -- plain-text 4-digit code (teacher-assigned, shareable)
   payments     jsonb not null default '{}'::jsonb,
   history      jsonb not null default '[]'::jsonb,
   created_at   timestamptz not null default now()
@@ -50,32 +49,6 @@ create table if not exists public.cards (
 
 create index if not exists businesses_owner_idx on public.businesses(owner_id);
 create index if not exists cards_business_id_idx on public.cards(business_id);
-
--- ============================================================================
---  PIN hashing trigger
--- ============================================================================
---  The front-end inserts/updates a card with a plaintext `pin` field. This
---  trigger turns it into a bcrypt hash and wipes the plaintext before the row
---  is written, so a raw PIN never lives in the database. Updates that don't
---  touch the PIN (e.g. recording a payment) leave the existing hash intact.
-
-create or replace function public.hash_card_pin()
-returns trigger
-language plpgsql
-as $$
-begin
-  if NEW.pin is not null and NEW.pin <> '' then
-    NEW.pin_hash := crypt(NEW.pin, gen_salt('bf'));
-  end if;
-  NEW.pin := null;
-  return NEW;
-end;
-$$;
-
-drop trigger if exists cards_hash_pin on public.cards;
-create trigger cards_hash_pin
-  before insert or update on public.cards
-  for each row execute function public.hash_card_pin();
 
 -- ============================================================================
 --  Row-Level Security  (the heart of multi-tenant isolation)
@@ -150,7 +123,7 @@ begin
   if not found then
     return null;
   end if;
-  if c.pin_hash is null or c.pin_hash <> crypt(p_pin, c.pin_hash) then
+  if c.pin is null or c.pin <> p_pin then
     return null;
   end if;
 
@@ -180,6 +153,19 @@ $$;
 
 revoke all on function public.get_student_card(text, text) from public;
 grant  execute on function public.get_student_card(text, text) to anon, authenticated;
+
+-- ============================================================================
+--  Role grants
+-- ============================================================================
+--  RLS decides WHICH rows a user can touch; these grants decide whether the
+--  role can touch the tables/functions at all. Without them, registration and
+--  reads fail with permission errors. Row visibility is still governed by the
+--  RLS policies above — these grants do not bypass them.
+
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
+grant execute on all functions in schema public to anon, authenticated;
 
 -- ============================================================================
 --  Storage policies for the  card-images  bucket
