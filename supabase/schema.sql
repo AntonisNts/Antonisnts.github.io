@@ -42,6 +42,7 @@ create table if not exists public.cards (
   level        jsonb,                                   -- {id,name,fee} snapshot or null
   share_code   text unique not null,                    -- globally unique student code
   pin          text not null,                           -- plain-text 4-digit code (teacher-assigned, shareable)
+  phone        text,                                    -- optional contact number for Viber/WhatsApp reminders
   payments     jsonb not null default '{}'::jsonb,
   history      jsonb not null default '[]'::jsonb,
   created_at   timestamptz not null default now()
