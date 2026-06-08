@@ -50,14 +50,15 @@ one bypasses security. Don't paste it here or anywhere public.
 |---|---|
 | **Shared storage** | Postgres database in the cloud — every device sees the same data. |
 | **Teacher passwords** | Stored & hashed by Supabase Auth (bcrypt). We never see or store them. |
-| **Student PINs** | Hashed with bcrypt via a database trigger; plaintext is never saved. |
+| **Student PINs** | Stored as plain text on purpose — teacher-assigned, shareable 4-digit codes (not passwords). Verified by direct comparison. |
 | **Tenant isolation** | Row-Level Security: the DB physically refuses to return another business's rows. |
 | **Student access** | A locked-down function returns only the one card matching code + PIN. |
 
 ## Honest limitations (worth knowing before launch)
-- **4-digit PINs are low-entropy.** Fine as a convenience lock; not strong
-  security. A planned hardening step is rate-limiting failed attempts (via a
-  Supabase Edge Function) — tell me if you want it before launch.
+- **4-digit PINs are low-entropy and stored in plain text.** They are
+  teacher-assigned, shareable codes — a convenience lock, not a password. A
+  planned hardening step is rate-limiting failed attempts (doable in pure SQL,
+  no Edge Function needed) — tell me if you want it.
 - **Personal data + GDPR.** You'll be storing real names and payment records,
   so in the EU/Cyprus you're a data controller. You'll want a short privacy
   policy and to only collect what you need.
