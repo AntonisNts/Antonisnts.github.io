@@ -42,6 +42,7 @@ create table if not exists public.cards (
   level        jsonb,                                   -- {id,name,fee} snapshot or null
   share_code   text unique not null,                    -- globally unique student code
   pin          text not null,                           -- plain-text 4-digit code (teacher-assigned, shareable)
+  phone        text,                                    -- optional contact number for Viber/WhatsApp reminders
   payments     jsonb not null default '{}'::jsonb,
   history      jsonb not null default '[]'::jsonb,
   created_at   timestamptz not null default now()
@@ -102,12 +103,31 @@ create policy cards_delete_own on public.cards
     where b.id = cards.business_id and b.owner_id = auth.uid()));
 
 -- ============================================================================
---  Student access  (no login — code + PIN only)
+--  Student access  (no login — code + PIN only)  +  PIN rate-limiting
 -- ============================================================================
 --  Students are NOT auth users and have NO direct table access. This single
 --  SECURITY DEFINER function validates the PIN server-side and returns only
 --  the one matching card. A wrong code OR wrong PIN both return null, so it
 --  never reveals which codes exist.
+--
+--  Rate-limiting: failed attempts are logged per code (including unknown
+--  codes, so a "locked" reply never confirms a code exists). After 5
+--  failures within 15 minutes the code is locked and the function returns
+--  {"locked": true} until the window passes. A successful login clears the
+--  failure history for that code.
+
+create table if not exists public.pin_attempts (
+  id           bigint generated always as identity primary key,
+  share_code   text not null,
+  attempted_at timestamptz not null default now()
+);
+create index if not exists pin_attempts_code_time_idx
+  on public.pin_attempts(share_code, attempted_at);
+
+-- Nobody touches this table directly — only the SECURITY DEFINER function
+-- below (which runs as the table owner). RLS on + zero policies = no access.
+alter table public.pin_attempts enable row level security;
+revoke all on table public.pin_attempts from public, anon, authenticated;
 
 create or replace function public.get_student_card(p_code text, p_pin text)
 returns jsonb
@@ -116,16 +136,31 @@ security definer
 set search_path = public
 as $$
 declare
+  v_code  text := upper(trim(p_code));
+  v_fails int;
   c public.cards%rowtype;
   b public.businesses%rowtype;
 begin
-  select * into c from public.cards where share_code = upper(trim(p_code)) limit 1;
-  if not found then
+  -- housekeeping: drop stale attempt rows so the table stays tiny
+  delete from public.pin_attempts where attempted_at < now() - interval '1 day';
+
+  select count(*) into v_fails
+  from public.pin_attempts
+  where share_code = v_code
+    and attempted_at > now() - interval '15 minutes';
+
+  if v_fails >= 5 then
+    return jsonb_build_object('locked', true);
+  end if;
+
+  select * into c from public.cards where share_code = v_code limit 1;
+  if not found or c.pin is null or c.pin <> p_pin then
+    insert into public.pin_attempts(share_code) values (v_code);
     return null;
   end if;
-  if c.pin is null or c.pin <> p_pin then
-    return null;
-  end if;
+
+  -- success: clear this code's failure history
+  delete from public.pin_attempts where share_code = v_code;
 
   select * into b from public.businesses where id = c.business_id;
 
@@ -165,7 +200,17 @@ grant  execute on function public.get_student_card(text, text) to anon, authenti
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
-grant execute on all functions in schema public to anon, authenticated;
+
+-- pin_attempts is function-internal: re-revoke it after the blanket grant
+-- above so re-running this file never re-exposes it.
+revoke all on table public.pin_attempts from public, anon, authenticated;
+
+-- Functions: default-deny. Postgres grants EXECUTE to PUBLIC by default on
+-- every new function — stop that for future functions, strip it from
+-- existing ones, then allow only what the app actually calls.
+alter default privileges in schema public revoke execute on functions from public;
+revoke execute on all functions in schema public from public, anon, authenticated;
+grant execute on function public.get_student_card(text, text) to anon, authenticated;
 
 -- ============================================================================
 --  Storage policies for the  card-images  bucket
@@ -177,17 +222,38 @@ drop policy if exists card_images_public_read on storage.objects;
 create policy card_images_public_read on storage.objects
   for select using (bucket_id = 'card-images');
 
+--  Writes are tenant-scoped: the app uploads to "<business_id>/card-...",
+--  and these policies only allow touching objects whose top-level folder is
+--  a business the logged-in teacher owns. Reads stay public (the bucket
+--  serves card background images by URL).
+
 drop policy if exists card_images_auth_write on storage.objects;
 create policy card_images_auth_write on storage.objects
-  for insert to authenticated with check (bucket_id = 'card-images');
+  for insert to authenticated with check (
+    bucket_id = 'card-images'
+    and (storage.foldername(name))[1] in
+        (select id::text from public.businesses where owner_id = auth.uid())
+  );
 
 drop policy if exists card_images_auth_update on storage.objects;
 create policy card_images_auth_update on storage.objects
-  for update to authenticated using (bucket_id = 'card-images');
+  for update to authenticated using (
+    bucket_id = 'card-images'
+    and (storage.foldername(name))[1] in
+        (select id::text from public.businesses where owner_id = auth.uid())
+  ) with check (
+    bucket_id = 'card-images'
+    and (storage.foldername(name))[1] in
+        (select id::text from public.businesses where owner_id = auth.uid())
+  );
 
 drop policy if exists card_images_auth_delete on storage.objects;
 create policy card_images_auth_delete on storage.objects
-  for delete to authenticated using (bucket_id = 'card-images');
+  for delete to authenticated using (
+    bucket_id = 'card-images'
+    and (storage.foldername(name))[1] in
+        (select id::text from public.businesses where owner_id = auth.uid())
+  );
 
 -- ============================================================================
 --  Done. Quick sanity check (optional):
