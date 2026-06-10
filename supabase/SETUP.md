@@ -56,9 +56,10 @@ one bypasses security. Don't paste it here or anywhere public.
 
 ## Honest limitations (worth knowing before launch)
 - **4-digit PINs are low-entropy and stored in plain text.** They are
-  teacher-assigned, shareable codes — a convenience lock, not a password. A
-  planned hardening step is rate-limiting failed attempts (doable in pure SQL,
-  no Edge Function needed) — tell me if you want it.
+  teacher-assigned, shareable codes — a convenience lock, not a password.
+  Brute-force is mitigated by rate-limiting: 5 failed attempts on a code
+  within 15 minutes locks it (returns `{"locked": true}`) until the window
+  passes.
 - **Personal data + GDPR.** You'll be storing real names and payment records,
   so in the EU/Cyprus you're a data controller. You'll want a short privacy
   policy and to only collect what you need.

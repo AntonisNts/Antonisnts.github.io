@@ -209,6 +209,7 @@ async function loadMyBusiness() {
     const { data, error } = await sb.rpc("get_student_card", { p_code: code.trim(), p_pin: pin });
     setBusy(false);
     if (error) { setErr(error.message); return; }
+    if (data && data.locked) { setErr("Too many attempts. Try again in 15 minutes."); return; }
     if (!data) { setErr("Wrong code or PIN."); return; }
     const b = data.business, c = data.card;
     const biz = { id:b.biz_code, bizCode:b.biz_code, name:b.name, type:b.type, fee:Number(b.fee), year:b.year, inactiveMonths:b.inactive_months||[], levels:b.levels||[], customCardImage:b.custom_card_image||null };
