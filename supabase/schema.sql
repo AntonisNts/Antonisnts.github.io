@@ -190,6 +190,126 @@ revoke all on function public.get_student_card(text, text) from public;
 grant  execute on function public.get_student_card(text, text) to anon, authenticated;
 
 -- ============================================================================
+--  Parent portal  (self-service multi-card accounts)
+-- ============================================================================
+--  A parent/student logs in (Supabase Auth, email confirmed) and links cards
+--  themselves by proving share_code + PIN. Links are keyed to the verified
+--  email (auth.email()). Teacher workflow is unchanged; the anonymous
+--  get_student_card() path above still works for non-account access.
+
+create table if not exists public.card_links (
+  id           bigint generated always as identity primary key,
+  card_id      uuid not null references public.cards(id) on delete cascade,
+  parent_email text not null,
+  created_at   timestamptz not null default now(),
+  unique (card_id, parent_email)
+);
+create index if not exists card_links_email_idx on public.card_links(parent_email);
+
+-- Function-internal table: no direct access, only the SECURITY DEFINER
+-- functions below (which run as owner) read/write it.
+alter table public.card_links enable row level security;
+revoke all on table public.card_links from public, anon, authenticated;
+
+-- link_card: verify code + PIN (rate-limited), then link the card to the
+-- caller's verified email. Requires an authenticated, confirmed user.
+create or replace function public.link_card(p_code text, p_pin text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_code  text := upper(trim(p_code));
+  v_email text := auth.email();
+  v_fails int;
+  c public.cards%rowtype;
+begin
+  if v_email is null then
+    return jsonb_build_object('error', 'not_authenticated');
+  end if;
+
+  delete from public.pin_attempts where attempted_at < now() - interval '1 day';
+  select count(*) into v_fails from public.pin_attempts
+   where share_code = v_code and attempted_at > now() - interval '15 minutes';
+  if v_fails >= 5 then
+    return jsonb_build_object('locked', true);
+  end if;
+
+  select * into c from public.cards where share_code = v_code limit 1;
+  if not found or c.pin is null or c.pin <> p_pin then
+    insert into public.pin_attempts(share_code) values (v_code);
+    return jsonb_build_object('ok', false);
+  end if;
+
+  delete from public.pin_attempts where share_code = v_code;
+  insert into public.card_links(card_id, parent_email)
+    values (c.id, v_email)
+    on conflict (card_id, parent_email) do nothing;
+  return jsonb_build_object('ok', true, 'name', c.name);
+end;
+$$;
+
+-- get_my_cards: all cards linked to the caller's email, with curated fields
+-- (NO pin, NO phone) so parents never see those.
+create or replace function public.get_my_cards()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_email text := auth.email();
+  result  jsonb := '[]'::jsonb;
+  r record;
+begin
+  if v_email is null then
+    return result;
+  end if;
+  for r in
+    select c.id, c.name, c.level, c.share_code, c.payments, c.history,
+           b.name as b_name, b.type as b_type, b.fee as b_fee, b.year as b_year,
+           b.biz_code as b_code, b.inactive_months as b_inactive,
+           b.levels as b_levels, b.custom_card_image as b_image
+    from public.card_links cl
+    join public.cards c       on c.id = cl.card_id
+    join public.businesses b  on b.id = c.business_id
+    where cl.parent_email = v_email
+    order by c.name
+  loop
+    result := result || jsonb_build_object(
+      'card', jsonb_build_object(
+        'id', r.id, 'name', r.name, 'level', r.level,
+        'share_code', r.share_code, 'payments', r.payments, 'history', r.history),
+      'business', jsonb_build_object(
+        'name', r.b_name, 'type', r.b_type, 'fee', r.b_fee, 'year', r.b_year,
+        'biz_code', r.b_code, 'inactive_months', r.b_inactive,
+        'levels', r.b_levels, 'custom_card_image', r.b_image)
+    );
+  end loop;
+  return result;
+end;
+$$;
+
+-- unlink_card: the caller removes their own link (cannot affect others').
+create or replace function public.unlink_card(p_card_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_email text := auth.email();
+begin
+  if v_email is null then
+    return jsonb_build_object('ok', false);
+  end if;
+  delete from public.card_links where card_id = p_card_id and parent_email = v_email;
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+-- ============================================================================
 --  Role grants
 -- ============================================================================
 --  RLS decides WHICH rows a user can touch; these grants decide whether the
@@ -201,9 +321,10 @@ grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
 
--- pin_attempts is function-internal: re-revoke it after the blanket grant
--- above so re-running this file never re-exposes it.
+-- Function-internal tables: re-revoke after the blanket grant above so
+-- re-running this file never re-exposes them.
 revoke all on table public.pin_attempts from public, anon, authenticated;
+revoke all on table public.card_links  from public, anon, authenticated;
 
 -- Functions: default-deny. Postgres grants EXECUTE to PUBLIC by default on
 -- every new function — stop that for future functions, strip it from
@@ -211,6 +332,10 @@ revoke all on table public.pin_attempts from public, anon, authenticated;
 alter default privileges in schema public revoke execute on functions from public;
 revoke execute on all functions in schema public from public, anon, authenticated;
 grant execute on function public.get_student_card(text, text) to anon, authenticated;
+-- Parent portal: must be logged in (authenticated only, never anon).
+grant execute on function public.link_card(text, text) to authenticated;
+grant execute on function public.get_my_cards()        to authenticated;
+grant execute on function public.unlink_card(uuid)     to authenticated;
 
 -- ============================================================================
 --  Storage policies for the  card-images  bucket
