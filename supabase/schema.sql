@@ -46,6 +46,7 @@ create table if not exists public.cards (
   enrollment_start_month text,                           -- 'YYYY-MM' or null; per-student billing start
   preferred_channel      text,                           -- 'whatsapp' | 'viber' | 'sms'
   language               text,                           -- 'EN' | 'EL' (receipt language)
+  paused_months          jsonb not null default '[]'::jsonb, -- per-student mid-year pause (same shape as inactive_months)
   payments     jsonb not null default '{}'::jsonb,
   history      jsonb not null default '[]'::jsonb,
   created_at   timestamptz not null default now()
@@ -184,7 +185,8 @@ begin
       'share_code', c.share_code,
       'payments',   c.payments,
       'history',    c.history,
-      'enrollment_start_month', c.enrollment_start_month
+      'enrollment_start_month', c.enrollment_start_month,
+      'paused_months', c.paused_months
     )
   );
 end;
@@ -289,7 +291,7 @@ begin
   end if;
   for r in
     select c.id, c.name, c.level, c.share_code, c.payments, c.history,
-           c.enrollment_start_month, cl.child_id,
+           c.enrollment_start_month, c.paused_months, cl.child_id,
            b.name as b_name, b.type as b_type, b.fee as b_fee, b.year as b_year,
            b.biz_code as b_code, b.inactive_months as b_inactive,
            b.levels as b_levels, b.custom_card_image as b_image
@@ -303,7 +305,8 @@ begin
       'card', jsonb_build_object(
         'id', r.id, 'name', r.name, 'level', r.level,
         'share_code', r.share_code, 'payments', r.payments, 'history', r.history,
-        'enrollment_start_month', r.enrollment_start_month, 'child_id', r.child_id),
+        'enrollment_start_month', r.enrollment_start_month,
+        'paused_months', r.paused_months, 'child_id', r.child_id),
       'business', jsonb_build_object(
         'name', r.b_name, 'type', r.b_type, 'fee', r.b_fee, 'year', r.b_year,
         'biz_code', r.b_code, 'inactive_months', r.b_inactive,
