@@ -215,6 +215,23 @@ create index if not exists card_links_email_idx on public.card_links(parent_emai
 alter table public.card_links enable row level security;
 revoke all on table public.card_links from public, anon, authenticated;
 
+-- Parent children (function-internal: no direct access). Grouping is owned by
+-- the parent, not inferred from student names.
+create table if not exists public.children (
+  id           uuid primary key default gen_random_uuid(),
+  parent_email text not null,
+  name         text not null,
+  created_at   timestamptz not null default now()
+);
+create index if not exists children_email_idx on public.children(parent_email);
+alter table public.children enable row level security;
+revoke all on table public.children from public, anon, authenticated;
+
+-- A linked card may be assigned to one child. ON DELETE SET NULL means
+-- deleting a child unassigns its cards — it never deletes a card.
+alter table public.card_links
+  add column if not exists child_id uuid references public.children(id) on delete set null;
+
 -- link_card: verify code + PIN (rate-limited), then link the card to the
 -- caller's verified email. Requires an authenticated, confirmed user.
 create or replace function public.link_card(p_code text, p_pin text)
@@ -250,7 +267,7 @@ begin
   insert into public.card_links(card_id, parent_email)
     values (c.id, v_email)
     on conflict (card_id, parent_email) do nothing;
-  return jsonb_build_object('ok', true, 'name', c.name);
+  return jsonb_build_object('ok', true, 'name', c.name, 'card_id', c.id);
 end;
 $$;
 
@@ -272,7 +289,7 @@ begin
   end if;
   for r in
     select c.id, c.name, c.level, c.share_code, c.payments, c.history,
-           c.enrollment_start_month,
+           c.enrollment_start_month, cl.child_id,
            b.name as b_name, b.type as b_type, b.fee as b_fee, b.year as b_year,
            b.biz_code as b_code, b.inactive_months as b_inactive,
            b.levels as b_levels, b.custom_card_image as b_image
@@ -286,7 +303,7 @@ begin
       'card', jsonb_build_object(
         'id', r.id, 'name', r.name, 'level', r.level,
         'share_code', r.share_code, 'payments', r.payments, 'history', r.history,
-        'enrollment_start_month', r.enrollment_start_month),
+        'enrollment_start_month', r.enrollment_start_month, 'child_id', r.child_id),
       'business', jsonb_build_object(
         'name', r.b_name, 'type', r.b_type, 'fee', r.b_fee, 'year', r.b_year,
         'biz_code', r.b_code, 'inactive_months', r.b_inactive,
@@ -315,6 +332,67 @@ begin
 end;
 $$;
 
+-- Child operations (all caller-scoped via auth.email()).
+create or replace function public.get_my_children()
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_email text := auth.email(); result jsonb := '[]'::jsonb; r record;
+begin
+  if v_email is null then return result; end if;
+  for r in select id, name from public.children where parent_email = v_email order by name loop
+    result := result || jsonb_build_object('id', r.id, 'name', r.name);
+  end loop;
+  return result;
+end;
+$$;
+
+create or replace function public.create_child(p_name text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_email text := auth.email(); v_name text := trim(p_name); v_id uuid;
+begin
+  if v_email is null then return jsonb_build_object('ok', false); end if;
+  if v_name = '' then return jsonb_build_object('ok', false, 'error', 'empty_name'); end if;
+  insert into public.children(parent_email, name) values (v_email, v_name) returning id into v_id;
+  return jsonb_build_object('ok', true, 'id', v_id, 'name', v_name);
+end;
+$$;
+
+create or replace function public.rename_child(p_id uuid, p_name text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_email text := auth.email(); v_name text := trim(p_name);
+begin
+  if v_email is null then return jsonb_build_object('ok', false); end if;
+  if v_name = '' then return jsonb_build_object('ok', false, 'error', 'empty_name'); end if;
+  update public.children set name = v_name where id = p_id and parent_email = v_email;
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+create or replace function public.delete_child(p_id uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_email text := auth.email();
+begin
+  if v_email is null then return jsonb_build_object('ok', false); end if;
+  -- card_links.child_id is ON DELETE SET NULL: cards are unassigned, never deleted.
+  delete from public.children where id = p_id and parent_email = v_email;
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+create or replace function public.assign_card(p_card_id uuid, p_child_id uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_email text := auth.email();
+begin
+  if v_email is null then return jsonb_build_object('ok', false); end if;
+  if p_child_id is not null and not exists (
+       select 1 from public.children where id = p_child_id and parent_email = v_email) then
+    return jsonb_build_object('ok', false, 'error', 'not_your_child');
+  end if;
+  update public.card_links set child_id = p_child_id
+    where card_id = p_card_id and parent_email = v_email;
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
 -- ============================================================================
 --  Role grants
 -- ============================================================================
@@ -331,6 +409,7 @@ grant usage, select on all sequences in schema public to authenticated;
 -- re-running this file never re-exposes them.
 revoke all on table public.pin_attempts from public, anon, authenticated;
 revoke all on table public.card_links  from public, anon, authenticated;
+revoke all on table public.children    from public, anon, authenticated;
 
 -- Functions: default-deny. Postgres grants EXECUTE to PUBLIC by default on
 -- every new function — stop that for future functions, strip it from
@@ -342,6 +421,11 @@ grant execute on function public.get_student_card(text, text) to anon, authentic
 grant execute on function public.link_card(text, text) to authenticated;
 grant execute on function public.get_my_cards()        to authenticated;
 grant execute on function public.unlink_card(uuid)     to authenticated;
+grant execute on function public.get_my_children()        to authenticated;
+grant execute on function public.create_child(text)       to authenticated;
+grant execute on function public.rename_child(uuid, text) to authenticated;
+grant execute on function public.delete_child(uuid)       to authenticated;
+grant execute on function public.assign_card(uuid, uuid)  to authenticated;
 
 -- ============================================================================
 --  Storage policies for the  card-images  bucket
