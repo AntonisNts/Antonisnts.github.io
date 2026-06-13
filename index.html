@@ -694,6 +694,23 @@ function PgLinkChild({ onBack, onLink }) {
 }
 
 function PgParentDashboard({ items, onLink, onUnlink, onLogout, onTeacher }) {
+  const [expanded, setExpanded] = useState({});
+  // Reuse the existing stacking logic (billableMi/billableCount/monthsPaid/totalPaid).
+  const rows = items.map(it => {
+    const biz = it.biz, card = it.card;
+    const year = biz.year || new Date().getFullYear();
+    const inactive = biz.inactiveMonths || [];
+    const es = card.enrollmentStart || null;
+    const pmts = card.payments || {};
+    const nowym = nowYM();
+    let behind = false;
+    for (let mi=0; mi<12; mi++) {
+      if (billableMi(mi, year, inactive, es) && ymOf(year,mi) <= nowym && !(pmts[ymOf(year,mi)]||{}).paid) { behind = true; break; }
+    }
+    return { it, biz, card, pal:getPal(biz.type), mp:monthsPaid(pmts, year, inactive, es), bc:billableCount(year, inactive, es), paid:totalPaid(pmts, card.history||[]), behind };
+  });
+  rows.sort((a,b)=> a.behind===b.behind ? 0 : (a.behind ? -1 : 1));
+  const need = rows.filter(r=>r.behind).length;
   return (
     <div className="page">
       <div className="topbar">
@@ -704,18 +721,40 @@ function PgParentDashboard({ items, onLink, onUnlink, onLogout, onTeacher }) {
         </div>
       </div>
       <div className="section">
+        {rows.length>0 && (
+          <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:"10px 14px",marginBottom:14,fontSize:".78rem",fontWeight:700,color:"var(--text2)"}}>
+            {rows.length+(rows.length===1?" card":" cards")+" · "}
+            <span style={{color:need>0?"var(--red)":"var(--green)"}}>{need+(need===1?" needs":" need")+" attention"}</span>
+          </div>
+        )}
         <div className="sec-row">
-          <div className="sec-title">Cards ({items.length})</div>
+          <div className="sec-title">Cards</div>
           <button className="btn-new" onClick={onLink}>+ Link a child</button>
         </div>
-        {items.length===0
-          ? <div className="empty">No cards linked yet. Tap “+ Link a child”.</div>
-          : items.map(it => (
-            <div key={it.cardId} style={{marginBottom:8}}>
-              <BizCard biz={it.biz} card={it.card} isTeacher={false} onTap={null} inactiveMonths={it.biz.inactiveMonths} />
-              <button onClick={()=>onUnlink(it.cardId, it.card.name)} style={{width:"100%",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:"10px",marginTop:8,fontFamily:"var(--f)",fontWeight:700,fontSize:".78rem",color:"var(--text2)",cursor:"pointer"}}>Unlink</button>
-            </div>
-          ))
+        {rows.length===0
+          ? <div className="empty">No cards linked yet. Tap "+ Link a child".</div>
+          : rows.map(r => {
+            const isOpen = !!expanded[r.it.cardId];
+            return (
+              <div key={r.it.cardId} style={{marginBottom:10}}>
+                <div onClick={()=>setExpanded(s=>({...s,[r.it.cardId]:!s[r.it.cardId]}))} style={{display:"flex",alignItems:"center",gap:12,background:"var(--bg2)",border:"1px solid "+(isOpen?"rgba(99,102,241,.35)":"var(--border)"),borderRadius:16,padding:"13px 16px",cursor:"pointer"}}>
+                  <div style={{width:40,height:40,borderRadius:12,background:"rgba(255,255,255,.06)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.3rem",flexShrink:0}}>{r.pal.icon}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:".64rem",fontWeight:800,color:r.pal.acc,textTransform:"uppercase",letterSpacing:".1em",marginBottom:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.biz.name}</div>
+                    <div style={{fontSize:"1rem",fontWeight:700,color:"#fff",marginBottom:2}}>{r.card.name}</div>
+                    <div style={{fontSize:".72rem",fontWeight:600,color:"var(--text2)"}}>{r.mp+"/"+r.bc+" months · €"+r.paid.toFixed(0)+" paid"}</div>
+                  </div>
+                  <div style={{width:12,height:12,borderRadius:99,flexShrink:0,background:r.behind?"var(--red)":"var(--green)",boxShadow:r.behind?"0 0 8px rgba(239,68,68,.6)":"0 0 8px rgba(16,185,129,.5)"}} />
+                </div>
+                {isOpen && (
+                  <div style={{marginTop:8}}>
+                    <BizCard biz={r.biz} card={r.card} isTeacher={false} onTap={null} inactiveMonths={r.biz.inactiveMonths} />
+                    <button onClick={()=>onUnlink(r.it.cardId, r.card.name)} style={{width:"100%",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:"10px",marginTop:8,fontFamily:"var(--f)",fontWeight:700,fontSize:".78rem",color:"var(--text2)",cursor:"pointer"}}>Unlink</button>
+                  </div>
+                )}
+              </div>
+            );
+          })
         }
       </div>
     </div>
