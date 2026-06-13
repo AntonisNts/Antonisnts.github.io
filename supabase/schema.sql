@@ -43,6 +43,9 @@ create table if not exists public.cards (
   share_code   text unique not null,                    -- globally unique student code
   pin          text not null,                           -- plain-text 4-digit code (teacher-assigned, shareable)
   phone        text,                                    -- optional contact number for Viber/WhatsApp reminders
+  enrollment_start_month text,                           -- 'YYYY-MM' or null; per-student billing start
+  preferred_channel      text,                           -- 'whatsapp' | 'viber' | 'sms'
+  language               text,                           -- 'EN' | 'EL' (receipt language)
   payments     jsonb not null default '{}'::jsonb,
   history      jsonb not null default '[]'::jsonb,
   created_at   timestamptz not null default now()
@@ -180,7 +183,8 @@ begin
       'level',      c.level,
       'share_code', c.share_code,
       'payments',   c.payments,
-      'history',    c.history
+      'history',    c.history,
+      'enrollment_start_month', c.enrollment_start_month
     )
   );
 end;
@@ -268,6 +272,7 @@ begin
   end if;
   for r in
     select c.id, c.name, c.level, c.share_code, c.payments, c.history,
+           c.enrollment_start_month,
            b.name as b_name, b.type as b_type, b.fee as b_fee, b.year as b_year,
            b.biz_code as b_code, b.inactive_months as b_inactive,
            b.levels as b_levels, b.custom_card_image as b_image
@@ -280,7 +285,8 @@ begin
     result := result || jsonb_build_object(
       'card', jsonb_build_object(
         'id', r.id, 'name', r.name, 'level', r.level,
-        'share_code', r.share_code, 'payments', r.payments, 'history', r.history),
+        'share_code', r.share_code, 'payments', r.payments, 'history', r.history,
+        'enrollment_start_month', r.enrollment_start_month),
       'business', jsonb_build_object(
         'name', r.b_name, 'type', r.b_type, 'fee', r.b_fee, 'year', r.b_year,
         'biz_code', r.b_code, 'inactive_months', r.b_inactive,
