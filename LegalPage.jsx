@@ -10,7 +10,7 @@ import { useMemo } from "react";
  * handles the subset of markdown these documents use (# headings, **bold**,
  * - bullets, paragraphs). No external markdown library required.
  */
-export default function LegalPage({ title, markdown, onBack }) {
+export default function LegalPage({ title, markdown, onBack, footer }) {
   const blocks = useMemo(() => parseMarkdown(markdown), [markdown]);
 
   return (
@@ -24,6 +24,7 @@ export default function LegalPage({ title, markdown, onBack }) {
         <article style={styles.article}>
           {blocks.map((block, i) => renderBlock(block, i))}
         </article>
+        {footer && <div style={styles.footer}>{footer}</div>}
       </div>
     </div>
   );
@@ -150,4 +151,5 @@ const styles = {
   p: { margin: "0 0 14px" },
   ul: { margin: "0 0 14px", paddingLeft: 22 },
   li: { margin: "0 0 6px" },
+  footer: { textAlign: "center", padding: "20px 4px 8px", fontSize: 14, color: "#6b7280" },
 };

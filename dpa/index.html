@@ -24,7 +24,7 @@ const { useMemo } = React;
  * handles the subset of markdown these documents use (# headings, **bold**,
  * - bullets, paragraphs). No external markdown library required.
  */
-function LegalPage({ title, markdown, onBack }) {
+function LegalPage({ title, markdown, onBack, footer }) {
   const blocks = useMemo(() => parseMarkdown(markdown), [markdown]);
 
   return (
@@ -38,6 +38,7 @@ function LegalPage({ title, markdown, onBack }) {
         <article style={styles.article}>
           {blocks.map((block, i) => renderBlock(block, i))}
         </article>
+        {footer && <div style={styles.footer}>{footer}</div>}
       </div>
     </div>
   );
@@ -164,12 +165,14 @@ const styles = {
   p: { margin: "0 0 14px" },
   ul: { margin: "0 0 14px", paddingLeft: 22 },
   li: { margin: "0 0 6px" },
+  footer: { textAlign: "center", padding: "20px 4px 8px", fontSize: 14, color: "#6b7280" },
 };
 
 
 const MARKDOWN = "# Data Processing Agreement (DPA)\n\n**Last updated: 14 June 2026**\n\nThis Data Processing Agreement (\"DPA\") forms part of the Terms of Service between **Antonis Christodoulou, Cyprus** (\"the Processor\") and the business using PayStamp (\"the Controller\"). It sets out how the Processor handles personal data on the Controller's behalf, in line with Article 28 of the GDPR.\n\n## 1. Roles\n\nThe Controller (the Business) determines the purposes and means of processing the personal data of its students and their parents. The Processor (PayStamp) processes that data only on the Controller's documented instructions, which include these Terms and the normal use of the Service.\n\n## 2. Subject matter and purpose\n\nThe Processor processes personal data solely to provide the PayStamp service: recording student enrolment and tracking confirmed cash payments, and optionally sending payment receipts on the Controller's behalf.\n\n## 3. Categories of data and data subjects\n\n- **Data subjects:** students of the Business, and where recorded, their parents or guardians.\n- **Categories of data:** names, enrolment and lesson details, enrolment/paused months, confirmed payment records, a contact identifier for receipts (where used), and language preference.\n- No special-category data and no payment card or bank data are processed.\n\n## 4. Processor obligations\n\nThe Processor shall:\n\n- Process personal data only on the Controller's instructions.\n- Ensure persons authorised to process the data are bound by confidentiality.\n- Implement appropriate technical and organisational security measures (see Section 6).\n- Not engage another sub-processor without the Controller's general authorisation (see Section 5).\n- Assist the Controller, as far as reasonably possible, in responding to data subject requests and in meeting its security, breach-notification and impact-assessment obligations.\n- On termination, delete or return the personal data at the Controller's choice, unless retention is required by law.\n- Make available information needed to demonstrate compliance with Article 28.\n\n## 5. Sub-processors\n\nThe Controller authorises the Processor to use the following sub-processor:\n\n- **Supabase** — database hosting and authentication, hosted within the **European Union (Frankfurt, Germany)**.\n\nThe Processor will inform the Controller of any intended change to sub-processors and give the Controller the opportunity to object.\n\n## 6. Security measures\n\nThe Processor maintains measures including:\n\n- Encryption of data in transit (HTTPS/TLS).\n- Access controls that logically isolate each Controller's data from other Businesses.\n- Restricted administrative access to the underlying database.\n- EU-based hosting with a reputable infrastructure provider.\n- Regular review of access rules and security configuration.\n\n## 7. Personal data breaches\n\nThe Processor shall notify the Controller without undue delay after becoming aware of a personal data breach affecting the Controller's data, and provide information reasonably available to help the Controller meet its own notification obligations.\n\n## 8. International transfers\n\nPersonal data is stored and processed within the European Union. The Processor will not transfer the data outside the EU/EEA without an appropriate safeguard under the GDPR and notice to the Controller.\n\n## 9. Duration\n\nThis DPA applies for as long as the Processor processes personal data on the Controller's behalf under the Terms of Service.\n\n## 10. Governing law\n\nThis DPA is governed by the laws of the **Republic of Cyprus**.\n";
 ReactDOM.createRoot(document.getElementById("root")).render(
-  <LegalPage title="Data Processing Agreement" markdown={MARKDOWN} onBack={()=>{ window.location.href = "/"; }} />
+  <LegalPage title="Data Processing Agreement" markdown={MARKDOWN} onBack={()=>{ window.location.href = "/"; }}
+    footer={<span><a href="/privacy" style={{color:"#2563eb",textDecoration:"none"}}>Privacy Policy</a>{"   \u00b7   "}<a href="/terms" style={{color:"#2563eb",textDecoration:"none"}}>Terms of Service</a></span>} />
 );
 </script>
 </body>

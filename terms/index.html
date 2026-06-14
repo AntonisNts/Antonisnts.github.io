@@ -24,7 +24,7 @@ const { useMemo } = React;
  * handles the subset of markdown these documents use (# headings, **bold**,
  * - bullets, paragraphs). No external markdown library required.
  */
-function LegalPage({ title, markdown, onBack }) {
+function LegalPage({ title, markdown, onBack, footer }) {
   const blocks = useMemo(() => parseMarkdown(markdown), [markdown]);
 
   return (
@@ -38,6 +38,7 @@ function LegalPage({ title, markdown, onBack }) {
         <article style={styles.article}>
           {blocks.map((block, i) => renderBlock(block, i))}
         </article>
+        {footer && <div style={styles.footer}>{footer}</div>}
       </div>
     </div>
   );
@@ -164,12 +165,14 @@ const styles = {
   p: { margin: "0 0 14px" },
   ul: { margin: "0 0 14px", paddingLeft: 22 },
   li: { margin: "0 0 6px" },
+  footer: { textAlign: "center", padding: "20px 4px 8px", fontSize: 14, color: "#6b7280" },
 };
 
 
 const MARKDOWN = "# Terms of Service\n\n**Last updated: 14 June 2026**\n\nThese Terms of Service (\"Terms\") govern your use of PayStamp (\"the Service\"), operated by **Antonis Christodoulou, Cyprus** (\"we\", \"us\", \"the Operator\"). By creating an account or using the Service, you (\"the Business\") agree to these Terms. If you do not agree, do not use the Service.\n\n## 1. What PayStamp is\n\nPayStamp is a web application that lets lesson-based businesses (such as swimming schools, music schools and sports clubs) record student enrolment and track which students have paid for lessons. Payments themselves are handled in cash directly between you and your customers. PayStamp only records that a payment has been confirmed by you.\n\n## 2. Your account\n\nYou are responsible for keeping your login credentials secure and for all activity under your account. You must provide accurate information and are responsible for the accuracy of the student and payment records you enter.\n\n## 3. Your responsibilities regarding data\n\nYou decide what student and parent data to enter into PayStamp and why. In data protection terms, **you are the Data Controller** of that data and the Operator is your **Data Processor**. You are responsible for:\n\n- Having a lawful basis to collect and process your students' data.\n- Informing your students or their parents about how their data is used (our Privacy Policy can help, but the relationship is yours).\n- Only entering data you are entitled to process.\n- Handling requests from your customers about their data (for example requests for access or deletion).\n\nThe separate **Data Processing Agreement** sets out how the Operator processes data on your behalf and forms part of these Terms.\n\n## 4. Acceptable use\n\nYou agree not to use the Service to store unlawful content, to attempt to access other Businesses' data, to disrupt or probe the Service's security, or to use it in any way that breaks applicable law.\n\n## 5. Availability\n\nWe aim to keep the Service available and working, but we provide it on an \"as is\" and \"as available\" basis. We may carry out maintenance, updates or changes, and the Service may occasionally be unavailable. We do not guarantee uninterrupted access.\n\n## 6. Security\n\nWe apply appropriate technical and organisational measures to protect data, including encrypted connections, access controls that isolate each Business's data, and EU-based hosting. No internet-connected system can be guaranteed completely secure. We do not warrant that the Service will be free from all vulnerabilities, but we work to keep risk low and to address issues promptly.\n\n## 7. Limitation of liability\n\nTo the maximum extent permitted by law, the Operator is not liable for indirect or consequential losses, loss of profits, or loss of data arising from your use of the Service. Nothing in these Terms limits liability that cannot be limited by law. Because PayStamp records payment status that you confirm, you remain responsible for verifying your own financial records.\n\n## 8. Fees\n\nThe Service is currently provided **free of charge** during its pilot phase. We may introduce pricing in the future. If we do, we will give you reasonable advance notice, and any fees will apply only after you have had the opportunity to review them.\n\n## 9. Termination\n\nYou may stop using the Service and request deletion of your data at any time. We may suspend or terminate access if these Terms are breached. On termination, your data is deleted in line with the Privacy Policy.\n\n## 10. Changes to these Terms\n\nWe may update these Terms from time to time. If we make a material change, we will take reasonable steps to notify you. Continued use after a change means you accept the updated Terms.\n\n## 11. Governing law\n\nThese Terms are governed by the laws of the **Republic of Cyprus**, and any dispute is subject to the exclusive jurisdiction of the Cyprus courts.\n\n## 12. Contact\n\n**paystampapp@gmail.com**\n";
 ReactDOM.createRoot(document.getElementById("root")).render(
-  <LegalPage title="Terms of Service" markdown={MARKDOWN} onBack={()=>{ window.location.href = "/"; }} />
+  <LegalPage title="Terms of Service" markdown={MARKDOWN} onBack={()=>{ window.location.href = "/"; }}
+    footer={<span><a href="/privacy" style={{color:"#2563eb",textDecoration:"none"}}>Privacy Policy</a>{"   \u00b7   "}<a href="/terms" style={{color:"#2563eb",textDecoration:"none"}}>Terms of Service</a></span>} />
 );
 </script>
 </body>

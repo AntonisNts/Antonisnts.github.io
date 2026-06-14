@@ -35,7 +35,8 @@ ${legal}
 
 const MARKDOWN = ${JSON.stringify(md)};
 ReactDOM.createRoot(document.getElementById("root")).render(
-  <LegalPage title=${JSON.stringify(p.title)} markdown={MARKDOWN} onBack={()=>{ window.location.href = "/"; }} />
+  <LegalPage title=${JSON.stringify(p.title)} markdown={MARKDOWN} onBack={()=>{ window.location.href = "/"; }}
+    footer={<span><a href="/privacy" style={{color:"#2563eb",textDecoration:"none"}}>Privacy Policy</a>{"   \\u00b7   "}<a href="/terms" style={{color:"#2563eb",textDecoration:"none"}}>Terms of Service</a></span>} />
 );
 </script>
 </body>
