@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <meta name="theme-color" content="#000000" />
-<title>StampCard</title>
+<title>PayStamp</title>
 <style>html,body{margin:0;padding:0;background:#000;}</style>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
@@ -54,7 +54,7 @@ async function loadMyChildren() {
           <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
         </div>
         <div style={{fontSize:"2rem",fontWeight:900,fontStyle:"italic",letterSpacing:"-.02em"}}>
-          <span style={{color:"#fff"}}>STAMP</span><span style={{color:"var(--violet-glow)"}}>CARD</span>
+          <span style={{color:"#fff"}}>Pay</span><span style={{color:"var(--violet-glow)"}}>Stamp</span>
         </div>
       </div>
       <button onClick={onTeacher} style={{width:"100%",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:20,padding:"18px 20px",marginBottom:12,cursor:"pointer",display:"flex",alignItems:"center",gap:16,fontFamily:"var(--f)",textAlign:"left"}}>
@@ -274,7 +274,7 @@ async function loadMyChildren() {
       if ((pp.amount||0) > 0) excludedPaid.push(MFULL[mi]);
     }
   }
-  if (excludedPaid.length) { try { console.warn("StampCard flag: "+card.name+" has recorded payments in excluded months: "+excludedPaid.join(", ")); } catch(e){} }
+  if (excludedPaid.length) { try { console.warn("PayStamp flag: "+card.name+" has recorded payments in excluded months: "+excludedPaid.join(", ")); } catch(e){} }
 
   function doPreview() {
     const amt = parseFloat(amount);
