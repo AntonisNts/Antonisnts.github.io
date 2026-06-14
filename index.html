@@ -250,6 +250,8 @@ async function loadMyChildren() {
   const [sendLang, setSendLang] = useState(card.language||"EN");
   const [note, setNote] = useState("");
   const [pausedDraft, setPausedDraft] = useState(card.pausedMonths||[]);
+  const [open, setOpen] = useState({});
+  const [showAllHist, setShowAllHist] = useState(false);
   const inputRef = useRef(null);
   const fee = cardFee(card, biz);
   const year = biz.year||new Date().getFullYear();
@@ -317,6 +319,25 @@ async function loadMyChildren() {
     const newHist = hist.map(h => h.n===entry.n ? {...h, receipt_sent_at:new Date().toISOString()} : h);
     onUpdate({history:newHist});
   }
+
+  // Collapsible "set once" section header (reuses the parent-portal chevron UX).
+  function secHead(id, title, summary) {
+    return (
+      <div onClick={()=>setOpen(o=>({...o,[id]:!o[id]}))} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+        <div className="ws-t" style={{marginBottom:0}}>{title}</div>
+        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10,minWidth:0}}>
+          <span style={{fontSize:".72rem",color:"var(--text2)",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{summary}</span>
+          <span style={{color:"var(--text2)",fontSize:".8rem",flexShrink:0}}>{open[id]?"▾":"▸"}</span>
+        </div>
+      </div>
+    );
+  }
+  const chanLabel = {whatsapp:"WhatsApp",viber:"Viber",sms:"SMS"}[card.preferredChannel||"whatsapp"];
+  const langLabel = (card.language==="EL") ? "Ελληνικά" : "English";
+  const enrollLabel = card.enrollmentStart ? ("from "+MONTHS[(+card.enrollmentStart.split("-")[1])-1]+" "+card.enrollmentStart.split("-")[0]) : null;
+  const settingsSummary = [chanLabel, langLabel, enrollLabel].filter(Boolean).join(" · ");
+  const pausedSummary = (card.pausedMonths && card.pausedMonths.length) ? ("Paused: "+card.pausedMonths.slice().sort((a,b)=>a-b).map(mi=>MONTHS[mi]).join(", ")) : "No paused months";
+  const levelSummary = card.level ? ("Level: "+card.level.name+" · €"+card.level.fee+"/mo") : ("Default · €"+biz.fee+"/mo");
 
   return (
     <div className="page">
@@ -412,7 +433,7 @@ async function loadMyChildren() {
             </div>
           </div>
           {note && <div style={{fontSize:".75rem",color:"var(--green)",fontWeight:700,marginBottom:10}}>{note}</div>}
-          {hist.map((h,i)=>{
+          {(showAllHist ? hist : hist.slice(0,3)).map((h,i)=>{
             const cm = coveredMonths(h).map(mi=>MFULL[mi]).join(", ");
             return (
               <div key={i} style={{background:"var(--bg)",borderRadius:14,padding:"14px 16px",marginBottom:8,border:"1px solid var(--border)"}}>
@@ -432,21 +453,25 @@ async function loadMyChildren() {
               </div>
             );
           })}
+          {hist.length>3 && <button onClick={()=>setShowAllHist(s=>!s)} style={{width:"100%",background:"transparent",border:"none",color:"var(--violet-glow)",fontFamily:"var(--f)",fontWeight:700,fontSize:".78rem",cursor:"pointer",padding:"8px"}}>{showAllHist?"Show less":("Show more ("+(hist.length-3)+")")}</button>}
         </div>
       )}
 
       {(biz.levels||[]).length>0 && (
         <div className="wsec">
-          <div className="ws-t">Student Level</div>
-          <select className="ws-inp" value={(card.level&&card.level.id)||""} onChange={e=>{const lv=(biz.levels||[]).find(l=>l.id===e.target.value)||null; onUpdate({level:lv});}}>
-            <option value="">No level — default fee ({"€"+biz.fee+"/mo"})</option>
-            {(biz.levels||[]).map(l=><option key={l.id} value={l.id}>{l.name} — {"€"+l.fee+"/mo"}</option>)}
-          </select>
+          {secHead("level","Student Level",levelSummary)}
+          {open.level && (
+            <select className="ws-inp" style={{marginTop:14}} value={(card.level&&card.level.id)||""} onChange={e=>{const lv=(biz.levels||[]).find(l=>l.id===e.target.value)||null; onUpdate({level:lv});}}>
+              <option value="">No level — default fee ({"€"+biz.fee+"/mo"})</option>
+              {(biz.levels||[]).map(l=><option key={l.id} value={l.id}>{l.name} — {"€"+l.fee+"/mo"}</option>)}
+            </select>
+          )}
         </div>
       )}
 
       <div className="wsec">
-        <div className="ws-t">Student Settings</div>
+        {secHead("settings","Student Settings",settingsSummary)}
+        {open.settings && <div style={{marginTop:14}}>
         <div className="ws-lbl">Parent Phone (E.164)</div>
         <input className="ws-inp" type="tel" placeholder="e.g. +35799123456" value={phone} onChange={e=>setPhone(e.target.value)} />
         <div className="ws-lbl" style={{marginTop:14}}>Preferred Channel</div>
@@ -464,10 +489,12 @@ async function loadMyChildren() {
         <div className="ws-lbl" style={{marginTop:14}}>Enrollment Start (optional)</div>
         <input className="ws-inp" type="month" value={enroll} onChange={e=>setEnroll(e.target.value)} />
         <button className="btn-add" style={{marginTop:14}} onClick={()=>{onUpdate({phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null}); setSendLang(lang);}}>Save Settings</button>
+        </div>}
       </div>
 
       <div className="wsec">
-        <div className="ws-t">Paused Months</div>
+        {secHead("paused","Paused Months",pausedSummary)}
+        {open.paused && <div style={{marginTop:14}}>
         <p style={{fontSize:".8rem",color:"var(--text2)",fontWeight:600,marginBottom:14,lineHeight:1.5}}>Mark months this student is paused (e.g. a mid-year break). Paused months are greyed and not counted as owed or unpaid — separate from global inactive months and enrollment start.</p>
         <div className="mth-grid">
           {MONTHS.map((m,mi)=>{ const isP=pausedDraft.includes(mi); return (
@@ -480,6 +507,7 @@ async function loadMyChildren() {
           <strong style={{color:"var(--text)"}}>Paused: </strong>{pausedDraft.length===0?"None":pausedDraft.slice().sort((a,b)=>a-b).map(mi=>MONTHS[mi]).join(", ")}
         </div>
         <button className="btn-add" onClick={()=>onUpdate({pausedMonths:pausedDraft})}>Save Paused Months</button>
+        </div>}
       </div>
 
       <div className="wsec">
