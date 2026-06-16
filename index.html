@@ -9,11 +9,21 @@
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+<script>
+  // Force the classic JSX runtime (React.createElement via the React UMD
+  // global). Newer Babel defaults preset-react to the AUTOMATIC runtime, which
+  // injects `import {jsx} from "react/jsx-runtime"` at the top of the compiled
+  // output — a top-level import that throws "Cannot use import statement
+  // outside a module" in a classic <script>, blanking the whole app.
+  Babel.registerPreset("react-classic", {
+    presets: [[Babel.availablePresets["react"], { runtime: "classic" }]]
+  });
+</script>
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel" data-presets="react">
+<script type="text/babel" data-presets="react-classic">
 const { useState, useEffect, useRef } = React;  const SK = "sc12"; try { ["sc1","sc2","sc3","sc4","sc5","sc6","sc7","sc8","sc9","sc10"].forEach(k=>localStorage.removeItem(k)); } catch(e) {}  const SB_URL = "https://oqckztpsglcsrtyyvqrl.supabase.co";
 const SB_KEY = "sb_publishable_AtGkcGeO4hAhtCZGmIBHyA_JZdRJBeI";
 const sb = window.supabase.createClient(SB_URL, SB_KEY);
