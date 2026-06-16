@@ -32,6 +32,8 @@ create table if not exists public.businesses (
   inactive_months   jsonb not null default '[]'::jsonb,
   levels            jsonb not null default '[]'::jsonb,
   custom_card_image text,                               -- URL into the card-images bucket
+  approval_status   text not null default 'pending'      -- admin gate: pending | approved | rejected
+                       check (approval_status in ('pending','approved','rejected')),
   created_at        timestamptz not null default now()
 );
 
@@ -65,47 +67,66 @@ create index if not exists cards_business_id_idx on public.cards(business_id);
 alter table public.businesses enable row level security;
 alter table public.cards      enable row level security;
 
--- Businesses: a teacher only ever sees / changes their own businesses.
+-- Businesses: a teacher sees/changes only their own businesses, AND only once
+-- approved (admin gate). New signups may INSERT a 'pending' business so it
+-- exists for the admin to approve, but cannot self-approve.
 drop policy if exists businesses_select_own on public.businesses;
 create policy businesses_select_own on public.businesses
-  for select using (owner_id = auth.uid());
+  for select using (owner_id = auth.uid() and approval_status = 'approved');
 
 drop policy if exists businesses_insert_own on public.businesses;
 create policy businesses_insert_own on public.businesses
-  for insert with check (owner_id = auth.uid());
+  for insert with check (owner_id = auth.uid() and approval_status = 'pending');
 
 drop policy if exists businesses_update_own on public.businesses;
 create policy businesses_update_own on public.businesses
-  for update using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+  for update using (owner_id = auth.uid() and approval_status = 'approved')
+            with check (owner_id = auth.uid() and approval_status = 'approved');
 
 drop policy if exists businesses_delete_own on public.businesses;
 create policy businesses_delete_own on public.businesses
-  for delete using (owner_id = auth.uid());
+  for delete using (owner_id = auth.uid() and approval_status = 'approved');
 
 -- Cards: accessible only when the parent business belongs to the teacher.
 drop policy if exists cards_select_own on public.cards;
 create policy cards_select_own on public.cards
   for select using (exists (
     select 1 from public.businesses b
-    where b.id = cards.business_id and b.owner_id = auth.uid()));
+    where b.id = cards.business_id and b.owner_id = auth.uid() and b.approval_status = 'approved'));
 
 drop policy if exists cards_insert_own on public.cards;
 create policy cards_insert_own on public.cards
   for insert with check (exists (
     select 1 from public.businesses b
-    where b.id = business_id and b.owner_id = auth.uid()));
+    where b.id = business_id and b.owner_id = auth.uid() and b.approval_status = 'approved'));
 
 drop policy if exists cards_update_own on public.cards;
 create policy cards_update_own on public.cards
   for update using (exists (
     select 1 from public.businesses b
-    where b.id = cards.business_id and b.owner_id = auth.uid()));
+    where b.id = cards.business_id and b.owner_id = auth.uid() and b.approval_status = 'approved'));
 
 drop policy if exists cards_delete_own on public.cards;
 create policy cards_delete_own on public.cards
   for delete using (exists (
     select 1 from public.businesses b
-    where b.id = cards.business_id and b.owner_id = auth.uid()));
+    where b.id = cards.business_id and b.owner_id = auth.uid() and b.approval_status = 'approved'));
+
+-- get_my_approval(): a logged-in owner reads their OWN approval status even
+-- though the gate hides unapproved rows. SECURITY DEFINER bypasses RLS but
+-- only returns the caller's own status. null = caller owns no business.
+create or replace function public.get_my_approval()
+returns text language plpgsql security definer set search_path = public as $$
+declare v_status text;
+begin
+  select approval_status into v_status
+    from public.businesses where owner_id = auth.uid()
+    order by created_at limit 1;
+  return v_status;
+end;
+$$;
+revoke all on function public.get_my_approval() from public, anon;
+grant execute on function public.get_my_approval() to authenticated;
 
 -- ============================================================================
 --  Student access  (no login — code + PIN only)  +  PIN rate-limiting
@@ -422,6 +443,7 @@ revoke all on table public.children    from public, anon, authenticated;
 alter default privileges in schema public revoke execute on functions from public;
 revoke execute on all functions in schema public from public, anon, authenticated;
 grant execute on function public.get_student_card(text, text) to anon, authenticated;
+grant execute on function public.get_my_approval()            to authenticated;
 -- Parent portal: must be logged in (authenticated only, never anon).
 grant execute on function public.link_card(text, text) to authenticated;
 grant execute on function public.get_my_cards()        to authenticated;
