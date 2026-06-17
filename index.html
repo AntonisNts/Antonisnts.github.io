@@ -669,7 +669,7 @@ async function loadMyApproval() {
     <div className="login-page">
       <button className="tb-back" style={{marginBottom:16}} onClick={onBack}>← Back</button>
       <h1>My Card</h1>
-      <p>Enter the unique code your teacher gave you.</p>
+      <p>Enter the unique code your business gave you.</p>
       <div className="ig"><label>Your Unique Code</label>
         <input className="inp" placeholder="e.g. AQ3RG0" value={code}
           onChange={e=>{setCode(e.target.value.toUpperCase());setErr("");}}
@@ -739,7 +739,7 @@ function PgParentAuth({ onBack }) {
     <div className="login-page">
       <button className="tb-back" style={{marginBottom:16}} onClick={onBack}>← Back</button>
       <h1>Family Account</h1>
-      <p>Log in to see all your children's cards in one place.</p>
+      <p>Log in to see all your students' cards in one place.</p>
       <div style={{display:"flex",gap:8,marginBottom:18}}>
         {[["login","Log In"],["register","Sign Up"]].map(([v,l])=>(
           <button key={v} onClick={()=>{setTab(v);setErr("");setInfo("");}} style={{flex:1,padding:"10px",borderRadius:12,border:"1px solid "+(tab===v?"var(--violet)":"var(--border)"),background:tab===v?"var(--violet)":"var(--bg2)",color:tab===v?"#fff":"var(--text2)",fontFamily:"var(--f)",fontWeight:800,fontSize:".82rem",cursor:"pointer",textTransform:"uppercase",letterSpacing:".1em"}}>{l}</button>
@@ -814,7 +814,7 @@ function PgLinkChild({ onBack, onLink, kids, onAssign, onCreateChild }) {
         <button className="tb-back" onClick={onBack}>←</button>
         <h2>Link a Child</h2>
       </div>
-      <div className="info-box" style={{marginBottom:20}}>Enter the share code and PIN your child's teacher gave you.</div>
+      <div className="info-box" style={{marginBottom:20}}>Enter the share code and PIN your child's business gave you.</div>
       <div className="ig"><label>Share Code</label>
         <input className="inp" placeholder="e.g. AQ3RG0" value={code}
           onChange={e=>{setCode(e.target.value.toUpperCase());setErr("");}} /></div>
