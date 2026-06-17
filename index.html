@@ -81,7 +81,7 @@ async function loadMyApproval() {
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--violet-glow)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
         </div>
         <div>
-          <div style={{fontSize:"1.1rem",fontWeight:700,color:"#fff",marginBottom:2}}>Teacher</div>
+          <div style={{fontSize:"1.1rem",fontWeight:700,color:"#fff",marginBottom:2}}>Business</div>
           <div style={{fontSize:".72rem",fontWeight:700,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".14em"}}>Portal Access</div>
         </div>
       </button>
@@ -91,7 +91,7 @@ async function loadMyApproval() {
         </div>
         <div>
           <div style={{fontSize:"1.1rem",fontWeight:700,color:"#fff",marginBottom:2}}>Family Account</div>
-          <div style={{fontSize:".72rem",fontWeight:700,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".14em"}}>All your children · log in</div>
+          <div style={{fontSize:".72rem",fontWeight:700,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".14em"}}>Students · log in</div>
         </div>
       </button>
       <button onClick={onStudent} style={{width:"100%",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:20,padding:"18px 20px",cursor:"pointer",display:"flex",alignItems:"center",gap:16,fontFamily:"var(--f)",textAlign:"left"}}>
@@ -909,7 +909,7 @@ function PgParentDashboard({ items, kids, onLink, onUnlink, onAssign, onCreateCh
       <div className="topbar">
         <h2>My Family</h2>
         <div style={{display:"flex",gap:8}}>
-          {onTeacher && <button className="tb-act" onClick={onTeacher} style={{fontWeight:800}}>Teacher</button>}
+          {onTeacher && <button className="tb-act" onClick={onTeacher} style={{fontWeight:800}}>Business</button>}
           <button className="tb-act" onClick={onLogout}>out</button>
         </div>
       </div>
