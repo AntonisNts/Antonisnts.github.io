@@ -24,6 +24,14 @@ create index if not exists announcements_biz_active_idx
 
 alter table public.announcements enable row level security;
 
+-- Table privileges: the schema-wide "grant ... on all tables" only covered
+-- tables that existed when it first ran, and default privileges aren't set for
+-- new tables — so this NEW table must be granted explicitly or PostgREST fails
+-- with "permission denied for table announcements" before RLS is even checked.
+-- authenticated only (the owner writes directly; parents/students read via the
+-- SECURITY DEFINER RPCs below). RLS still restricts which rows each role sees.
+grant select, insert, update, delete on public.announcements to authenticated;
+
 -- 2. RLS --------------------------------------------------------------------
 -- Owner: full CRUD on rows for a business they own (same approved-owner check
 -- the cards policies already use — no new auth pattern).
