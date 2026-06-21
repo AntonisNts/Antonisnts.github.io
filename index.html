@@ -682,8 +682,9 @@ async function loadMyAnnouncements() {
               <div key={a.id} style={{padding:"10px 0",borderTop:"1px solid var(--border)"}}>
                 {a.is_pinned && <span style={{fontSize:".6rem",fontWeight:800,color:"var(--violet-glow)",background:"rgba(99,102,241,.15)",borderRadius:6,padding:"2px 7px"}}>📌 PINNED</span>}
                 <div style={{fontSize:".95rem",fontWeight:800,marginTop:a.is_pinned?4:0}}>{a.title}</div>
+                <div style={{fontSize:".68rem",color:"var(--text3)",fontWeight:600,marginTop:2}}>{a.created_at ? ("Posted "+new Date(a.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})) : ""}</div>
                 {a.body && <div style={{fontSize:".82rem",color:"var(--text2)",marginTop:3,whiteSpace:"pre-wrap",lineHeight:1.5}}>{a.body}</div>}
-                {a.image_url && <img src={a.image_url} alt="" style={{width:"100%",maxHeight:240,objectFit:"cover",borderRadius:12,marginTop:8}} />}
+                {a.image_url && <img src={a.image_url} alt="" style={{display:"block",width:"100%",height:"auto",maxHeight:340,objectFit:"contain",borderRadius:12,marginTop:8,background:"var(--bg)"}} />}
               </div>
             ))}
           </div>
@@ -1128,7 +1129,7 @@ function PgAnnouncements({ biz, onBack }) {
             <div className="ws-lbl" style={{marginTop:12}}>Photo (optional)</div>
             {imgPreview ? (
               <div style={{position:"relative",marginBottom:8}}>
-                <img src={imgPreview} alt="" style={{width:"100%",maxHeight:200,objectFit:"cover",borderRadius:12,border:"1px solid var(--border)"}} />
+                <img src={imgPreview} alt="" style={{display:"block",width:"100%",height:"auto",maxHeight:280,objectFit:"contain",borderRadius:12,border:"1px solid var(--border)",background:"var(--bg)"}} />
                 <button onClick={()=>{ setImgPreview(""); setImgFile(null); setRemoveImg(true); }} style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,.7)",border:"none",color:"#fff",borderRadius:8,padding:"4px 10px",fontWeight:800,cursor:"pointer"}}>Remove</button>
               </div>
             ) : (
@@ -1156,18 +1157,15 @@ function PgAnnouncements({ biz, onBack }) {
            : list.length===0 ? <div className="empty">No announcements yet. Tap + New.</div>
            : list.map(a=>{ const expired = a.expires_at && new Date(a.expires_at) < new Date(); return (
             <div key={a.id} className="card" style={{cursor:"default"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
-                    {a.is_pinned && <span style={{fontSize:".6rem",fontWeight:800,color:"var(--violet-glow)",background:"rgba(99,102,241,.15)",borderRadius:6,padding:"2px 7px"}}>📌 PINNED</span>}
-                    {!a.is_active && <span style={{fontSize:".6rem",fontWeight:800,color:"var(--text2)",background:"var(--bg3)",borderRadius:6,padding:"2px 7px"}}>HIDDEN</span>}
-                    {expired && <span style={{fontSize:".6rem",fontWeight:800,color:"var(--partial)",background:"rgba(251,191,36,.12)",borderRadius:6,padding:"2px 7px"}}>EXPIRED</span>}
-                  </div>
-                  <div style={{fontSize:"1rem",fontWeight:800}}>{a.title}</div>
-                  {a.body && <div style={{fontSize:".82rem",color:"var(--text2)",marginTop:3,whiteSpace:"pre-wrap"}}>{a.body}</div>}
-                </div>
-                {a.image_url && <img src={a.image_url} alt="" style={{width:54,height:54,borderRadius:10,objectFit:"cover",flexShrink:0}} />}
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
+                {a.is_pinned && <span style={{fontSize:".6rem",fontWeight:800,color:"var(--violet-glow)",background:"rgba(99,102,241,.15)",borderRadius:6,padding:"2px 7px"}}>📌 PINNED</span>}
+                {!a.is_active && <span style={{fontSize:".6rem",fontWeight:800,color:"var(--text2)",background:"var(--bg3)",borderRadius:6,padding:"2px 7px"}}>HIDDEN</span>}
+                {expired && <span style={{fontSize:".6rem",fontWeight:800,color:"var(--partial)",background:"rgba(251,191,36,.12)",borderRadius:6,padding:"2px 7px"}}>EXPIRED</span>}
               </div>
+              <div style={{fontSize:"1rem",fontWeight:800}}>{a.title}</div>
+              <div style={{fontSize:".68rem",color:"var(--text3)",fontWeight:600,marginTop:2}}>{a.created_at ? ("Posted "+new Date(a.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})) : ""}</div>
+              {a.body && <div style={{fontSize:".82rem",color:"var(--text2)",marginTop:3,whiteSpace:"pre-wrap"}}>{a.body}</div>}
+              {a.image_url && <img src={a.image_url} alt="" style={{display:"block",width:"100%",height:"auto",maxHeight:340,objectFit:"contain",borderRadius:12,marginTop:8,background:"var(--bg)"}} />}
               <div style={{display:"flex",gap:8,marginTop:12}}>
                 <button onClick={()=>openEdit(a)} className="btn-undo" style={{flex:1,padding:"9px"}}>Edit</button>
                 <button onClick={()=>del(a)} className="btn-undo" style={{flex:1,padding:"9px",color:"var(--red)",borderColor:"rgba(239,68,68,.4)"}}>Delete</button>
