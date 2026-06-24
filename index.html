@@ -218,7 +218,7 @@ async function loadMyAnnouncements() {
               {schedule.map((s,i)=>(
                 <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,.08)",borderRadius:10,padding:"8px 12px"}}>
                   <span style={{fontSize:".82rem",fontWeight:900,color:p.acc,minWidth:40}}>{dayAbbr[s.day]||s.day||"—"}</span>
-                  <span style={{fontSize:".82rem",fontWeight:700,color:"#fff"}}>· {s.time||""}</span>
+                  <span style={{fontSize:".82rem",fontWeight:700,color:"#fff"}}>{"· "+(s.start_time||s.time||"")+(s.end_time?("–"+s.end_time):"")}</span>
                 </div>
               ))}
             </div>}
@@ -434,15 +434,21 @@ async function loadMyAnnouncements() {
       <div className="ig"><label>Group Name (optional)</label><input className="inp" placeholder="e.g. Beginners A" value={groupName} onChange={e=>setGroupName(e.target.value)} /></div>
       <div className="ig"><label>Lesson Schedule (optional)</label>
         {schedule.map((row,i)=>(
-          <div key={i} style={{display:"flex",gap:6,marginBottom:8,alignItems:"center"}}>
-            <select className="inp" style={{flex:1,marginBottom:0}} value={row.day} onChange={e=>setSchedule(s=>s.map((r,j)=>j===i?{...r,day:e.target.value}:r))}>{DAYS.map(d=><option key={d} value={d}>{d}</option>)}</select>
-            <input className="inp" style={{width:120,marginBottom:0}} type="time" value={row.time} onChange={e=>setSchedule(s=>s.map((r,j)=>j===i?{...r,time:e.target.value}:r))} />
-            <button type="button" onClick={()=>setSchedule(s=>s.filter((_,j)=>j!==i))} aria-label="Remove" style={{background:"transparent",border:"1px solid var(--border)",borderRadius:10,minWidth:44,height:48,color:"var(--red)",fontWeight:900,fontSize:"1.1rem",cursor:"pointer",flexShrink:0}}>×</button>
+          <div key={i} style={{marginBottom:10,padding:"10px",background:"var(--bg2)",borderRadius:12,border:"1px solid var(--border)"}}>
+            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+              <select className="inp" style={{flex:1,marginBottom:0}} value={row.day} onChange={e=>setSchedule(s=>s.map((r,j)=>j===i?{...r,day:e.target.value}:r))}>{DAYS.map(d=><option key={d} value={d}>{d}</option>)}</select>
+              <button type="button" onClick={()=>setSchedule(s=>s.filter((_,j)=>j!==i))} aria-label="Remove" style={{background:"transparent",border:"1px solid var(--border)",borderRadius:10,minWidth:44,height:48,color:"var(--red)",fontWeight:900,fontSize:"1.1rem",cursor:"pointer",flexShrink:0}}>×</button>
+            </div>
+            <div style={{display:"flex",gap:6,alignItems:"center",marginTop:6}}>
+              <input className="inp" style={{flex:1,marginBottom:0}} type="time" value={row.start_time||""} onChange={e=>setSchedule(s=>s.map((r,j)=>j===i?{...r,start_time:e.target.value}:r))} />
+              <span style={{color:"var(--text2)",fontWeight:800}}>–</span>
+              <input className="inp" style={{flex:1,marginBottom:0}} type="time" value={row.end_time||""} onChange={e=>setSchedule(s=>s.map((r,j)=>j===i?{...r,end_time:e.target.value}:r))} />
+            </div>
           </div>
         ))}
-        {schedule.length<5 && <button type="button" onClick={()=>setSchedule(s=>[...s,{day:"Monday",time:"17:00"}])} className="btn-ghost" style={{marginTop:0,padding:"12px"}}>+ Add another day</button>}
+        {schedule.length<5 && <button type="button" onClick={()=>setSchedule(s=>[...s,{day:"Monday",start_time:"17:00",end_time:"18:00"}])} className="btn-ghost" style={{marginTop:0,padding:"12px"}}>+ Add another day</button>}
       </div>
-      <button className="btn" style={{marginTop:8}} onClick={()=>onCreate({name,level:selLevel,phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupName:groupName.trim(),lessonSchedule:schedule.filter(r=>r.day&&r.time)})}>Create Card</button>
+      <button className="btn" style={{marginTop:8}} onClick={()=>onCreate({name,level:selLevel,phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupName:groupName.trim(),lessonSchedule:schedule.filter(r=>r.day&&r.start_time)})}>Create Card</button>
     </div>
   );
 }  function PgReveal({ card, onDone }) {   return (     <div className="reg-page">       <h2 style={{marginBottom:4}}>Card Created</h2>       <p>Share the code and PIN with the student.</p>       <div className="reveal-box">         <div className="rv-lbl">Student Code</div>         <div className="rv-val">{card.shareCode}</div>         <div className="rv-sep" />         <div className="rv-lbl">PIN</div>         <div className="rv-pin">{card.pin}</div>       </div>       <div className="info-box" style={{marginBottom:16}}>Write these down now.</div>       <button className="btn" onClick={onDone}>Done</button>     </div>   ); }  function PgCard({ biz, card, onBack, onUpdate, onRemove }) {
@@ -454,7 +460,7 @@ async function loadMyAnnouncements() {
   const [lang, setLang] = useState(card.language||"EN");
   const [enroll, setEnroll] = useState(card.enrollmentStart||"");
   const [groupName, setGroupName] = useState(card.groupName||"");
-  const [sched, setSched] = useState(card.lessonSchedule||[]);
+  const [sched, setSched] = useState((card.lessonSchedule||[]).map(s=>({day:s.day,start_time:s.start_time||s.time||"",end_time:s.end_time||""})));
   const SCHED_DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
   const [sendLang, setSendLang] = useState(card.language||"EN");
   const [note, setNote] = useState("");
@@ -738,14 +744,20 @@ async function loadMyAnnouncements() {
         <input className="ws-inp" placeholder="e.g. Beginners A" value={groupName} onChange={e=>setGroupName(e.target.value)} />
         <div className="ws-lbl" style={{marginTop:14}}>Lesson Schedule (optional)</div>
         {sched.map((row,i)=>(
-          <div key={i} style={{display:"flex",gap:6,marginBottom:8,alignItems:"center"}}>
-            <select className="ws-inp" style={{flex:1}} value={row.day} onChange={e=>setSched(s=>s.map((r,j)=>j===i?{...r,day:e.target.value}:r))}>{SCHED_DAYS.map(d=><option key={d} value={d}>{d}</option>)}</select>
-            <input className="ws-inp" style={{width:120}} type="time" value={row.time} onChange={e=>setSched(s=>s.map((r,j)=>j===i?{...r,time:e.target.value}:r))} />
-            <button type="button" onClick={()=>setSched(s=>s.filter((_,j)=>j!==i))} aria-label="Remove" style={{background:"transparent",border:"1px solid var(--border)",borderRadius:10,minWidth:44,height:52,color:"var(--red)",fontWeight:900,fontSize:"1.1rem",cursor:"pointer",flexShrink:0}}>×</button>
+          <div key={i} style={{marginBottom:10,padding:"10px",background:"var(--bg)",borderRadius:12,border:"1px solid var(--border)"}}>
+            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+              <select className="ws-inp" style={{flex:1}} value={row.day} onChange={e=>setSched(s=>s.map((r,j)=>j===i?{...r,day:e.target.value}:r))}>{SCHED_DAYS.map(d=><option key={d} value={d}>{d}</option>)}</select>
+              <button type="button" onClick={()=>setSched(s=>s.filter((_,j)=>j!==i))} aria-label="Remove" style={{background:"transparent",border:"1px solid var(--border)",borderRadius:10,minWidth:44,height:52,color:"var(--red)",fontWeight:900,fontSize:"1.1rem",cursor:"pointer",flexShrink:0}}>×</button>
+            </div>
+            <div style={{display:"flex",gap:6,alignItems:"center",marginTop:6}}>
+              <input className="ws-inp" style={{flex:1}} type="time" value={row.start_time||""} onChange={e=>setSched(s=>s.map((r,j)=>j===i?{...r,start_time:e.target.value}:r))} />
+              <span style={{color:"var(--text2)",fontWeight:800}}>–</span>
+              <input className="ws-inp" style={{flex:1}} type="time" value={row.end_time||""} onChange={e=>setSched(s=>s.map((r,j)=>j===i?{...r,end_time:e.target.value}:r))} />
+            </div>
           </div>
         ))}
-        {sched.length<5 && <button type="button" onClick={()=>setSched(s=>[...s,{day:"Monday",time:"17:00"}])} className="btn-undo" style={{width:"100%",flex:"none",marginTop:2}}>+ Add another day</button>}
-        <button className="btn-add" style={{marginTop:14}} onClick={()=>{onUpdate({phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupName:groupName.trim(),lessonSchedule:sched.filter(r=>r.day&&r.time)}); setSendLang(lang);}}>Save Settings</button>
+        {sched.length<5 && <button type="button" onClick={()=>setSched(s=>[...s,{day:"Monday",start_time:"17:00",end_time:"18:00"}])} className="btn-undo" style={{width:"100%",flex:"none",marginTop:2}}>+ Add another day</button>}
+        <button className="btn-add" style={{marginTop:14}} onClick={()=>{onUpdate({phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupName:groupName.trim(),lessonSchedule:sched.filter(r=>r.day&&r.start_time)}); setSendLang(lang);}}>Save Settings</button>
         </div>}
       </div>
 
