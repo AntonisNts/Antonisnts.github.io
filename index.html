@@ -788,6 +788,12 @@ async function loadMyAnnouncements() {
             <div style={{textAlign:"right"}}><div className="share-lbl">PIN</div><div style={{fontSize:"1.6rem",fontWeight:900,letterSpacing:".2em",color:"var(--accent)"}}>{card.pin||"—"}</div></div>
           </div>
         </div>
+        <div style={{fontSize:".78rem",color:"var(--text2)",fontWeight:700,margin:"16px 0 8px"}}>Send the code &amp; PIN to the parent:</div>
+        <div style={{display:"flex",gap:8}}>
+          {[["whatsapp","WhatsApp","#25D366"],["viber","Viber","#7360F2"],["sms","SMS","var(--accent)"]].map(([ch,lbl,col])=>(
+            <button key={ch} onClick={()=>{ const msg="Hi! Use this code to track "+card.name+"'s lessons on PayStamp. Code: "+card.shareCode+", PIN: "+(card.pin||"")+". Register & link your child at paystamp.app. Step-by-step guide: paystamp.app/help"; const enc=encodeURIComponent(msg); const digits=(card.phone||"").replace(/\D/g,""); const plus=(card.phone||"").replace(/[^\d+]/g,""); if(ch==="whatsapp") window.open("https://wa.me/"+digits+"?text="+enc,"_blank"); else if(ch==="sms") window.location.href="sms:"+plus+"?&body="+enc; else { try{ if(navigator.clipboard) navigator.clipboard.writeText(msg); }catch(e){} window.location.href="viber://forward?text="+enc; } }} style={{flex:1,padding:"11px 6px",borderRadius:12,border:"none",background:col,color:"#fff",fontFamily:"var(--f)",fontWeight:800,fontSize:".8rem",cursor:"pointer"}}>{lbl}</button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -978,6 +984,7 @@ function PgParentAuth({ onBack }) {
       <button className="tb-back" style={{marginBottom:16}} onClick={onBack}>← Back</button>
       <h1>Family Account</h1>
       <p>Log in to see all your students' cards in one place.</p>
+      <a href="/help" style={{display:"block",textAlign:"center",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:"11px",color:"var(--violet-glow)",fontWeight:700,fontSize:".82rem",textDecoration:"none",marginBottom:18}}>📘 New here? Read the parent guide</a>
       <div style={{display:"flex",gap:8,marginBottom:18}}>
         {[["login","Log In"],["register","Sign Up"]].map(([v,l])=>(
           <button key={v} onClick={()=>{setTab(v);setErr("");setInfo("");}} style={{flex:1,padding:"10px",borderRadius:12,border:"1px solid "+(tab===v?"var(--violet)":"var(--border)"),background:tab===v?"var(--violet)":"var(--bg2)",color:tab===v?"#fff":"var(--text2)",fontFamily:"var(--f)",fontWeight:800,fontSize:".82rem",cursor:"pointer",textTransform:"uppercase",letterSpacing:".1em"}}>{l}</button>
