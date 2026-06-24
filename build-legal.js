@@ -26,11 +26,18 @@ for (const p of pages) {
 <style>html,body{margin:0;padding:0;background:#f7f8fa;}</style>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+<script>
+  // Force the classic JSX runtime (React.createElement via the React UMD
+  // global). Newer Babel defaults preset-react to the AUTOMATIC runtime, which
+  // injects an ESM import of react/jsx-runtime — illegal in a classic <script>
+  // ("Cannot use import statement outside a module") and blanks the page.
+  Babel.registerPreset("react-classic", { presets: [[Babel.availablePresets["react"], { runtime: "classic" }]] });
+</script>
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel" data-presets="react">
+<script type="text/babel" data-presets="react-classic">
 ${legal}
 
 const MARKDOWN = ${JSON.stringify(md)};
