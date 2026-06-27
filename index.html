@@ -395,6 +395,8 @@ async function loadMyAnnouncements() {
   const [enroll, setEnroll] = useState("");
   const [levelId, setLevelId] = useState("");
   const [groupName, setGroupName] = useState("");
+  const [addingGroup, setAddingGroup] = useState(false);
+  const groupOpts = [...new Set(Object.values(biz.cards||{}).map(x=>(x.groupName||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   const [schedule, setSchedule] = useState([]);
   const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
   const levels = biz.levels||[];
@@ -432,7 +434,14 @@ async function loadMyAnnouncements() {
         </div>
       )}
       {selLevel && <div style={{background:"var(--bg2)",borderRadius:12,padding:"12px 16px",marginBottom:14,fontSize:".85rem",color:"var(--text2)",fontWeight:700,border:"1px solid var(--border)"}}>Fee: <strong style={{color:"var(--accent)"}}>{"€"+selLevel.fee+"/mo"}</strong></div>}
-      <div className="ig"><label>Group Name (optional)</label><input className="inp" placeholder="e.g. Beginners A" value={groupName} onChange={e=>setGroupName(e.target.value)} /></div>
+      <div className="ig"><label>Group (optional)</label>
+        <select className="inp" value={addingGroup?"__new__":groupName} onChange={e=>{ const v=e.target.value; if(v==="__new__"){setAddingGroup(true);setGroupName("");} else {setAddingGroup(false);setGroupName(v);} }}>
+          <option value="">— No group —</option>
+          {groupOpts.map(g=><option key={g} value={g}>{g}</option>)}
+          <option value="__new__">+ Add new group…</option>
+        </select>
+        {addingGroup && <input className="inp" style={{marginTop:8}} placeholder="New group name" value={groupName} onChange={e=>setGroupName(e.target.value)} autoFocus />}
+      </div>
       <div className="ig"><label>Lesson Schedule (optional)</label>
         {schedule.map((row,i)=>(
           <div key={i} style={{marginBottom:10,padding:"10px",background:"var(--bg2)",borderRadius:12,border:"1px solid var(--border)"}}>
@@ -461,6 +470,8 @@ async function loadMyAnnouncements() {
   const [lang, setLang] = useState(card.language||"EN");
   const [enroll, setEnroll] = useState(card.enrollmentStart||"");
   const [groupName, setGroupName] = useState(card.groupName||"");
+  const [addingGroup, setAddingGroup] = useState(false);
+  const groupOpts = [...new Set(Object.values(biz.cards||{}).map(x=>(x.groupName||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   const [sched, setSched] = useState((card.lessonSchedule||[]).map(s=>({day:s.day,start_time:s.start_time||s.time||"",end_time:s.end_time||""})));
   const SCHED_DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
   const [sendLang, setSendLang] = useState(card.language||"EN");
@@ -741,8 +752,13 @@ async function loadMyAnnouncements() {
         </div>
         <div className="ws-lbl" style={{marginTop:14}}>Enrollment Start (optional)</div>
         <input className="ws-inp" type="month" value={enroll} onChange={e=>setEnroll(e.target.value)} />
-        <div className="ws-lbl" style={{marginTop:14}}>Group Name (optional)</div>
-        <input className="ws-inp" placeholder="e.g. Beginners A" value={groupName} onChange={e=>setGroupName(e.target.value)} />
+        <div className="ws-lbl" style={{marginTop:14}}>Group (optional)</div>
+        <select className="ws-inp" value={addingGroup?"__new__":groupName} onChange={e=>{ const v=e.target.value; if(v==="__new__"){setAddingGroup(true);setGroupName("");} else {setAddingGroup(false);setGroupName(v);} }}>
+          <option value="">— No group —</option>
+          {groupOpts.map(g=><option key={g} value={g}>{g}</option>)}
+          <option value="__new__">+ Add new group…</option>
+        </select>
+        {addingGroup && <input className="ws-inp" style={{marginTop:8}} placeholder="New group name" value={groupName} onChange={e=>setGroupName(e.target.value)} />}
         <div className="ws-lbl" style={{marginTop:14}}>Lesson Schedule (optional)</div>
         {sched.map((row,i)=>(
           <div key={i} style={{marginBottom:10,padding:"10px",background:"var(--bg)",borderRadius:12,border:"1px solid var(--border)"}}>
