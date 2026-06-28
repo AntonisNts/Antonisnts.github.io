@@ -387,7 +387,7 @@ async function loadMyAnnouncements() {
       <button className="btn" style={{marginTop:8}} onClick={doCreate} disabled={busy}>{busy?"…":"Create Business"}</button>
     </div>
   );
-}  function PgDashboard({ biz, onCard, onAdd, onMonths, onLevels, onCustomCard, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   let touchStartY = 0;   const p = getPal(biz.type);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=>{     return a+MONTHS.reduce((s,_,mi)=>{       if (inactive.includes(mi)||preEnroll(year,mi,c.enrollmentStart)||(c.pausedMonths||[]).includes(mi)) return s;       const ym=ymOf(year,mi); const pp=(c.payments||{})[ym]||{};       if (ym>nowYM()) return s;       return s+(pp.paid?0:feeForMonth(c,biz,mi)-(pp.amount||0));     },0);   },0);   const hasImg = !!biz.customCardImage;   const headerBg = hasImg ? "#000" : "linear-gradient(135deg,"+p.bg1+","+p.bg2+")";    const filtered = allCards     .filter(c=>{       if (levelFilter==="all") return true;       if (levelFilter==="none") return !c.level;       return c.level && c.level.id===levelFilter;     })     .filter(c=>!search||(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.shareCode||"").toLowerCase().includes(search.toLowerCase()))     .sort((a,b)=>{       if (sort==="owed") {         const oA=MONTHS.reduce((s,_,mi)=>{if(inactive.includes(mi)||preEnroll(year,mi,a.enrollmentStart)||(a.pausedMonths||[]).includes(mi))return s;const pp=(a.payments||{})[ymOf(year,mi)]||{};return ymOf(year,mi)>nowYM()?s:s+(pp.paid?0:feeForMonth(a,biz,mi)-(pp.amount||0));},0);         const oB=MONTHS.reduce((s,_,mi)=>{if(inactive.includes(mi)||preEnroll(year,mi,b.enrollmentStart)||(b.pausedMonths||[]).includes(mi))return s;const pp=(b.payments||{})[ymOf(year,mi)]||{};return ymOf(year,mi)>nowYM()?s:s+(pp.paid?0:feeForMonth(b,biz,mi)-(pp.amount||0));},0);         return oB-oA;       }       if (sort==="progress") { return monthsPaid(b.payments||{},year,inactive.concat(b.pausedMonths||[]),b.enrollmentStart)-monthsPaid(a.payments||{},year,inactive.concat(a.pausedMonths||[]),a.enrollmentStart); }       return (a.name||"").localeCompare(b.name||"");     });    return (     <div className="page">       <div style={{margin:"16px 16px 14px",borderRadius:20,overflow:"hidden",position:"relative",background:headerBg,boxShadow:"0 6px 24px rgba(0,0,0,.4)"}}>         {hasImg && <img src={biz.customCardImage} alt="" style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%",objectFit:"cover",opacity:0.4}} />}         <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"linear-gradient(180deg,rgba(0,0,0,.4) 0%,rgba(0,0,0,.7) 100%)"}} />         <div style={{position:"relative",zIndex:2,padding:"18px 20px 14px",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>           <div>             <div style={{fontSize:".68rem",fontWeight:800,color:p.acc,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}}>{p.icon} {biz.type}</div>             <div style={{fontSize:"1.4rem",fontWeight:900,color:"#fff",marginBottom:3}}>{biz.name}</div>             <div style={{fontSize:".75rem",color:"rgba(255,255,255,.5)",fontWeight:700}}>{biz.bizCode}</div>           </div>           <div style={{display:"flex",gap:8}}><button onClick={()=>setSheet(true)} aria-label="Settings" style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontSize:".95rem",lineHeight:1,cursor:"pointer",padding:"6px 10px",borderRadius:20}}>⚙️</button>{showFamily && <button onClick={onFamily} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontFamily:"var(--f)",fontSize:".75rem",fontWeight:800,cursor:"pointer",padding:"6px 14px",borderRadius:20}}>Family</button>}<button onClick={onLogout} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontFamily:"var(--f)",fontSize:".75rem",fontWeight:800,cursor:"pointer",padding:"6px 14px",borderRadius:20}}>out</button></div>         </div>         <div style={{position:"relative",zIndex:2,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",borderTop:"1px solid rgba(255,255,255,.1)"}}>           <div style={{padding:"12px 8px",textAlign:"center",borderRight:"1px solid rgba(255,255,255,.1)"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:"#fff"}}>{allCards.length}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>STUDENTS</div>           </div>           <div style={{padding:"12px 8px",textAlign:"center",borderRight:"1px solid rgba(255,255,255,.1)"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:p.acc}}>{paidNow+"/"+allCards.length}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>{"PAID "+MONTHS[nowIdx].toUpperCase()}</div>           </div>           <div style={{padding:"12px 8px",textAlign:"center"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:"#f87171"}}>{"€"+Math.round(totalOwed)}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>OWED</div>           </div>         </div>       </div>                {sheet && (<div onClick={()=>setSheet(false)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:200,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"flex-end"}}><div onClick={e=>e.stopPropagation()} onTouchStart={e=>{touchStartY=e.touches[0].clientY;}} onTouchEnd={e=>{ if(e.changedTouches[0].clientY-touchStartY>60) setSheet(false); }} style={{width:"100%",maxWidth:430,margin:"0 auto",background:"var(--bg2)",borderTopLeftRadius:24,borderTopRightRadius:24,padding:"10px 0 24px",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,.5)"}}><div style={{width:40,height:5,borderRadius:99,background:"var(--text3)",margin:"0 auto 10px"}} /><div style={{padding:"4px 20px 10px",fontSize:".7rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".16em"}}>Settings</div>{[["📅","Months","Manage active/inactive months",onMonths],["🎓","Levels","Edit student levels & fees",onLevels],["🎨","Card","Choose card design",onCustomCard],["📤","Export","Download payment records",onExport],["🔔","Remind","Send payment reminders",onRemind],["📣","Announcements","Post news to parents & students",onAnnouncements]].map(([ic,lb,st,fn],i)=>(<div key={i} onClick={()=>{setSheet(false); fn&&fn();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>{ic}</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--text)"}}>{lb}</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--text2)",marginTop:1}}>{st}</div></div><div style={{color:"var(--text3)",fontSize:"1.2rem",fontWeight:700}}>›</div></div>))}{onNewYear && (<div style={{height:1,background:"var(--border)",margin:"8px 20px"}} />)}{onNewYear && (<div onClick={()=>{setSheet(false); onNewYear();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>🗓️</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--partial)"}}>{"Start New Year ("+(year+1)+")"}</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--partial)",opacity:.8,marginTop:1}}>Roll over to next year</div></div><div style={{color:"var(--partial)",fontSize:"1.2rem",fontWeight:700,opacity:.7}}>›</div></div>)}{onDeleteAccount && (<div style={{height:1,background:"var(--border)",margin:"8px 20px"}} />)}{onDeleteAccount && (<div onClick={()=>{setSheet(false); onDeleteAccount();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 16px",margin:"2px 14px 0",borderRadius:14,border:"1px solid rgba(239,68,68,.4)",background:"rgba(239,68,68,.08)",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>🗑</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--red)"}}>Delete Business Account</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--red)",opacity:.85,marginTop:1}}>Permanently erase business &amp; data</div></div><div style={{color:"var(--red)",fontSize:"1.2rem",fontWeight:700,opacity:.7}}>›</div></div>)}</div></div>)}<div className="section">         <div className="sec-row">           <div className="sec-title">Students ({allCards.length})</div>           <button className="btn-new" onClick={onAdd}>+ New</button>         </div>         {allCards.length > 0 && hasLevels && (           <div style={{display:"flex",gap:8,marginBottom:14,overflowX:"auto",paddingBottom:4,scrollbarWidth:"none",borderBottom:"1px solid var(--border)",paddingTop:2}}>             <button onClick={()=>setLevelFilter("all")} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter==="all"?"var(--violet)":"var(--border)"),background:levelFilter==="all"?"var(--violet)":"var(--bg2)",color:levelFilter==="all"?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter==="all"?"0 4px 16px rgba(99,102,241,.3)":"none"}}>All Members</button>             {levels.map(lv=>(               <button key={lv.id} onClick={()=>setLevelFilter(lv.id)} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter===lv.id?"var(--violet)":"var(--border)"),background:levelFilter===lv.id?"var(--violet)":"var(--bg2)",color:levelFilter===lv.id?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter===lv.id?"0 4px 16px rgba(99,102,241,.3)":"none"}}>{lv.name}</button>             ))}             {allCards.some(c=>!c.level) && (               <button onClick={()=>setLevelFilter("none")} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter==="none"?"var(--violet)":"var(--border)"),background:levelFilter==="none"?"var(--violet)":"var(--bg2)",color:levelFilter==="none"?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter==="none"?"0 4px 16px rgba(99,102,241,.3)":"none"}}>No Level</button>             )}           </div>         )}         {allCards.length > 0 && (           <>             <div style={{position:"relative",marginBottom:10}}>               <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:"1rem",pointerEvents:"none"}}>🔍</span>               <input style={{width:"100%",background:"var(--bg3)",border:"1px solid var(--border)",borderRadius:14,padding:"11px 14px 11px 38px",fontFamily:"var(--f)",fontSize:".9rem",fontWeight:600,outline:"none",color:"var(--text)"}}                 placeholder="Search by name or code..." value={search} onChange={e=>setSearch(e.target.value)} />               {search && <button onClick={()=>setSearch("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",fontSize:"1rem",cursor:"pointer",color:"var(--text2)"}}>✕</button>}             </div>             <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>               <span style={{fontSize:".72rem",color:"var(--text2)",fontWeight:700,alignSelf:"center"}}>Sort:</span>               {[["name","A–Z"],["owed","Most Owed"],["progress","Most Paid"]].map(([v,l])=>(                 <button key={v} onClick={()=>setSort(v)} style={{padding:"5px 12px",borderRadius:20,border:"none",background:sort===v?"var(--accent)":"var(--bg3)",color:sort===v?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:800,cursor:"pointer"}}>                   {l}                 </button>               ))}             </div>           </>         )}         {!allCards.length ? <div className="empty">No cards yet. Tap + New.</div>           : !filtered.length ? <div className="empty">No results for "{search}"</div>           : <div className="card-list">{filtered.map(c=><CardTile key={c.id} card={c} biz={biz} onClick={()=>onCard(c.id)} />)}</div>         }       <div style={{textAlign:"center",padding:"22px 0 6px"}}><a href="/dpa" style={{color:"var(--text2)",fontSize:".7rem",textDecoration:"underline"}}>Data Processing Agreement</a></div>       </div>     </div>   ); }  function PgAddCard({ biz, onBack, onCreate }) {
+}  function PgDashboard({ biz, onCard, onAdd, onMonths, onLevels, onCustomCard, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   let touchStartY = 0;   const p = getPal(biz.type);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=>{     return a+MONTHS.reduce((s,_,mi)=>{       if (inactive.includes(mi)||preEnroll(year,mi,c.enrollmentStart)||(c.pausedMonths||[]).includes(mi)) return s;       const ym=ymOf(year,mi); const pp=(c.payments||{})[ym]||{};       if (ym>nowYM()) return s;       return s+(pp.paid?0:feeForMonth(c,biz,mi)-(pp.amount||0));     },0);   },0);   const hasImg = !!biz.customCardImage;   const headerBg = hasImg ? "#000" : "linear-gradient(135deg,"+p.bg1+","+p.bg2+")";    const filtered = allCards     .filter(c=>{       if (levelFilter==="all") return true;       if (levelFilter==="none") return !c.level;       return c.level && c.level.id===levelFilter;     })     .filter(c=>!search||(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.shareCode||"").toLowerCase().includes(search.toLowerCase()))     .sort((a,b)=>{       if (sort==="owed") {         const oA=MONTHS.reduce((s,_,mi)=>{if(inactive.includes(mi)||preEnroll(year,mi,a.enrollmentStart)||(a.pausedMonths||[]).includes(mi))return s;const pp=(a.payments||{})[ymOf(year,mi)]||{};return ymOf(year,mi)>nowYM()?s:s+(pp.paid?0:feeForMonth(a,biz,mi)-(pp.amount||0));},0);         const oB=MONTHS.reduce((s,_,mi)=>{if(inactive.includes(mi)||preEnroll(year,mi,b.enrollmentStart)||(b.pausedMonths||[]).includes(mi))return s;const pp=(b.payments||{})[ymOf(year,mi)]||{};return ymOf(year,mi)>nowYM()?s:s+(pp.paid?0:feeForMonth(b,biz,mi)-(pp.amount||0));},0);         return oB-oA;       }       if (sort==="progress") { return monthsPaid(b.payments||{},year,inactive.concat(b.pausedMonths||[]),b.enrollmentStart)-monthsPaid(a.payments||{},year,inactive.concat(a.pausedMonths||[]),a.enrollmentStart); }       return (a.name||"").localeCompare(b.name||"");     });    return (     <div className="page">       <div style={{margin:"16px 16px 14px",borderRadius:20,overflow:"hidden",position:"relative",background:headerBg,boxShadow:"0 6px 24px rgba(0,0,0,.4)"}}>         {hasImg && <img src={biz.customCardImage} alt="" style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%",objectFit:"cover",opacity:0.4}} />}         <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"linear-gradient(180deg,rgba(0,0,0,.4) 0%,rgba(0,0,0,.7) 100%)"}} />         <div style={{position:"relative",zIndex:2,padding:"18px 20px 14px",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>           <div>             <div style={{fontSize:".68rem",fontWeight:800,color:p.acc,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}}>{p.icon} {biz.type}</div>             <div style={{fontSize:"1.4rem",fontWeight:900,color:"#fff",marginBottom:3}}>{biz.name}</div>             <div style={{fontSize:".75rem",color:"rgba(255,255,255,.5)",fontWeight:700}}>{biz.bizCode}</div>           </div>           <div style={{display:"flex",gap:8}}><button onClick={()=>setSheet(true)} aria-label="Settings" style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontSize:".95rem",lineHeight:1,cursor:"pointer",padding:"6px 10px",borderRadius:20}}>⚙️</button>{showFamily && <button onClick={onFamily} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontFamily:"var(--f)",fontSize:".75rem",fontWeight:800,cursor:"pointer",padding:"6px 14px",borderRadius:20}}>Family</button>}<button onClick={onLogout} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontFamily:"var(--f)",fontSize:".75rem",fontWeight:800,cursor:"pointer",padding:"6px 14px",borderRadius:20}}>out</button></div>         </div>         <div style={{position:"relative",zIndex:2,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",borderTop:"1px solid rgba(255,255,255,.1)"}}>           <div style={{padding:"12px 8px",textAlign:"center",borderRight:"1px solid rgba(255,255,255,.1)"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:"#fff"}}>{allCards.length}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>STUDENTS</div>           </div>           <div style={{padding:"12px 8px",textAlign:"center",borderRight:"1px solid rgba(255,255,255,.1)"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:p.acc}}>{paidNow+"/"+allCards.length}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>{"PAID "+MONTHS[nowIdx].toUpperCase()}</div>           </div>           <div style={{padding:"12px 8px",textAlign:"center"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:"#f87171"}}>{"€"+Math.round(totalOwed)}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>OWED</div>           </div>         </div>       </div>                {sheet && (<div onClick={()=>setSheet(false)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:200,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"flex-end"}}><div onClick={e=>e.stopPropagation()} onTouchStart={e=>{touchStartY=e.touches[0].clientY;}} onTouchEnd={e=>{ if(e.changedTouches[0].clientY-touchStartY>60) setSheet(false); }} style={{width:"100%",maxWidth:430,margin:"0 auto",background:"var(--bg2)",borderTopLeftRadius:24,borderTopRightRadius:24,padding:"10px 0 24px",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,.5)"}}><div style={{width:40,height:5,borderRadius:99,background:"var(--text3)",margin:"0 auto 10px"}} /><div style={{padding:"4px 20px 10px",fontSize:".7rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".16em"}}>Settings</div>{[["📅","Months","Manage active/inactive months",onMonths],["🎓","Levels","Edit student levels & fees",onLevels],["👥","Groups","Weekly schedule by group",onGroups],["🎨","Card","Choose card design",onCustomCard],["📤","Export","Download payment records",onExport],["🔔","Remind","Send payment reminders",onRemind],["📣","Announcements","Post news to parents & students",onAnnouncements]].map(([ic,lb,st,fn],i)=>(<div key={i} onClick={()=>{setSheet(false); fn&&fn();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>{ic}</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--text)"}}>{lb}</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--text2)",marginTop:1}}>{st}</div></div><div style={{color:"var(--text3)",fontSize:"1.2rem",fontWeight:700}}>›</div></div>))}{onNewYear && (<div style={{height:1,background:"var(--border)",margin:"8px 20px"}} />)}{onNewYear && (<div onClick={()=>{setSheet(false); onNewYear();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>🗓️</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--partial)"}}>{"Start New Year ("+(year+1)+")"}</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--partial)",opacity:.8,marginTop:1}}>Roll over to next year</div></div><div style={{color:"var(--partial)",fontSize:"1.2rem",fontWeight:700,opacity:.7}}>›</div></div>)}{onDeleteAccount && (<div style={{height:1,background:"var(--border)",margin:"8px 20px"}} />)}{onDeleteAccount && (<div onClick={()=>{setSheet(false); onDeleteAccount();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 16px",margin:"2px 14px 0",borderRadius:14,border:"1px solid rgba(239,68,68,.4)",background:"rgba(239,68,68,.08)",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>🗑</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--red)"}}>Delete Business Account</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--red)",opacity:.85,marginTop:1}}>Permanently erase business &amp; data</div></div><div style={{color:"var(--red)",fontSize:"1.2rem",fontWeight:700,opacity:.7}}>›</div></div>)}</div></div>)}<div className="section">         <div className="sec-row">           <div className="sec-title">Students ({allCards.length})</div>           <button className="btn-new" onClick={onAdd}>+ New</button>         </div>         {allCards.length > 0 && hasLevels && (           <div style={{display:"flex",gap:8,marginBottom:14,overflowX:"auto",paddingBottom:4,scrollbarWidth:"none",borderBottom:"1px solid var(--border)",paddingTop:2}}>             <button onClick={()=>setLevelFilter("all")} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter==="all"?"var(--violet)":"var(--border)"),background:levelFilter==="all"?"var(--violet)":"var(--bg2)",color:levelFilter==="all"?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter==="all"?"0 4px 16px rgba(99,102,241,.3)":"none"}}>All Members</button>             {levels.map(lv=>(               <button key={lv.id} onClick={()=>setLevelFilter(lv.id)} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter===lv.id?"var(--violet)":"var(--border)"),background:levelFilter===lv.id?"var(--violet)":"var(--bg2)",color:levelFilter===lv.id?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter===lv.id?"0 4px 16px rgba(99,102,241,.3)":"none"}}>{lv.name}</button>             ))}             {allCards.some(c=>!c.level) && (               <button onClick={()=>setLevelFilter("none")} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter==="none"?"var(--violet)":"var(--border)"),background:levelFilter==="none"?"var(--violet)":"var(--bg2)",color:levelFilter==="none"?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter==="none"?"0 4px 16px rgba(99,102,241,.3)":"none"}}>No Level</button>             )}           </div>         )}         {allCards.length > 0 && (           <>             <div style={{position:"relative",marginBottom:10}}>               <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:"1rem",pointerEvents:"none"}}>🔍</span>               <input style={{width:"100%",background:"var(--bg3)",border:"1px solid var(--border)",borderRadius:14,padding:"11px 14px 11px 38px",fontFamily:"var(--f)",fontSize:".9rem",fontWeight:600,outline:"none",color:"var(--text)"}}                 placeholder="Search by name or code..." value={search} onChange={e=>setSearch(e.target.value)} />               {search && <button onClick={()=>setSearch("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",fontSize:"1rem",cursor:"pointer",color:"var(--text2)"}}>✕</button>}             </div>             <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>               <span style={{fontSize:".72rem",color:"var(--text2)",fontWeight:700,alignSelf:"center"}}>Sort:</span>               {[["name","A–Z"],["owed","Most Owed"],["progress","Most Paid"]].map(([v,l])=>(                 <button key={v} onClick={()=>setSort(v)} style={{padding:"5px 12px",borderRadius:20,border:"none",background:sort===v?"var(--accent)":"var(--bg3)",color:sort===v?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:800,cursor:"pointer"}}>                   {l}                 </button>               ))}             </div>           </>         )}         {!allCards.length ? <div className="empty">No cards yet. Tap + New.</div>           : !filtered.length ? <div className="empty">No results for "{search}"</div>           : <div className="card-list">{filtered.map(c=><CardTile key={c.id} card={c} biz={biz} onClick={()=>onCard(c.id)} />)}</div>         }       <div style={{textAlign:"center",padding:"22px 0 6px"}}><a href="/dpa" style={{color:"var(--text2)",fontSize:".7rem",textDecoration:"underline"}}>Data Processing Agreement</a></div>       </div>     </div>   ); }  function PgAddCard({ biz, onBack, onCreate }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [chan, setChan] = useState("whatsapp");
@@ -395,6 +395,8 @@ async function loadMyAnnouncements() {
   const [enroll, setEnroll] = useState("");
   const [levelId, setLevelId] = useState("");
   const [groupName, setGroupName] = useState("");
+  const [addingGroup, setAddingGroup] = useState(false);
+  const groupOpts = [...new Set(Object.values(biz.cards||{}).map(x=>(x.groupName||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   const [schedule, setSchedule] = useState([]);
   const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
   const levels = biz.levels||[];
@@ -432,7 +434,14 @@ async function loadMyAnnouncements() {
         </div>
       )}
       {selLevel && <div style={{background:"var(--bg2)",borderRadius:12,padding:"12px 16px",marginBottom:14,fontSize:".85rem",color:"var(--text2)",fontWeight:700,border:"1px solid var(--border)"}}>Fee: <strong style={{color:"var(--accent)"}}>{"€"+selLevel.fee+"/mo"}</strong></div>}
-      <div className="ig"><label>Group Name (optional)</label><input className="inp" placeholder="e.g. Beginners A" value={groupName} onChange={e=>setGroupName(e.target.value)} /></div>
+      <div className="ig"><label>Group (optional)</label>
+        <select className="inp" value={addingGroup?"__new__":groupName} onChange={e=>{ const v=e.target.value; if(v==="__new__"){setAddingGroup(true);setGroupName("");} else {setAddingGroup(false);setGroupName(v);} }}>
+          <option value="">— No group —</option>
+          {groupOpts.map(g=><option key={g} value={g}>{g}</option>)}
+          <option value="__new__">+ Add new group…</option>
+        </select>
+        {addingGroup && <input className="inp" style={{marginTop:8}} placeholder="New group name" value={groupName} onChange={e=>setGroupName(e.target.value)} autoFocus />}
+      </div>
       <div className="ig"><label>Lesson Schedule (optional)</label>
         {schedule.map((row,i)=>(
           <div key={i} style={{marginBottom:10,padding:"10px",background:"var(--bg2)",borderRadius:12,border:"1px solid var(--border)"}}>
@@ -461,6 +470,8 @@ async function loadMyAnnouncements() {
   const [lang, setLang] = useState(card.language||"EN");
   const [enroll, setEnroll] = useState(card.enrollmentStart||"");
   const [groupName, setGroupName] = useState(card.groupName||"");
+  const [addingGroup, setAddingGroup] = useState(false);
+  const groupOpts = [...new Set(Object.values(biz.cards||{}).map(x=>(x.groupName||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   const [sched, setSched] = useState((card.lessonSchedule||[]).map(s=>({day:s.day,start_time:s.start_time||s.time||"",end_time:s.end_time||""})));
   const SCHED_DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
   const [sendLang, setSendLang] = useState(card.language||"EN");
@@ -741,8 +752,13 @@ async function loadMyAnnouncements() {
         </div>
         <div className="ws-lbl" style={{marginTop:14}}>Enrollment Start (optional)</div>
         <input className="ws-inp" type="month" value={enroll} onChange={e=>setEnroll(e.target.value)} />
-        <div className="ws-lbl" style={{marginTop:14}}>Group Name (optional)</div>
-        <input className="ws-inp" placeholder="e.g. Beginners A" value={groupName} onChange={e=>setGroupName(e.target.value)} />
+        <div className="ws-lbl" style={{marginTop:14}}>Group (optional)</div>
+        <select className="ws-inp" value={addingGroup?"__new__":groupName} onChange={e=>{ const v=e.target.value; if(v==="__new__"){setAddingGroup(true);setGroupName("");} else {setAddingGroup(false);setGroupName(v);} }}>
+          <option value="">— No group —</option>
+          {groupOpts.map(g=><option key={g} value={g}>{g}</option>)}
+          <option value="__new__">+ Add new group…</option>
+        </select>
+        {addingGroup && <input className="ws-inp" style={{marginTop:8}} placeholder="New group name" value={groupName} onChange={e=>setGroupName(e.target.value)} />}
         <div className="ws-lbl" style={{marginTop:14}}>Lesson Schedule (optional)</div>
         {sched.map((row,i)=>(
           <div key={i} style={{marginBottom:10,padding:"10px",background:"var(--bg)",borderRadius:12,border:"1px solid var(--border)"}}>
@@ -1367,6 +1383,160 @@ function PgAnnouncements({ biz, onBack }) {
     </div>
   );
 }
+function PgGroups({ biz, onBack }) {
+  const [sel, setSel] = useState(null);
+  const DAYS = [["Monday","Mon"],["Tuesday","Tue"],["Wednesday","Wed"],["Thursday","Thu"],["Friday","Fri"],["Saturday","Sat"],["Sunday","Sun"]];
+  const ABBR = {Monday:"Mon",Tuesday:"Tue",Wednesday:"Wed",Thursday:"Thu",Friday:"Fri",Saturday:"Sat",Sunday:"Sun"};
+  const COLORS = ["#6366f1","#10b981","#f59e0b","#ec4899","#06b6d4","#a855f7","#ef4444","#84cc16","#f97316","#0ea5e9","#14b8a6","#eab308"];
+  const HOUR_PX = 60, HDR = 24, DEFAULT_DUR = 60;
+  const toMin = (t)=>{ if(t==null||t==="") return null; const p=String(t).split(":"); const h=parseInt(p[0],10), m=parseInt(p[1]||"0",10); return isNaN(h)?null:h*60+(isNaN(m)?0:m); };
+  // Canonicalize a day value to a full English name. The grid columns are keyed
+  // by "Monday".."Sunday", but stored schedules may use abbreviations ("Mon"),
+  // different casing, or stray whitespace — any of which would otherwise miss
+  // the column lookup and drop the block silently.
+  const DAYNAMES = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+  const normDay = (d)=>{ if(d==null) return null; const k=String(d).trim().toLowerCase(); if(!k) return null; return DAYNAMES.find(n=>{const ln=n.toLowerCase(); return ln===k || ln.slice(0,3)===k.slice(0,3);}) || null; };
+  // Normalize one schedule slot to {day, sm, em} in minutes. Reads the current
+  // start_time/end_time shape AND the legacy single-time field; if no end is
+  // recorded, assume a default duration so the block still has height. day is
+  // canonicalized so the column lookup matches regardless of stored spelling.
+  const slotMin = (s)=>{
+    const sm = toMin((s.start_time!=null && s.start_time!=="") ? s.start_time : s.time);
+    if(sm==null) return null;
+    let em = toMin(s.end_time);
+    if(em==null||em<=sm) em = sm + DEFAULT_DUR;
+    return { day:normDay(s.day), sm, em };
+  };
+
+  const sig = (sched)=>(sched||[]).map(s=>{const m=slotMin(s); return (s.day||"")+">"+(m?m.sm+"-"+m.em:"none");}).sort().join("|");
+  const smap = {};
+  Object.values(biz.cards||{}).forEach(c=>{
+    const name=(c.groupName||"").trim(); if(!name) return;
+    const key=name+"@@"+sig(c.lessonSchedule);
+    if(!smap[key]) smap[key]={ key, name, schedule:(c.lessonSchedule||[]), students:[] };
+    smap[key].students.push(c.name||"Unnamed");
+  });
+  const names=[...new Set(Object.values(smap).map(s=>s.name))].sort((a,b)=>a.localeCompare(b));
+  const colorOf={}; names.forEach((n,i)=>{colorOf[n]=COLORS[i%COLORS.length];});
+  const sessions=Object.values(smap).map(s=>({ ...s, color:colorOf[s.name] })).sort((a,b)=>a.name.localeCompare(b.name)||a.key.localeCompare(b.key));
+
+  // Visible window defaults to 16:00–21:00, but auto-fits (expands) to include
+  // any session whose times fall outside that band — so no group is ever
+  // silently clipped out of the grid.
+  let lo = 16*60, hi = 21*60;
+  sessions.forEach(g=>(g.schedule||[]).forEach(s=>{ const m=slotMin(s); if(m){ lo=Math.min(lo,m.sm); hi=Math.max(hi,m.em); } }));
+  const START_H = Math.floor(lo/60), END_H = Math.ceil(hi/60);
+  const HOURS = END_H - START_H, GRID_H = HOURS*HOUR_PX, RANGE = HOURS*60;
+
+  const byDay = {}; DAYS.forEach(([d])=>byDay[d]=[]);
+  const rendered = new Set();
+  sessions.forEach(g=>{
+    (g.schedule||[]).forEach(s=>{
+      const m=slotMin(s);
+      if(!m||!byDay[m.day]) return;
+      let top=((m.sm-START_H*60)/RANGE)*GRID_H;
+      let bot=((m.em-START_H*60)/RANGE)*GRID_H;
+      if(bot<=0||top>=GRID_H) return;
+      top=Math.max(0,top); bot=Math.min(GRID_H,bot);
+      byDay[m.day].push({ key:g.key, name:g.name, color:g.color, top, h:Math.max(16,bot-top) });
+      rendered.add(g.key);
+    });
+  });
+
+  // Calendar-style overlap layout: within each day, blocks that overlap in time
+  // are split into side-by-side lanes instead of stacking on top of each other.
+  // Each block gets _lane (its column index) and _lanes (columns in its overlap
+  // cluster); a block with no overlaps keeps the full column width (_lanes=1).
+  DAYS.forEach(([d])=>{
+    const evs = byDay[d].map(b=>({ b, s:b.top, e:b.top+b.h })).sort((x,y)=>x.s-y.s||x.e-y.e);
+    let i=0;
+    while(i<evs.length){
+      let j=i, clusterEnd=evs[i].e; const cluster=[evs[i]];
+      while(j+1<evs.length && evs[j+1].s < clusterEnd){ j++; cluster.push(evs[j]); clusterEnd=Math.max(clusterEnd, evs[j].e); }
+      const colEnd=[];
+      cluster.forEach(ev=>{
+        let c=0; for(; c<colEnd.length; c++){ if(colEnd[c] <= ev.s){ break; } }
+        ev.col=c; colEnd[c]=ev.e;
+      });
+      const cols=colEnd.length;
+      cluster.forEach(ev=>{ ev.b._lane=ev.col; ev.b._lanes=cols; });
+      i=j+1;
+    }
+  });
+
+  const selG = sessions.find(g=>g.key===sel) || null;
+  const schedStr = selG ? (selG.schedule||[]).map(s=>{const a=(s.start_time||s.time||""); const b=(s.end_time||""); return (ABBR[normDay(s.day)]||s.day||"")+" "+a+(b?("–"+b):"");}).join(", ") : "";
+  // Catch-all: any group present in the data but with no block on the grid —
+  // covers both a missing/unparseable schedule and an unrecognized day — so a
+  // group can never be silently invisible again.
+  const noSched = [...new Set(sessions.filter(g=>!rendered.has(g.key)).map(g=>g.name))];
+
+  return (
+    <div className="page">
+      <div className="topbar">
+        <button className="tb-back" onClick={onBack}>←</button>
+        <h2>Groups</h2>
+        <div style={{width:24}} />
+      </div>
+      {sessions.length===0 ? (
+        <div className="empty">No groups yet. Set a Group Name &amp; Lesson Schedule in a student's Settings.</div>
+      ) : (
+        <div className="section">
+          <div style={{fontSize:".72rem",color:"var(--text2)",fontWeight:600,marginBottom:12,lineHeight:1.5}}>Weekly schedule, {String(START_H).padStart(2,"0")+":00"}–{String(END_H).padStart(2,"0")+":00"}. Tap a block for details.</div>
+          <div style={{display:"flex"}}>
+            <div style={{width:34,flexShrink:0,position:"relative",height:HDR+GRID_H}}>
+              {Array.from({length:HOURS+1}).map((_,i)=>(
+                <div key={i} style={{position:"absolute",top:HDR+i*HOUR_PX-6,right:4,fontSize:".55rem",color:"var(--text3)",fontWeight:700}}>{String(START_H+i).padStart(2,"0")+":00"}</div>
+              ))}
+            </div>
+            <div style={{flex:1,display:"flex"}}>
+              {DAYS.map(([d,short])=>(
+                <div key={d} style={{flex:1,minWidth:0,borderLeft:"1px solid var(--border)"}}>
+                  <div style={{height:HDR,display:"flex",alignItems:"center",justifyContent:"center",fontSize:".58rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".04em"}}>{short}</div>
+                  <div style={{position:"relative",height:GRID_H,background:"var(--bg2)"}}>
+                    {Array.from({length:HOURS+1}).map((_,i)=>(
+                      <div key={i} style={{position:"absolute",left:0,right:0,top:i*HOUR_PX,height:1,background:"rgba(255,255,255,.05)"}} />
+                    ))}
+                    {byDay[d].map((b,bi)=>{
+                      const on = b.key===sel;
+                      const lanes = b._lanes||1, lane = b._lane||0, wPct = 100/lanes;
+                      return (
+                        <div key={bi} onClick={()=>setSel(x=>x===b.key?null:b.key)}
+                          style={{position:"absolute",left:"calc("+(lane*wPct)+"% + 1px)",width:"calc("+wPct+"% - 2px)",top:b.top,height:b.h,background:b.color,borderRadius:5,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"1px 2px",overflow:"hidden",zIndex:on?5:1,transform:on?"scale(1.06)":"none",boxShadow:on?("0 0 0 2px #fff, 0 0 12px "+b.color):"none",transition:"transform .15s ease-out, box-shadow .15s ease-out"}}>
+                          <span style={{fontSize:"8px",lineHeight:"9px",fontWeight:800,color:"#fff",wordBreak:"break-word",whiteSpace:"normal"}}>{b.name}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{maxHeight:selG?640:0,opacity:selG?1:0,overflow:"hidden",transition:"max-height .3s ease-out, opacity .3s ease-out"}}>
+            {selG && (
+              <div style={{marginTop:14,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:16,padding:"16px 18px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                  <span style={{width:12,height:12,borderRadius:4,background:selG.color,flexShrink:0}} />
+                  <div style={{fontSize:"1.05rem",fontWeight:900}}>{selG.name}</div>
+                </div>
+                <div style={{fontSize:".82rem",color:"var(--text2)",fontWeight:700,marginBottom:12}}>{schedStr||"No schedule set"}</div>
+                <div style={{fontSize:".62rem",fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".12em",marginBottom:8}}>Students ({selG.students.length})</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {selG.students.map((s,si)=>(<span key={si} style={{background:"var(--bg3)",border:"1px solid var(--border)",borderRadius:99,padding:"5px 12px",fontSize:".78rem",fontWeight:700,color:"var(--text)"}}>{s}</span>))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {noSched.length>0 && (
+            <div style={{marginTop:16,fontSize:".72rem",color:"var(--text3)",fontWeight:600,lineHeight:1.5}}>No schedule set: {noSched.join(", ")}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 function App() {
   const [session, setSession] = useState(null);
   const [authReady, setAuthReady] = useState(false);
@@ -1638,7 +1808,7 @@ function App() {
         {view==="register" && <PgRegister onBack={()=>setView("login")} onCreated={onRegistered} />}
         {view==="student" && <PgStudent onBack={()=>setView("landing")} />}
         {view==="parentAuth" && <PgParentAuth onBack={()=>setView("landing")} />}
-        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);setView("card");}} onAdd={()=>setView("addCard")} onMonths={()=>setView("months")} onLevels={()=>setView("levels")} onCustomCard={()=>setView("customCard")} onExport={()=>setView("export")} onRemind={()=>setView("remind")} onFamily={()=>{setMode("parent");setView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>setView("announcements")} />}
+        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);setView("card");}} onAdd={()=>setView("addCard")} onMonths={()=>setView("months")} onLevels={()=>setView("levels")} onCustomCard={()=>setView("customCard")} onExport={()=>setView("export")} onRemind={()=>setView("remind")} onFamily={()=>{setMode("parent");setView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>setView("announcements")} onGroups={()=>setView("groups")} />}
         {view==="addCard" && biz && <PgAddCard biz={biz} onBack={()=>setView("dashboard")} onCreate={doAddCard} />}
         {view==="reveal" && revealCard && <PgReveal card={revealCard} onDone={()=>{setRevealCard(null);setView("dashboard");}} />}
         {view==="card" && biz && card && <PgCard biz={biz} card={card} onBack={()=>setView("dashboard")} onUpdate={doUpdateCard} onRemove={doRemoveCard} />}
@@ -1648,6 +1818,7 @@ function App() {
         {view==="export" && biz && <PgExport biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="remind" && biz && <PgRemind biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="announcements" && biz && <PgAnnouncements biz={biz} onBack={()=>setView("dashboard")} />}
+        {view==="groups" && biz && <PgGroups biz={biz} onBack={()=>setView("dashboard")} />}
         </>}
         {toast && <div className={"toast t-"+toast.type}>{toast.msg}</div>}
       </div>
