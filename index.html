@@ -1388,11 +1388,27 @@ function PgGroups({ biz, onBack }) {
   const DAYS = [["Monday","Mon"],["Tuesday","Tue"],["Wednesday","Wed"],["Thursday","Thu"],["Friday","Fri"],["Saturday","Sat"],["Sunday","Sun"]];
   const ABBR = {Monday:"Mon",Tuesday:"Tue",Wednesday:"Wed",Thursday:"Thu",Friday:"Fri",Saturday:"Sat",Sunday:"Sun"};
   const COLORS = ["#6366f1","#10b981","#f59e0b","#ec4899","#06b6d4","#a855f7","#ef4444","#84cc16","#f97316","#0ea5e9","#14b8a6","#eab308"];
-  const START_H = 16, END_H = 21, HOUR_PX = 60, HDR = 24;
-  const HOURS = END_H - START_H, GRID_H = HOURS*HOUR_PX, RANGE = HOURS*60;
-  const toMin = (t)=>{ if(!t) return null; const p=String(t).split(":"); const h=parseInt(p[0],10), m=parseInt(p[1]||"0",10); return isNaN(h)?null:h*60+(isNaN(m)?0:m); };
+  const HOUR_PX = 60, HDR = 24, DEFAULT_DUR = 60;
+  const toMin = (t)=>{ if(t==null||t==="") return null; const p=String(t).split(":"); const h=parseInt(p[0],10), m=parseInt(p[1]||"0",10); return isNaN(h)?null:h*60+(isNaN(m)?0:m); };
+  // Canonicalize a day value to a full English name. The grid columns are keyed
+  // by "Monday".."Sunday", but stored schedules may use abbreviations ("Mon"),
+  // different casing, or stray whitespace — any of which would otherwise miss
+  // the column lookup and drop the block silently.
+  const DAYNAMES = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+  const normDay = (d)=>{ if(d==null) return null; const k=String(d).trim().toLowerCase(); if(!k) return null; return DAYNAMES.find(n=>{const ln=n.toLowerCase(); return ln===k || ln.slice(0,3)===k.slice(0,3);}) || null; };
+  // Normalize one schedule slot to {day, sm, em} in minutes. Reads the current
+  // start_time/end_time shape AND the legacy single-time field; if no end is
+  // recorded, assume a default duration so the block still has height. day is
+  // canonicalized so the column lookup matches regardless of stored spelling.
+  const slotMin = (s)=>{
+    const sm = toMin((s.start_time!=null && s.start_time!=="") ? s.start_time : s.time);
+    if(sm==null) return null;
+    let em = toMin(s.end_time);
+    if(em==null||em<=sm) em = sm + DEFAULT_DUR;
+    return { day:normDay(s.day), sm, em };
+  };
 
-  const sig = (sched)=>(sched||[]).map(s=>(s.day||"")+">"+(s.start_time||"")+"-"+(s.end_time||"")).sort().join("|");
+  const sig = (sched)=>(sched||[]).map(s=>{const m=slotMin(s); return (s.day||"")+">"+(m?m.sm+"-"+m.em:"none");}).sort().join("|");
   const smap = {};
   Object.values(biz.cards||{}).forEach(c=>{
     const name=(c.groupName||"").trim(); if(!name) return;
@@ -1404,23 +1420,35 @@ function PgGroups({ biz, onBack }) {
   const colorOf={}; names.forEach((n,i)=>{colorOf[n]=COLORS[i%COLORS.length];});
   const sessions=Object.values(smap).map(s=>({ ...s, color:colorOf[s.name] })).sort((a,b)=>a.name.localeCompare(b.name)||a.key.localeCompare(b.key));
 
+  // Visible window defaults to 16:00–21:00, but auto-fits (expands) to include
+  // any session whose times fall outside that band — so no group is ever
+  // silently clipped out of the grid.
+  let lo = 16*60, hi = 21*60;
+  sessions.forEach(g=>(g.schedule||[]).forEach(s=>{ const m=slotMin(s); if(m){ lo=Math.min(lo,m.sm); hi=Math.max(hi,m.em); } }));
+  const START_H = Math.floor(lo/60), END_H = Math.ceil(hi/60);
+  const HOURS = END_H - START_H, GRID_H = HOURS*HOUR_PX, RANGE = HOURS*60;
+
   const byDay = {}; DAYS.forEach(([d])=>byDay[d]=[]);
+  const rendered = new Set();
   sessions.forEach(g=>{
     (g.schedule||[]).forEach(s=>{
-      const sm=toMin(s.start_time), em=toMin(s.end_time);
-      if(sm==null||em==null||em<=sm) return;
-      if(!byDay[s.day]) return;
-      let top=((sm-START_H*60)/RANGE)*GRID_H;
-      let bot=((em-START_H*60)/RANGE)*GRID_H;
+      const m=slotMin(s);
+      if(!m||!byDay[m.day]) return;
+      let top=((m.sm-START_H*60)/RANGE)*GRID_H;
+      let bot=((m.em-START_H*60)/RANGE)*GRID_H;
       if(bot<=0||top>=GRID_H) return;
       top=Math.max(0,top); bot=Math.min(GRID_H,bot);
-      byDay[s.day].push({ key:g.key, name:g.name, color:g.color, top, h:Math.max(16,bot-top) });
+      byDay[m.day].push({ key:g.key, name:g.name, color:g.color, top, h:Math.max(16,bot-top) });
+      rendered.add(g.key);
     });
   });
 
   const selG = sessions.find(g=>g.key===sel) || null;
-  const schedStr = selG ? (selG.schedule||[]).map(s=>(ABBR[s.day]||s.day)+" "+(s.start_time||"")+"–"+(s.end_time||"")).join(", ") : "";
-  const noSched = [...new Set(sessions.filter(g=>!(g.schedule||[]).some(s=>toMin(s.start_time)!=null)).map(g=>g.name))];
+  const schedStr = selG ? (selG.schedule||[]).map(s=>{const a=(s.start_time||s.time||""); const b=(s.end_time||""); return (ABBR[normDay(s.day)]||s.day||"")+" "+a+(b?("–"+b):"");}).join(", ") : "";
+  // Catch-all: any group present in the data but with no block on the grid —
+  // covers both a missing/unparseable schedule and an unrecognized day — so a
+  // group can never be silently invisible again.
+  const noSched = [...new Set(sessions.filter(g=>!rendered.has(g.key)).map(g=>g.name))];
 
   return (
     <div className="page">
