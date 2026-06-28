@@ -1443,6 +1443,27 @@ function PgGroups({ biz, onBack }) {
     });
   });
 
+  // Calendar-style overlap layout: within each day, blocks that overlap in time
+  // are split into side-by-side lanes instead of stacking on top of each other.
+  // Each block gets _lane (its column index) and _lanes (columns in its overlap
+  // cluster); a block with no overlaps keeps the full column width (_lanes=1).
+  DAYS.forEach(([d])=>{
+    const evs = byDay[d].map(b=>({ b, s:b.top, e:b.top+b.h })).sort((x,y)=>x.s-y.s||x.e-y.e);
+    let i=0;
+    while(i<evs.length){
+      let j=i, clusterEnd=evs[i].e; const cluster=[evs[i]];
+      while(j+1<evs.length && evs[j+1].s < clusterEnd){ j++; cluster.push(evs[j]); clusterEnd=Math.max(clusterEnd, evs[j].e); }
+      const colEnd=[];
+      cluster.forEach(ev=>{
+        let c=0; for(; c<colEnd.length; c++){ if(colEnd[c] <= ev.s){ break; } }
+        ev.col=c; colEnd[c]=ev.e;
+      });
+      const cols=colEnd.length;
+      cluster.forEach(ev=>{ ev.b._lane=ev.col; ev.b._lanes=cols; });
+      i=j+1;
+    }
+  });
+
   const selG = sessions.find(g=>g.key===sel) || null;
   const schedStr = selG ? (selG.schedule||[]).map(s=>{const a=(s.start_time||s.time||""); const b=(s.end_time||""); return (ABBR[normDay(s.day)]||s.day||"")+" "+a+(b?("–"+b):"");}).join(", ") : "";
   // Catch-all: any group present in the data but with no block on the grid —
@@ -1478,9 +1499,10 @@ function PgGroups({ biz, onBack }) {
                     ))}
                     {byDay[d].map((b,bi)=>{
                       const on = b.key===sel;
+                      const lanes = b._lanes||1, lane = b._lane||0, wPct = 100/lanes;
                       return (
                         <div key={bi} onClick={()=>setSel(x=>x===b.key?null:b.key)}
-                          style={{position:"absolute",left:2,right:2,top:b.top,height:b.h,background:b.color,borderRadius:5,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"1px 2px",overflow:"hidden",zIndex:on?5:1,transform:on?"scale(1.06)":"none",boxShadow:on?("0 0 0 2px #fff, 0 0 12px "+b.color):"none",transition:"transform .15s ease-out, box-shadow .15s ease-out"}}>
+                          style={{position:"absolute",left:"calc("+(lane*wPct)+"% + 1px)",width:"calc("+wPct+"% - 2px)",top:b.top,height:b.h,background:b.color,borderRadius:5,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"1px 2px",overflow:"hidden",zIndex:on?5:1,transform:on?"scale(1.06)":"none",boxShadow:on?("0 0 0 2px #fff, 0 0 12px "+b.color):"none",transition:"transform .15s ease-out, box-shadow .15s ease-out"}}>
                           <span style={{fontSize:"8px",lineHeight:"9px",fontWeight:800,color:"#fff",wordBreak:"break-word",whiteSpace:"normal"}}>{b.name}</span>
                         </div>
                       );
