@@ -38,6 +38,13 @@ create index if not exists teachers_business_id_idx on public.teachers(business_
 
 alter table public.teachers enable row level security;
 
+-- Base table privileges. This schema grants access with a one-time
+-- "grant ... on all tables" snapshot (schema.sql), NOT alter default
+-- privileges, so tables added later must grant explicitly — otherwise writes
+-- fail with "permission denied for table teachers" before RLS is evaluated.
+-- (RLS policies below still enforce per-business isolation on top.)
+grant select, insert, update, delete on public.teachers to authenticated;
+
 -- Owner of the (approved) business may see/manage only their own teachers.
 drop policy if exists teachers_select_own on public.teachers;
 create policy teachers_select_own on public.teachers
@@ -83,6 +90,8 @@ create index if not exists groups_business_id_idx on public.groups(business_id);
 create index if not exists groups_teacher_id_idx  on public.groups(teacher_id);
 
 alter table public.groups enable row level security;
+
+grant select, insert, update, delete on public.groups to authenticated;
 
 drop policy if exists groups_select_own on public.groups;
 create policy groups_select_own on public.groups
