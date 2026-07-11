@@ -15,7 +15,14 @@
 --  in a later step. This migration only adds tables/columns and teaches the
 --  two student-facing RPCs to also return the joined group (with teacher).
 --
---  Run ONCE in the Supabase SQL editor for the STAGING project.
+--  NO DATA LOSS: only CREATE TABLE / CREATE INDEX / ADD COLUMN / CREATE POLICY /
+--  CREATE OR REPLACE FUNCTION. No DROP TABLE, DROP COLUMN, DELETE, UPDATE or
+--  TRUNCATE anywhere — no existing row is read-modified or removed. The two
+--  functions are REPLACED (reversible: re-run migration-flip-card.sql to
+--  restore the previous versions).
+--
+--  Run ONCE in the Supabase SQL editor. (This project's single DB serves both
+--  the staging and production sites — see rollback block at the end of file.)
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -243,4 +250,18 @@ grant execute on function public.get_student_card(text, text) to anon, authentic
 --    - assign / bulk-load students with group_id
 --    - cut the frontend over from group_name string to group_id
 --    - only AFTER cutover: consider dropping cards.group_name / lesson_schedule
+-- ============================================================================
+
+-- ============================================================================
+--  ROLLBACK (only if you need to fully undo this migration). Safe as long as
+--  you have not started assigning cards.group_id. Run in the SQL editor:
+--
+--    alter table public.cards drop column if exists group_id;
+--    drop table if exists public.groups;      -- groups you created are removed
+--    drop table if exists public.teachers;    -- teachers you created are removed
+--    -- then re-run migration-flip-card.sql to restore the previous
+--    -- get_my_cards() / get_student_card() definitions.
+--
+--  This touches ONLY the new objects + the two functions; businesses, cards
+--  (rows), card_links, children, announcements and payments are never affected.
 -- ============================================================================
