@@ -6,6 +6,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <meta name="theme-color" content="#000000" />
 <title>PayStamp</title>
+<script>
+  // Password-recovery links can still land on the main page (emails sent
+  // before the dedicated route existed used redirectTo=origin, and Supabase
+  // silently falls back to the Site URL when a redirect isn't allowlisted).
+  // Forward them — token hash and all — to the reset page BEFORE the
+  // Supabase client below is created, so it can't consume the token here.
+  (function () {
+    var h = window.location.hash || "";
+    if (/type=recovery|error_code=otp_expired/.test(h)) {
+      window.location.replace("/reset-password/" + window.location.search + h);
+    }
+  })();
+</script>
 <style>html,body{margin:0;padding:0;background:#000;}</style>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
@@ -323,7 +336,7 @@ async function loadMyAnnouncements() {
     const em = email.trim().toLowerCase();
     if (!em || !em.includes("@")) { setErr("Enter a valid email."); return; }
     setBusy(true); setErr("");
-    const { error } = await sb.auth.resetPasswordForEmail(em, { redirectTo: window.location.origin });
+    const { error } = await sb.auth.resetPasswordForEmail(em, { redirectTo: ((window.location.origin || "https://paystamp.app") + "/reset-password/") });
     setBusy(false);
     if (error) { setErr(error.message); return; }
     setSent(true);

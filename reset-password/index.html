@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#000000" />
+<title>Reset Password — PayStamp</title>
+<style>
+  :root{ --bg:#000; --bg2:#0a0f1f; --violet:#6366f1; --violet-glow:#818cf8;
+    --text:#fff; --text2:#6b7391; --red:#ef4444; --green:#10b981;
+    --border:rgba(99,102,241,.15); }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);min-height:100vh;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    display:flex;align-items:center;justify-content:center;padding:24px 16px;}
+  .box{width:100%;max-width:400px;}
+  .brand{font-size:1.5rem;font-weight:900;font-style:italic;letter-spacing:-.02em;
+    color:var(--violet-glow);text-align:center;margin-bottom:26px;}
+  .card{background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:28px 24px;}
+  h1{font-size:1.15rem;font-weight:800;margin-bottom:6px;}
+  p{font-size:.85rem;color:var(--text2);line-height:1.55;margin-bottom:16px;}
+  label{display:block;font-size:.68rem;font-weight:800;color:var(--text2);
+    text-transform:uppercase;letter-spacing:.1em;margin:14px 0 6px;}
+  input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:12px;
+    padding:13px 14px;font-size:1rem;color:var(--text);outline:none;}
+  input:focus{border-color:var(--violet);}
+  .btn{width:100%;margin-top:20px;background:var(--violet);border:none;border-radius:12px;
+    padding:14px;font-size:.95rem;font-weight:800;color:#fff;cursor:pointer;}
+  .btn:disabled{opacity:.5;cursor:default;}
+  .err{margin-top:12px;font-size:.8rem;font-weight:700;color:var(--red);line-height:1.4;}
+  .ok-icon{font-size:2.2rem;text-align:center;margin-bottom:10px;}
+  a{color:var(--violet-glow);font-weight:700;text-decoration:none;}
+  .muted{font-size:.75rem;color:var(--text2);text-align:center;margin-top:16px;line-height:1.5;}
+  .spin{width:26px;height:26px;border:3px solid var(--border);border-top-color:var(--violet);
+    border-radius:50%;margin:8px auto 14px;animation:r .8s linear infinite;}
+  @keyframes r{to{transform:rotate(360deg);}}
+  [hidden]{display:none !important;}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+<div class="box">
+  <div class="brand">PayStamp</div>
+
+  <div class="card" id="checking">
+    <div class="spin" id="checkspin"></div>
+    <p style="text-align:center;margin-bottom:0;" id="checkmsg">Verifying your reset link…</p>
+  </div>
+
+  <div class="card" id="expired" hidden>
+    <h1>Link expired or invalid</h1>
+    <p>This password-reset link is no longer valid — links can only be used once
+       and expire after a short time.</p>
+    <p style="margin-bottom:0;">Please request a new one: open
+       <a href="/">PayStamp</a>, choose your login, and tap
+       <b style="color:var(--text)">“Forgot Password?”</b>.</p>
+  </div>
+
+  <div class="card" id="form" hidden>
+    <h1>Set a new password</h1>
+    <p>Enter a new password for your PayStamp account.</p>
+    <label for="pw1">New password</label>
+    <input id="pw1" type="password" autocomplete="new-password" placeholder="At least 6 characters" />
+    <label for="pw2">Confirm new password</label>
+    <input id="pw2" type="password" autocomplete="new-password" placeholder="Repeat the password" />
+    <div class="err" id="err" hidden></div>
+    <button class="btn" id="save">Save New Password</button>
+  </div>
+
+  <div class="card" id="success" hidden>
+    <div class="ok-icon">✅</div>
+    <h1 style="text-align:center;">Password updated</h1>
+    <p style="text-align:center;margin-bottom:0;">Taking you to the login page…</p>
+    <button class="btn" onclick="location.replace('/')">Log in now</button>
+  </div>
+
+  <div class="muted"><a href="/">← Back to PayStamp</a></div>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  function show(id) {
+    ["checking", "expired", "form", "success"].forEach(function (x) {
+      $(x).hidden = (x !== id);
+    });
+  }
+  function fail(msg) { var e = $("err"); e.textContent = msg; e.hidden = false; }
+
+  // 1) Explicit error from Supabase in the URL (expired / already-used link).
+  //    These arrive in the hash, e.g. #error=access_denied&error_code=otp_expired.
+  //    Pure string check — must run before anything that needs the network,
+  //    so an expired link gets its message even if the CDN below failed.
+  var urlBits = (location.hash || "") + "&" + (location.search || "");
+  if (/error_code=otp_expired/.test(urlBits) || /[#?&]error=/.test(urlBits)) {
+    show("expired");
+    return;
+  }
+
+  // Library guard: if the Supabase CDN script failed to load (offline, flaky
+  // mobile data), don't strand the user on an endless spinner.
+  if (!window.supabase || !window.supabase.createClient) {
+    $("checkspin").style.display = "none";
+    $("checkmsg").textContent = "Can't reach the server. Check your internet connection, then refresh this page — your reset link is still in the address bar.";
+    return;
+  }
+
+  var SB_URL = "https://oqckztpsglcsrtyyvqrl.supabase.co";
+  var SB_KEY = "sb_publishable_AtGkcGeO4hAhtCZGmIBHyA_JZdRJBeI";
+  var sb = window.supabase.createClient(SB_URL, SB_KEY);
+
+  // 2) Wait for the recovery session. The link's token arrives in the URL hash;
+  //    supabase-js consumes it on client creation (detectSessionInUrl) and fires
+  //    PASSWORD_RECOVERY / SIGNED_IN. This is what grants a logged-out user
+  //    their temporary session — no prior login needed.
+  var ready = false;
+  function unlock(session) {
+    if (session && !ready) { ready = true; show("form"); $("pw1").focus(); }
+  }
+  sb.auth.onAuthStateChange(function (event, session) {
+    if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN" || event === "INITIAL_SESSION") {
+      unlock(session);
+    }
+  });
+  sb.auth.getSession().then(function (r) { unlock(r.data && r.data.session); });
+
+  // If no session materialises (link tampered / token already consumed), the
+  // link is unusable — say so instead of spinning forever.
+  setTimeout(function () { if (!ready) show("expired"); }, 8000);
+
+  // 3) Submit → updateUser({ password }).
+  function submit() {
+    var p1 = $("pw1").value, p2 = $("pw2").value;
+    $("err").hidden = true;
+    if (p1.length < 6) { fail("Password must be at least 6 characters."); return; }
+    if (p1 !== p2)     { fail("Passwords don't match."); return; }
+    var btn = $("save");
+    btn.disabled = true; btn.textContent = "Saving…";
+    sb.auth.updateUser({ password: p1 }).then(function (r) {
+      if (r.error) {
+        btn.disabled = false; btn.textContent = "Save New Password";
+        var m = r.error.message || "";
+        if (/session|jwt|token/i.test(m)) { show("expired"); return; }
+        if (/different from the old/i.test(m)) { fail("New password must be different from your current password."); return; }
+        fail(m || "Could not update the password. Please try again.");
+        return;
+      }
+      show("success");
+      // Sign out of the temporary recovery session so "/" shows the login
+      // screen and the new password gets used immediately.
+      sb.auth.signOut().catch(function () {}).then(function () {
+        setTimeout(function () { location.replace("/"); }, 2500);
+      });
+    });
+  }
+  $("save").addEventListener("click", submit);
+  [$("pw1"), $("pw2")].forEach(function (el) {
+    el.addEventListener("keydown", function (e) { if (e.key === "Enter") submit(); });
+  });
+})();
+</script>
+</body>
+</html>
