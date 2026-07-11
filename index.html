@@ -44,15 +44,28 @@ const sb = window.supabase.createClient(SB_URL, SB_KEY);
 
 function bizFromRow(b, cardRows) {
   const cards = {};
-  (cardRows||[]).forEach(c => { cards[c.id] = { id:c.id, name:c.name, level:c.level||null, shareCode:c.share_code, pin:c.pin, phone:c.phone||"", payments:c.payments||{}, history:c.history||[], groupName:c.group_name||"", lessonSchedule:c.lesson_schedule||[], enrollmentStart:c.enrollment_start_month||null, pausedMonths:c.paused_months||[], feeHistory:c.fee_history||[] }; });
+  (cardRows||[]).forEach(c => { cards[c.id] = { id:c.id, name:c.name, level:c.level||null, shareCode:c.share_code, pin:c.pin, phone:c.phone||"", payments:c.payments||{}, history:c.history||[], groupId:c.group_id||null, groupName:c.group_name||"", lessonSchedule:c.lesson_schedule||[], enrollmentStart:c.enrollment_start_month||null, pausedMonths:c.paused_months||[], feeHistory:c.fee_history||[] }; });
   return { id:b.id, bizCode:b.biz_code, name:b.name, type:b.type, fee:Number(b.fee), year:b.year, email:b.contact_email||"", inactiveMonths:b.inactive_months||[], levels:b.levels||[], customCardImage:b.custom_card_image||null, cards };
+}
+// Resolve a card's effective group: prefer the real group (group_id -> groups
+// table) and fall back to the legacy free-text group_name / per-card schedule
+// for students not yet reassigned.
+function resolveGroup(card, groups) {
+  if (card && card.groupId) {
+    const g = (groups || []).find(x => x.id === card.groupId);
+    if (g) return { id:g.id, name:g.name || "", schedule:g.schedule || [], teacherId:g.teacher_id || null };
+    // Parent/student read paths carry the resolved group inline (from the RPC)
+    // rather than a groups list.
+    if (card.group) return { id:card.group.id, name:card.group.name || "", schedule:card.group.schedule || [], teacherId:card.group.teacher_id || null };
+  }
+  return { id:null, name:(card && card.groupName) || "", schedule:(card && card.lessonSchedule) || [], teacherId:null };
 }
 async function loadMyBusiness() {
   const { data: rows, error } = await sb.from("businesses").select("*").limit(1);
   if (error) throw error;
   if (!rows || !rows.length) return null;
   const b = rows[0];
-  const { data: cardRows, error: ce } = await sb.from("cards").select("id,name,level,share_code,pin,phone,payments,history,group_name,lesson_schedule,enrollment_start_month,paused_months,fee_history").eq("business_id", b.id).order("created_at",{ascending:true});
+  const { data: cardRows, error: ce } = await sb.from("cards").select("id,name,level,share_code,pin,phone,payments,history,group_id,group_name,lesson_schedule,enrollment_start_month,paused_months,fee_history").eq("business_id", b.id).order("created_at",{ascending:true});
   if (ce) throw ce;
   const { data: teacherRows } = await sb.from("teachers").select("id,name").eq("business_id", b.id).order("name");
   const { data: groupRows } = await sb.from("groups").select("id,name,schedule,teacher_id").eq("business_id", b.id).order("name");
@@ -68,7 +81,7 @@ async function loadMyCards() {
     cardId: e.card.id,
     childId: e.card.child_id || null,
     biz: { id:e.business.biz_code, bizCode:e.business.biz_code, name:e.business.name, type:e.business.type, fee:Number(e.business.fee), year:e.business.year, inactiveMonths:e.business.inactive_months||[], levels:e.business.levels||[], customCardImage:e.business.custom_card_image||null },
-    card: { name:e.card.name, level:e.card.level||null, shareCode:e.card.share_code, payments:e.card.payments||{}, history:e.card.history||[], groupName:e.card.group_name||"", lessonSchedule:e.card.lesson_schedule||[], enrollmentStart:e.card.enrollment_start_month||null, pausedMonths:e.card.paused_months||[], feeHistory:e.card.fee_history||[] }
+    card: { name:e.card.name, level:e.card.level||null, shareCode:e.card.share_code, payments:e.card.payments||{}, history:e.card.history||[], groupId:e.card.group_id||null, group:e.card.group||null, groupName:e.card.group_name||"", lessonSchedule:e.card.lesson_schedule||[], enrollmentStart:e.card.enrollment_start_month||null, pausedMonths:e.card.paused_months||[], feeHistory:e.card.fee_history||[] }
   }));
 }
 async function loadMyChildren() {
@@ -132,8 +145,9 @@ async function loadMyAnnouncements() {
   const pct = ac > 0 ? Math.round((mp/ac)*100) : 0;
   const hasImg = !!biz.customCardImage;
   const bgVal = hasImg ? "#000" : "linear-gradient(135deg,"+p.bg1+","+p.bg2+")";
-  const groupName = (card && card.groupName) || "";
-  const schedule = (card && card.lessonSchedule) || [];
+  const _rg = resolveGroup(card, biz.groups);
+  const groupName = _rg.name;
+  const schedule = _rg.schedule;
   const dayAbbr = {Monday:"Mon",Tuesday:"Tue",Wednesday:"Wed",Thursday:"Thu",Friday:"Fri",Saturday:"Sat",Sunday:"Sun"};
   const cardStyle = {borderRadius:22,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,.4)",position:"relative",background:bgVal};
   const overlay = <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"linear-gradient(180deg,rgba(0,0,0,.5) 0%,rgba(0,0,0,.75) 100%)"}} />;
@@ -412,9 +426,7 @@ async function loadMyAnnouncements() {
   const [lang, setLang] = useState("EN");
   const [enroll, setEnroll] = useState("");
   const [levelId, setLevelId] = useState("");
-  const [groupName, setGroupName] = useState("");
-  const [addingGroup, setAddingGroup] = useState(false);
-  const groupOpts = [...new Set(Object.values(biz.cards||{}).map(x=>(x.groupName||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const [groupId, setGroupId] = useState("");
   const [schedule, setSchedule] = useState([]);
   const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
   const levels = biz.levels||[];
@@ -453,12 +465,12 @@ async function loadMyAnnouncements() {
       )}
       {selLevel && <div style={{background:"var(--bg2)",borderRadius:12,padding:"12px 16px",marginBottom:14,fontSize:".85rem",color:"var(--text2)",fontWeight:700,border:"1px solid var(--border)"}}>Fee: <strong style={{color:"var(--accent)"}}>{"€"+selLevel.fee+"/mo"}</strong></div>}
       <div className="ig"><label>Group (optional)</label>
-        <select className="inp" value={addingGroup?"__new__":groupName} onChange={e=>{ const v=e.target.value; if(v==="__new__"){setAddingGroup(true);setGroupName("");} else {setAddingGroup(false);setGroupName(v);} }}>
+        <select className="inp" value={groupId} onChange={e=>setGroupId(e.target.value)}>
           <option value="">— No group —</option>
-          {groupOpts.map(g=><option key={g} value={g}>{g}</option>)}
-          <option value="__new__">+ Add new group…</option>
+          {(biz.groups||[]).map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
-        {addingGroup && <input className="inp" style={{marginTop:8}} placeholder="New group name" value={groupName} onChange={e=>setGroupName(e.target.value)} autoFocus />}
+        {(biz.groups||[]).length===0 && <div style={{fontSize:".72rem",color:"var(--text3)",fontWeight:600,marginTop:6}}>No groups yet — create them in Settings → 🗂️ Manage.</div>}
+        {groupId && (()=>{ const g=(biz.groups||[]).find(x=>x.id===groupId); if(!g) return null; const tn=(biz.teachers||[]).find(t=>t.id===g.teacher_id); const ab={Monday:"Mon",Tuesday:"Tue",Wednesday:"Wed",Thursday:"Thu",Friday:"Fri",Saturday:"Sat",Sunday:"Sun"}; const sc=(g.schedule||[]).map(x=>(ab[x.day]||x.day)+" "+(x.start_time||"")+(x.end_time?("–"+x.end_time):"")).join(", "); return <div style={{fontSize:".72rem",color:"var(--text2)",fontWeight:600,marginTop:6}}>{(tn?("👤 "+tn.name):"No teacher")+(sc?(" · "+sc):"")}</div>; })()}
       </div>
       <div className="ig"><label>Lesson Schedule (optional)</label>
         {schedule.map((row,i)=>(
@@ -476,7 +488,7 @@ async function loadMyAnnouncements() {
         ))}
         {schedule.length<5 && <button type="button" onClick={()=>setSchedule(s=>[...s,{day:"Monday",start_time:"17:00",end_time:"18:00"}])} className="btn-ghost" style={{marginTop:0,padding:"12px"}}>+ Add another day</button>}
       </div>
-      <button className="btn" style={{marginTop:8}} onClick={()=>onCreate({name,level:selLevel,phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupName:groupName.trim(),lessonSchedule:schedule.filter(r=>r.day&&r.start_time)})}>Create Card</button>
+      <button className="btn" style={{marginTop:8}} onClick={()=>onCreate({name,level:selLevel,phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupId:groupId||null,lessonSchedule:schedule.filter(r=>r.day&&r.start_time)})}>Create Card</button>
     </div>
   );
 }  function PgReveal({ card, onDone }) {   return (     <div className="reg-page">       <h2 style={{marginBottom:4}}>Card Created</h2>       <p>Share the code and PIN with the student.</p>       <div className="reveal-box">         <div className="rv-lbl">Student Code</div>         <div className="rv-val">{card.shareCode}</div>         <div className="rv-sep" />         <div className="rv-lbl">PIN</div>         <div className="rv-pin">{card.pin}</div>       </div>       <div className="info-box" style={{marginBottom:16}}>Write these down now.</div>       <button className="btn" onClick={onDone}>Done</button>     </div>   ); }  function PgCard({ biz, card, onBack, onUpdate, onRemove }) {
@@ -487,9 +499,7 @@ async function loadMyAnnouncements() {
   const [chan, setChan] = useState(card.preferredChannel||"whatsapp");
   const [lang, setLang] = useState(card.language||"EN");
   const [enroll, setEnroll] = useState(card.enrollmentStart||"");
-  const [groupName, setGroupName] = useState(card.groupName||"");
-  const [addingGroup, setAddingGroup] = useState(false);
-  const groupOpts = [...new Set(Object.values(biz.cards||{}).map(x=>(x.groupName||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const [groupId, setGroupId] = useState(card.groupId||"");
   const [sched, setSched] = useState((card.lessonSchedule||[]).map(s=>({day:s.day,start_time:s.start_time||s.time||"",end_time:s.end_time||""})));
   const SCHED_DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
   const [sendLang, setSendLang] = useState(card.language||"EN");
@@ -771,12 +781,12 @@ async function loadMyAnnouncements() {
         <div className="ws-lbl" style={{marginTop:14}}>Enrollment Start (optional)</div>
         <input className="ws-inp" type="month" value={enroll} onChange={e=>setEnroll(e.target.value)} />
         <div className="ws-lbl" style={{marginTop:14}}>Group (optional)</div>
-        <select className="ws-inp" value={addingGroup?"__new__":groupName} onChange={e=>{ const v=e.target.value; if(v==="__new__"){setAddingGroup(true);setGroupName("");} else {setAddingGroup(false);setGroupName(v);} }}>
+        <select className="ws-inp" value={groupId} onChange={e=>setGroupId(e.target.value)}>
           <option value="">— No group —</option>
-          {groupOpts.map(g=><option key={g} value={g}>{g}</option>)}
-          <option value="__new__">+ Add new group…</option>
+          {(biz.groups||[]).map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
-        {addingGroup && <input className="ws-inp" style={{marginTop:8}} placeholder="New group name" value={groupName} onChange={e=>setGroupName(e.target.value)} />}
+        {(biz.groups||[]).length===0 && <div style={{fontSize:".72rem",color:"var(--text3)",fontWeight:600,marginTop:6}}>No groups yet — create them in Settings → 🗂️ Manage.</div>}
+        {groupId && (()=>{ const g=(biz.groups||[]).find(x=>x.id===groupId); if(!g) return null; const tn=(biz.teachers||[]).find(t=>t.id===g.teacher_id); const ab={Monday:"Mon",Tuesday:"Tue",Wednesday:"Wed",Thursday:"Thu",Friday:"Fri",Saturday:"Sat",Sunday:"Sun"}; const sc=(g.schedule||[]).map(x=>(ab[x.day]||x.day)+" "+(x.start_time||"")+(x.end_time?("–"+x.end_time):"")).join(", "); return <div style={{fontSize:".72rem",color:"var(--text2)",fontWeight:600,marginTop:6}}>{(tn?("👤 "+tn.name):"No teacher")+(sc?(" · "+sc):"")}</div>; })()}
         <div className="ws-lbl" style={{marginTop:14}}>Lesson Schedule (optional)</div>
         {sched.map((row,i)=>(
           <div key={i} style={{marginBottom:10,padding:"10px",background:"var(--bg)",borderRadius:12,border:"1px solid var(--border)"}}>
@@ -792,7 +802,7 @@ async function loadMyAnnouncements() {
           </div>
         ))}
         {sched.length<5 && <button type="button" onClick={()=>setSched(s=>[...s,{day:"Monday",start_time:"17:00",end_time:"18:00"}])} className="btn-undo" style={{width:"100%",flex:"none",marginTop:2}}>+ Add another day</button>}
-        <button className="btn-add" style={{marginTop:14}} onClick={()=>{onUpdate({phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupName:groupName.trim(),lessonSchedule:sched.filter(r=>r.day&&r.start_time)}); setSendLang(lang);}}>Save Settings</button>
+        <button className="btn-add" style={{marginTop:14}} onClick={()=>{onUpdate({phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupId:groupId||null,lessonSchedule:sched.filter(r=>r.day&&r.start_time)}); setSendLang(lang);}}>Save Settings</button>
         </div>}
       </div>
 
@@ -880,7 +890,7 @@ async function loadMyAnnouncements() {
     if (!data) { setErr("Wrong code or PIN."); return; }
     const b = data.business, c = data.card;
     const biz = { id:b.biz_code, bizCode:b.biz_code, name:b.name, type:b.type, fee:Number(b.fee), year:b.year, inactiveMonths:b.inactive_months||[], levels:b.levels||[], customCardImage:b.custom_card_image||null };
-    const card = { name:c.name, level:c.level||null, shareCode:c.share_code, enrollmentStart:c.enrollment_start_month||null, pausedMonths:c.paused_months||[], feeHistory:c.fee_history||[], payments:c.payments||{}, history:c.history||[], groupName:c.group_name||"", lessonSchedule:c.lesson_schedule||[] };
+    const card = { name:c.name, level:c.level||null, shareCode:c.share_code, enrollmentStart:c.enrollment_start_month||null, pausedMonths:c.paused_months||[], feeHistory:c.fee_history||[], payments:c.payments||{}, history:c.history||[], groupId:c.group_id||null, group:c.group||null, groupName:c.group_name||"", lessonSchedule:c.lesson_schedule||[] };
     setFound({biz,card,announcements:data.announcements||[]}); setStep("view");
   }
   if (step==="view" && found) {
@@ -1421,7 +1431,7 @@ function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, on
   async function confirmDelete(){ setBusy(true); const ok = del.kind==="teacher" ? await onDeleteTeacher(del.id) : await onDeleteGroup(del.id); setBusy(false); if(ok) setDel(null); }
 
   function askDeleteTeacher(t){ const n=groups.filter(g=>g.teacher_id===t.id).length; setDel({kind:"teacher",id:t.id,name:t.name,warn:n>0?("Assigned to "+n+" group"+(n>1?"s":"")+" — they will show no teacher."):null}); }
-  function askDeleteGroup(g){ const n=cards.filter(c=>c.group_id===g.id).length; setDel({kind:"group",id:g.id,name:g.name,warn:n>0?(n+" student"+(n>1?"s":"")+" will become unassigned."):null}); }
+  function askDeleteGroup(g){ const n=cards.filter(c=>c.groupId===g.id).length; setDel({kind:"group",id:g.id,name:g.name,warn:n>0?(n+" student"+(n>1?"s":"")+" will become unassigned."):null}); }
 
   const setSch = (fn)=> setGEdit(g=>({ ...g, schedule: fn(g.schedule||[]) }));
   const lbl = {fontSize:".68rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".1em",margin:"14px 0 6px"};
@@ -1563,9 +1573,10 @@ function PgGroups({ biz, onBack }) {
   const sig = (sched)=>(sched||[]).map(s=>{const m=slotMin(s); return (s.day||"")+">"+(m?m.sm+"-"+m.em:"none");}).sort().join("|");
   const smap = {};
   Object.values(biz.cards||{}).forEach(c=>{
-    const name=(c.groupName||"").trim(); if(!name) return;
-    const key=name+"@@"+sig(c.lessonSchedule);
-    if(!smap[key]) smap[key]={ key, name, schedule:(c.lessonSchedule||[]), students:[] };
+    const rg=resolveGroup(c, biz.groups);
+    const name=(rg.name||"").trim(); if(!name) return;
+    const key=name+"@@"+sig(rg.schedule);
+    if(!smap[key]) smap[key]={ key, name, schedule:(rg.schedule||[]), students:[] };
     smap[key].students.push(c.name||"Unnamed");
   });
   const names=[...new Set(Object.values(smap).map(s=>s.name))].sort((a,b)=>a.localeCompare(b));
@@ -1870,9 +1881,9 @@ function App() {
   async function doAddCard(data){
     if(!data.name.trim()){ pop("Enter a name","err"); return; }
     const shareCode=genShareCode(), pin=genPin();
-    const { data: ins, error } = await sb.from("cards").insert({ business_id:bizId, name:data.name.trim(), level:data.level||null, share_code:shareCode, pin, phone:data.phone||null, preferred_channel:data.preferredChannel||"whatsapp", language:data.language||"EN", enrollment_start_month:data.enrollmentStart||null, group_name:data.groupName||null, lesson_schedule:data.lessonSchedule||[], payments:{}, history:[] }).select("id").single();
+    const { data: ins, error } = await sb.from("cards").insert({ business_id:bizId, name:data.name.trim(), level:data.level||null, share_code:shareCode, pin, phone:data.phone||null, preferred_channel:data.preferredChannel||"whatsapp", language:data.language||"EN", enrollment_start_month:data.enrollmentStart||null, group_id:data.groupId||null, lesson_schedule:data.lessonSchedule||[], payments:{}, history:[] }).select("id").single();
     if(error){ pop(error.message,"err"); return; }
-    const newCard={id:ins.id,name:data.name.trim(),level:data.level||null,shareCode,pin,phone:data.phone||"",preferredChannel:data.preferredChannel||"whatsapp",language:data.language||"EN",enrollmentStart:data.enrollmentStart||null,groupName:data.groupName||"",lessonSchedule:data.lessonSchedule||[],pausedMonths:[],feeHistory:[],payments:{},history:[]};
+    const newCard={id:ins.id,name:data.name.trim(),level:data.level||null,shareCode,pin,phone:data.phone||"",preferredChannel:data.preferredChannel||"whatsapp",language:data.language||"EN",enrollmentStart:data.enrollmentStart||null,groupId:data.groupId||null,groupName:"",lessonSchedule:data.lessonSchedule||[],pausedMonths:[],feeHistory:[],payments:{},history:[]};
     setDb(d=>({businesses:{...d.businesses,[bizId]:{...d.businesses[bizId],cards:{...d.businesses[bizId].cards,[ins.id]:newCard}}}}));
     setRevealCard(newCard); setView("reveal");
   }
@@ -1889,6 +1900,7 @@ function App() {
     if("enrollmentStart" in updates) patch.enrollment_start_month=updates.enrollmentStart;
     if("pausedMonths" in updates) patch.paused_months=updates.pausedMonths;
     if("feeHistory" in updates) patch.fee_history=updates.feeHistory;
+    if("groupId" in updates) patch.group_id=updates.groupId;
     if("groupName" in updates) patch.group_name=updates.groupName;
     if("lessonSchedule" in updates) patch.lesson_schedule=updates.lessonSchedule;
     const { error } = await sb.from("cards").update(patch).eq("id",cardId);
