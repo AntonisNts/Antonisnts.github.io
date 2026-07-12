@@ -787,7 +787,7 @@ async function loadMyAnnouncements() {
         </select>
         {(biz.groups||[]).length===0 && <div style={{fontSize:".72rem",color:"var(--text3)",fontWeight:600,marginTop:6}}>No groups yet — create them in Settings → 🗂️ Manage.</div>}
         {groupId && (()=>{ const g=(biz.groups||[]).find(x=>x.id===groupId); if(!g) return null; const tn=(biz.teachers||[]).find(t=>t.id===g.teacher_id); const ab={Monday:"Mon",Tuesday:"Tue",Wednesday:"Wed",Thursday:"Thu",Friday:"Fri",Saturday:"Sat",Sunday:"Sun"}; const sc=(g.schedule||[]).map(x=>(ab[x.day]||x.day)+" "+(x.start_time||"")+(x.end_time?("–"+x.end_time):"")).join(", "); return <div style={{fontSize:".72rem",color:"var(--text2)",fontWeight:600,marginTop:6}}>{(tn?("👤 "+tn.name):"No teacher")+(sc?(" · "+sc):"")}</div>; })()}
-        <div className="ws-lbl" style={{marginTop:14}}>Lesson Schedule (optional)</div>
+        {!groupId && (<><div className="ws-lbl" style={{marginTop:14}}>Lesson Schedule (optional)</div>
         {sched.map((row,i)=>(
           <div key={i} style={{marginBottom:10,padding:"10px",background:"var(--bg)",borderRadius:12,border:"1px solid var(--border)"}}>
             <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -801,7 +801,8 @@ async function loadMyAnnouncements() {
             </div>
           </div>
         ))}
-        {sched.length<5 && <button type="button" onClick={()=>setSched(s=>[...s,{day:"Monday",start_time:"17:00",end_time:"18:00"}])} className="btn-undo" style={{width:"100%",flex:"none",marginTop:2}}>+ Add another day</button>}
+        {sched.length<5 && <button type="button" onClick={()=>setSched(s=>[...s,{day:"Monday",start_time:"17:00",end_time:"18:00"}])} className="btn-undo" style={{width:"100%",flex:"none",marginTop:2}}>+ Add another day</button>}</>)}
+        {groupId && <div style={{fontSize:".72rem",color:"var(--text3)",fontWeight:600,marginTop:10,lineHeight:1.5}}>Schedule is managed by the group (edit it in 🗂️ Manage).</div>}
         <button className="btn-add" style={{marginTop:14}} onClick={()=>{onUpdate({phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupId:groupId||null,lessonSchedule:sched.filter(r=>r.day&&r.start_time)}); setSendLang(lang);}}>Save Settings</button>
         </div>}
       </div>
@@ -1570,18 +1571,19 @@ function PgGroups({ biz, onBack }) {
     return { day:normDay(s.day), sm, em };
   };
 
-  const sig = (sched)=>(sched||[]).map(s=>{const m=slotMin(s); return (s.day||"")+">"+(m?m.sm+"-"+m.em:"none");}).sort().join("|");
-  const smap = {};
-  Object.values(biz.cards||{}).forEach(c=>{
-    const rg=resolveGroup(c, biz.groups);
-    const name=(rg.name||"").trim(); if(!name) return;
-    const key=name+"@@"+sig(rg.schedule);
-    if(!smap[key]) smap[key]={ key, name, schedule:(rg.schedule||[]), students:[] };
-    smap[key].students.push(c.name||"Unnamed");
-  });
-  const names=[...new Set(Object.values(smap).map(s=>s.name))].sort((a,b)=>a.localeCompare(b));
-  const colorOf={}; names.forEach((n,i)=>{colorOf[n]=COLORS[i%COLORS.length];});
-  const sessions=Object.values(smap).map(s=>({ ...s, color:colorOf[s.name] })).sort((a,b)=>a.name.localeCompare(b.name)||a.key.localeCompare(b.key));
+  // Render one session per REAL group (from the groups table) — its schedule is
+  // the single source of truth, so a group is one clean block per scheduled slot
+  // (no more scattered per-student blocks).
+  const groups = biz.groups || [];
+  const allCards = Object.values(biz.cards || {});
+  const teacherName = (id)=>{ const t=(biz.teachers||[]).find(x=>x.id===id); return t ? t.name : null; };
+  // Students belong to a group by group_id; legacy students (no group_id) match
+  // by their old free-text group_name so they still appear until reassigned.
+  const studentsOf = (g)=> allCards.filter(c=> c.groupId ? c.groupId===g.id : ((c.groupName||"").trim()===(g.name||"").trim())).map(c=>c.name||"Unnamed");
+  // Stable color per group id, assigned in alphabetical name order.
+  const ordered = [...groups].sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+  const colorOf = {}; ordered.forEach((g,i)=>{ colorOf[g.id] = COLORS[i%COLORS.length]; });
+  const sessions = ordered.map(g=>({ key:g.id, name:g.name||"", schedule:g.schedule||[], teacherId:g.teacher_id||null, color:colorOf[g.id], students:studentsOf(g) }));
 
   // Visible window defaults to 16:00–21:00, but auto-fits (expands) to include
   // any session whose times fall outside that band — so no group is ever
@@ -1633,6 +1635,10 @@ function PgGroups({ biz, onBack }) {
   // covers both a missing/unparseable schedule and an unrecognized day — so a
   // group can never be silently invisible again.
   const noSched = [...new Set(sessions.filter(g=>!rendered.has(g.key)).map(g=>g.name))];
+  // Legacy students still on a free-text group_name that has no matching real
+  // group — surfaced so they can be reassigned in Manage (not lost silently).
+  const realNames = new Set(groups.map(g=>(g.name||"").trim()));
+  const legacyGroups = [...new Set(allCards.filter(c=>!c.groupId && (c.groupName||"").trim() && !realNames.has((c.groupName||"").trim())).map(c=>(c.groupName||"").trim()))];
 
   return (
     <div className="page">
@@ -1642,7 +1648,7 @@ function PgGroups({ biz, onBack }) {
         <div style={{width:24}} />
       </div>
       {sessions.length===0 ? (
-        <div className="empty">No groups yet. Set a Group Name &amp; Lesson Schedule in a student's Settings.</div>
+        <div className="empty">No groups yet. Create groups in Settings → 🗂️ Manage.</div>
       ) : (
         <div className="section">
           <div style={{fontSize:".72rem",color:"var(--text2)",fontWeight:600,marginBottom:12,lineHeight:1.5}}>Weekly schedule, {String(START_H).padStart(2,"0")+":00"}–{String(END_H).padStart(2,"0")+":00"}. Tap a block for details.</div>
@@ -1683,6 +1689,7 @@ function PgGroups({ biz, onBack }) {
                   <span style={{width:12,height:12,borderRadius:4,background:selG.color,flexShrink:0}} />
                   <div style={{fontSize:"1.05rem",fontWeight:900}}>{selG.name}</div>
                 </div>
+                <div style={{fontSize:".78rem",color:"var(--text2)",fontWeight:700,marginBottom:4}}>{teacherName(selG.teacherId) ? ("👤 "+teacherName(selG.teacherId)) : "No teacher"}</div>
                 <div style={{fontSize:".82rem",color:"var(--text2)",fontWeight:700,marginBottom:12}}>{schedStr||"No schedule set"}</div>
                 <div style={{fontSize:".62rem",fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".12em",marginBottom:8}}>Students ({selG.students.length})</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
@@ -1694,6 +1701,9 @@ function PgGroups({ biz, onBack }) {
 
           {noSched.length>0 && (
             <div style={{marginTop:16,fontSize:".72rem",color:"var(--text3)",fontWeight:600,lineHeight:1.5}}>No schedule set: {noSched.join(", ")}</div>
+          )}
+          {legacyGroups.length>0 && (
+            <div style={{marginTop:8,fontSize:".72rem",color:"var(--text3)",fontWeight:600,lineHeight:1.5}}>Legacy groups (reassign students in 🗂️ Manage): {legacyGroups.join(", ")}</div>
           )}
         </div>
       )}
