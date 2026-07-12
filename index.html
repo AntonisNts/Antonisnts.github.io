@@ -44,17 +44,35 @@ const sb = window.supabase.createClient(SB_URL, SB_KEY);
 
 function bizFromRow(b, cardRows) {
   const cards = {};
-  (cardRows||[]).forEach(c => { cards[c.id] = { id:c.id, name:c.name, level:c.level||null, shareCode:c.share_code, pin:c.pin, phone:c.phone||"", payments:c.payments||{}, history:c.history||[], groupName:c.group_name||"", lessonSchedule:c.lesson_schedule||[], enrollmentStart:c.enrollment_start_month||null, pausedMonths:c.paused_months||[], feeHistory:c.fee_history||[] }; });
+  (cardRows||[]).forEach(c => { cards[c.id] = { id:c.id, name:c.name, level:c.level||null, shareCode:c.share_code, pin:c.pin, phone:c.phone||"", payments:c.payments||{}, history:c.history||[], groupId:c.group_id||null, groupName:c.group_name||"", lessonSchedule:c.lesson_schedule||[], enrollmentStart:c.enrollment_start_month||null, pausedMonths:c.paused_months||[], feeHistory:c.fee_history||[] }; });
   return { id:b.id, bizCode:b.biz_code, name:b.name, type:b.type, fee:Number(b.fee), year:b.year, email:b.contact_email||"", inactiveMonths:b.inactive_months||[], levels:b.levels||[], customCardImage:b.custom_card_image||null, cards };
+}
+// Resolve a card's effective group: prefer the real group (group_id -> groups
+// table) and fall back to the legacy free-text group_name / per-card schedule
+// for students not yet reassigned.
+function resolveGroup(card, groups) {
+  if (card && card.groupId) {
+    const g = (groups || []).find(x => x.id === card.groupId);
+    if (g) return { id:g.id, name:g.name || "", schedule:g.schedule || [], teacherId:g.teacher_id || null };
+    // Parent/student read paths carry the resolved group inline (from the RPC)
+    // rather than a groups list.
+    if (card.group) return { id:card.group.id, name:card.group.name || "", schedule:card.group.schedule || [], teacherId:card.group.teacher_id || null };
+  }
+  return { id:null, name:(card && card.groupName) || "", schedule:(card && card.lessonSchedule) || [], teacherId:null };
 }
 async function loadMyBusiness() {
   const { data: rows, error } = await sb.from("businesses").select("*").limit(1);
   if (error) throw error;
   if (!rows || !rows.length) return null;
   const b = rows[0];
-  const { data: cardRows, error: ce } = await sb.from("cards").select("id,name,level,share_code,pin,phone,payments,history,group_name,lesson_schedule,enrollment_start_month,paused_months,fee_history").eq("business_id", b.id).order("created_at",{ascending:true});
+  const { data: cardRows, error: ce } = await sb.from("cards").select("id,name,level,share_code,pin,phone,payments,history,group_id,group_name,lesson_schedule,enrollment_start_month,paused_months,fee_history").eq("business_id", b.id).order("created_at",{ascending:true});
   if (ce) throw ce;
-  return bizFromRow(b, cardRows);
+  const { data: teacherRows } = await sb.from("teachers").select("id,name").eq("business_id", b.id).order("name");
+  const { data: groupRows } = await sb.from("groups").select("id,name,schedule,teacher_id").eq("business_id", b.id).order("name");
+  const _biz = bizFromRow(b, cardRows);
+  _biz.teachers = teacherRows || [];
+  _biz.groups = groupRows || [];
+  return _biz;
 }
 async function loadMyCards() {
   const { data, error } = await sb.rpc("get_my_cards");
@@ -63,7 +81,7 @@ async function loadMyCards() {
     cardId: e.card.id,
     childId: e.card.child_id || null,
     biz: { id:e.business.biz_code, bizCode:e.business.biz_code, name:e.business.name, type:e.business.type, fee:Number(e.business.fee), year:e.business.year, inactiveMonths:e.business.inactive_months||[], levels:e.business.levels||[], customCardImage:e.business.custom_card_image||null },
-    card: { name:e.card.name, level:e.card.level||null, shareCode:e.card.share_code, payments:e.card.payments||{}, history:e.card.history||[], groupName:e.card.group_name||"", lessonSchedule:e.card.lesson_schedule||[], enrollmentStart:e.card.enrollment_start_month||null, pausedMonths:e.card.paused_months||[], feeHistory:e.card.fee_history||[] }
+    card: { name:e.card.name, level:e.card.level||null, shareCode:e.card.share_code, payments:e.card.payments||{}, history:e.card.history||[], groupId:e.card.group_id||null, group:e.card.group||null, groupName:e.card.group_name||"", lessonSchedule:e.card.lesson_schedule||[], enrollmentStart:e.card.enrollment_start_month||null, pausedMonths:e.card.paused_months||[], feeHistory:e.card.fee_history||[] }
   }));
 }
 async function loadMyChildren() {
@@ -127,8 +145,9 @@ async function loadMyAnnouncements() {
   const pct = ac > 0 ? Math.round((mp/ac)*100) : 0;
   const hasImg = !!biz.customCardImage;
   const bgVal = hasImg ? "#000" : "linear-gradient(135deg,"+p.bg1+","+p.bg2+")";
-  const groupName = (card && card.groupName) || "";
-  const schedule = (card && card.lessonSchedule) || [];
+  const _rg = resolveGroup(card, biz.groups);
+  const groupName = _rg.name;
+  const schedule = _rg.schedule;
   const dayAbbr = {Monday:"Mon",Tuesday:"Tue",Wednesday:"Wed",Thursday:"Thu",Friday:"Fri",Saturday:"Sat",Sunday:"Sun"};
   const cardStyle = {borderRadius:22,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,.4)",position:"relative",background:bgVal};
   const overlay = <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"linear-gradient(180deg,rgba(0,0,0,.5) 0%,rgba(0,0,0,.75) 100%)"}} />;
@@ -400,16 +419,86 @@ async function loadMyAnnouncements() {
       <button className="btn" style={{marginTop:8}} onClick={doCreate} disabled={busy}>{busy?"…":"Create Business"}</button>
     </div>
   );
-}  function PgDashboard({ biz, onCard, onAdd, onMonths, onLevels, onCustomCard, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   let touchStartY = 0;   const p = getPal(biz.type);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const hasImg = !!biz.customCardImage;   const headerBg = hasImg ? "#000" : "linear-gradient(135deg,"+p.bg1+","+p.bg2+")";    const filtered = allCards     .filter(c=>{       if (levelFilter==="all") return true;       if (levelFilter==="none") return !c.level;       return c.level && c.level.id===levelFilter;     })     .filter(c=>!search||(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.shareCode||"").toLowerCase().includes(search.toLowerCase()))     .sort((a,b)=>{       if (sort==="owed") {         const oA=getStudentMonthStatus(a,biz,year).owedTotal;         const oB=getStudentMonthStatus(b,biz,year).owedTotal;         return oB-oA;       }       if (sort==="progress") { return monthsPaid(b.payments||{},year,inactive.concat(b.pausedMonths||[]),b.enrollmentStart)-monthsPaid(a.payments||{},year,inactive.concat(a.pausedMonths||[]),a.enrollmentStart); }       return (a.name||"").localeCompare(b.name||"");     });    return (     <div className="page">       <div style={{margin:"16px 16px 14px",borderRadius:20,overflow:"hidden",position:"relative",background:headerBg,boxShadow:"0 6px 24px rgba(0,0,0,.4)"}}>         {hasImg && <img src={biz.customCardImage} alt="" style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%",objectFit:"cover",opacity:0.4}} />}         <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"linear-gradient(180deg,rgba(0,0,0,.4) 0%,rgba(0,0,0,.7) 100%)"}} />         <div style={{position:"relative",zIndex:2,padding:"18px 20px 14px",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>           <div>             <div style={{fontSize:".68rem",fontWeight:800,color:p.acc,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}}>{p.icon} {biz.type}</div>             <div style={{fontSize:"1.4rem",fontWeight:900,color:"#fff",marginBottom:3}}>{biz.name}</div>             <div style={{fontSize:".75rem",color:"rgba(255,255,255,.5)",fontWeight:700}}>{biz.bizCode}</div>           </div>           <div style={{display:"flex",gap:8}}><button onClick={()=>setSheet(true)} aria-label="Settings" style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontSize:".95rem",lineHeight:1,cursor:"pointer",padding:"6px 10px",borderRadius:20}}>⚙️</button>{showFamily && <button onClick={onFamily} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontFamily:"var(--f)",fontSize:".75rem",fontWeight:800,cursor:"pointer",padding:"6px 14px",borderRadius:20}}>Family</button>}<button onClick={onLogout} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontFamily:"var(--f)",fontSize:".75rem",fontWeight:800,cursor:"pointer",padding:"6px 14px",borderRadius:20}}>out</button></div>         </div>         <div style={{position:"relative",zIndex:2,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",borderTop:"1px solid rgba(255,255,255,.1)"}}>           <div style={{padding:"12px 8px",textAlign:"center",borderRight:"1px solid rgba(255,255,255,.1)"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:"#fff"}}>{allCards.length}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>STUDENTS</div>           </div>           <div style={{padding:"12px 8px",textAlign:"center",borderRight:"1px solid rgba(255,255,255,.1)"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:p.acc}}>{paidNow+"/"+allCards.length}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>{"PAID "+MONTHS[nowIdx].toUpperCase()}</div>           </div>           <div style={{padding:"12px 8px",textAlign:"center"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:"#f87171"}}>{"€"+Math.round(totalOwed)}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>OWED</div>           </div>         </div>       </div>                {sheet && (<div onClick={()=>setSheet(false)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:200,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"flex-end"}}><div onClick={e=>e.stopPropagation()} onTouchStart={e=>{touchStartY=e.touches[0].clientY;}} onTouchEnd={e=>{ if(e.changedTouches[0].clientY-touchStartY>60) setSheet(false); }} style={{width:"100%",maxWidth:430,margin:"0 auto",background:"var(--bg2)",borderTopLeftRadius:24,borderTopRightRadius:24,padding:"10px 0 24px",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,.5)"}}><div style={{width:40,height:5,borderRadius:99,background:"var(--text3)",margin:"0 auto 10px"}} /><div style={{padding:"4px 20px 10px",fontSize:".7rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".16em"}}>Settings</div>{[["📅","Months","Manage active/inactive months",onMonths],["🎓","Levels","Edit student levels & fees",onLevels],["👥","Groups","Weekly schedule by group",onGroups],["🎨","Card","Choose card design",onCustomCard],["📤","Export","Download payment records",onExport],["🔔","Remind","Send payment reminders",onRemind],["📣","Announcements","Post news to parents & students",onAnnouncements]].map(([ic,lb,st,fn],i)=>(<div key={i} onClick={()=>{setSheet(false); fn&&fn();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>{ic}</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--text)"}}>{lb}</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--text2)",marginTop:1}}>{st}</div></div><div style={{color:"var(--text3)",fontSize:"1.2rem",fontWeight:700}}>›</div></div>))}{onNewYear && (<div style={{height:1,background:"var(--border)",margin:"8px 20px"}} />)}{onNewYear && (<div onClick={()=>{setSheet(false); onNewYear();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>🗓️</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--partial)"}}>{"Start New Year ("+(year+1)+")"}</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--partial)",opacity:.8,marginTop:1}}>Roll over to next year</div></div><div style={{color:"var(--partial)",fontSize:"1.2rem",fontWeight:700,opacity:.7}}>›</div></div>)}{onDeleteAccount && (<div style={{height:1,background:"var(--border)",margin:"8px 20px"}} />)}{onDeleteAccount && (<div onClick={()=>{setSheet(false); onDeleteAccount();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 16px",margin:"2px 14px 0",borderRadius:14,border:"1px solid rgba(239,68,68,.4)",background:"rgba(239,68,68,.08)",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>🗑</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--red)"}}>Delete Business Account</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--red)",opacity:.85,marginTop:1}}>Permanently erase business &amp; data</div></div><div style={{color:"var(--red)",fontSize:"1.2rem",fontWeight:700,opacity:.7}}>›</div></div>)}</div></div>)}<div className="section">         <div className="sec-row">           <div className="sec-title">Students ({allCards.length})</div>           <button className="btn-new" onClick={onAdd}>+ New</button>         </div>         {allCards.length > 0 && hasLevels && (           <div style={{display:"flex",gap:8,marginBottom:14,overflowX:"auto",paddingBottom:4,scrollbarWidth:"none",borderBottom:"1px solid var(--border)",paddingTop:2}}>             <button onClick={()=>setLevelFilter("all")} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter==="all"?"var(--violet)":"var(--border)"),background:levelFilter==="all"?"var(--violet)":"var(--bg2)",color:levelFilter==="all"?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter==="all"?"0 4px 16px rgba(99,102,241,.3)":"none"}}>All Members</button>             {levels.map(lv=>(               <button key={lv.id} onClick={()=>setLevelFilter(lv.id)} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter===lv.id?"var(--violet)":"var(--border)"),background:levelFilter===lv.id?"var(--violet)":"var(--bg2)",color:levelFilter===lv.id?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter===lv.id?"0 4px 16px rgba(99,102,241,.3)":"none"}}>{lv.name}</button>             ))}             {allCards.some(c=>!c.level) && (               <button onClick={()=>setLevelFilter("none")} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter==="none"?"var(--violet)":"var(--border)"),background:levelFilter==="none"?"var(--violet)":"var(--bg2)",color:levelFilter==="none"?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter==="none"?"0 4px 16px rgba(99,102,241,.3)":"none"}}>No Level</button>             )}           </div>         )}         {allCards.length > 0 && (           <>             <div style={{position:"relative",marginBottom:10}}>               <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:"1rem",pointerEvents:"none"}}>🔍</span>               <input style={{width:"100%",background:"var(--bg3)",border:"1px solid var(--border)",borderRadius:14,padding:"11px 14px 11px 38px",fontFamily:"var(--f)",fontSize:".9rem",fontWeight:600,outline:"none",color:"var(--text)"}}                 placeholder="Search by name or code..." value={search} onChange={e=>setSearch(e.target.value)} />               {search && <button onClick={()=>setSearch("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",fontSize:"1rem",cursor:"pointer",color:"var(--text2)"}}>✕</button>}             </div>             <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>               <span style={{fontSize:".72rem",color:"var(--text2)",fontWeight:700,alignSelf:"center"}}>Sort:</span>               {[["name","A–Z"],["owed","Most Owed"],["progress","Most Paid"]].map(([v,l])=>(                 <button key={v} onClick={()=>setSort(v)} style={{padding:"5px 12px",borderRadius:20,border:"none",background:sort===v?"var(--accent)":"var(--bg3)",color:sort===v?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:800,cursor:"pointer"}}>                   {l}                 </button>               ))}             </div>           </>         )}         {!allCards.length ? <div className="empty">No cards yet. Tap + New.</div>           : !filtered.length ? <div className="empty">No results for "{search}"</div>           : <div className="card-list">{filtered.map(c=><CardTile key={c.id} card={c} biz={biz} onClick={()=>onCard(c.id)} />)}</div>         }       <div style={{textAlign:"center",padding:"22px 0 6px"}}><a href="/dpa" style={{color:"var(--text2)",fontSize:".7rem",textDecoration:"underline"}}>Data Processing Agreement</a></div>       </div>     </div>   ); }  function PgAddCard({ biz, onBack, onCreate }) {
+}  function PgDashboard({ biz, onCard, onAdd, onMonths, onLevels, onCustomCard, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [viewBy, setViewBy] = useState("all");   const [collapsed, setCollapsed] = useState({});   let touchStartY = 0;   const p = getPal(biz.type);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const hasImg = !!biz.customCardImage;   const headerBg = hasImg ? "#000" : "linear-gradient(135deg,"+p.bg1+","+p.bg2+")";    const filtered = allCards     .filter(c=>{       if (levelFilter==="all") return true;       if (levelFilter==="none") return !c.level;       return c.level && c.level.id===levelFilter;     })     .filter(c=>!search||(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.shareCode||"").toLowerCase().includes(search.toLowerCase()))     .sort((a,b)=>{       if (sort==="owed") {         const oA=getStudentMonthStatus(a,biz,year).owedTotal;         const oB=getStudentMonthStatus(b,biz,year).owedTotal;         return oB-oA;       }       if (sort==="progress") { return monthsPaid(b.payments||{},year,inactive.concat(b.pausedMonths||[]),b.enrollmentStart)-monthsPaid(a.payments||{},year,inactive.concat(a.pausedMonths||[]),a.enrollmentStart); }       return (a.name||"").localeCompare(b.name||"");     });
+
+  // Grouped dashboard sections (View by Group / Teacher). Students attach to a
+  // real group by group_id (legacy free-text group_name matches by name so
+  // not-yet-reassigned students land in the right section); anything else goes
+  // to Unassigned. Built from `filtered`, so search / level filter / sort all
+  // apply within each section unchanged.
+  const SEC_COLORS = ["#6366f1","#10b981","#f59e0b","#ec4899","#06b6d4","#a855f7","#ef4444","#84cc16","#f97316","#0ea5e9","#14b8a6","#eab308"];
+  const secAbbr = {Monday:"Mon",Tuesday:"Tue",Wednesday:"Wed",Thursday:"Thu",Friday:"Fri",Saturday:"Sat",Sunday:"Sun"};
+  const schedSum = (sch)=>(sch&&sch.length)?sch.map(x=>(secAbbr[x.day]||x.day)+" "+(x.start_time||"")+(x.end_time?("–"+x.end_time):"")).join(", "):"";
+  let sections = null;
+  if (viewBy !== "all") {
+    const gs = [...(biz.groups||[])].sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+    const gColor = {}; gs.forEach((g,i)=>{ gColor[g.id]=SEC_COLORS[i%SEC_COLORS.length]; });
+    const byName = {}; gs.forEach(g=>{ byName[(g.name||"").trim()]=g; });
+    const groupOf = (c)=> c.groupId ? (gs.find(g=>g.id===c.groupId)||null) : (byName[(c.groupName||"").trim()]||null);
+    const tOf = (id)=>{ const t=(biz.teachers||[]).find(x=>x.id===id); return t?t.name:null; };
+    const map = new Map();
+    const push = (key,title,sub,color,c)=>{ if(!map.has(key)) map.set(key,{key,title,sub,color,cards:[]}); map.get(key).cards.push(c); };
+    filtered.forEach(c=>{
+      const g = groupOf(c);
+      if (viewBy==="group") {
+        if (g) push("g:"+g.id, g.name||"", [tOf(g.teacher_id)?("👤 "+tOf(g.teacher_id)):null, schedSum(g.schedule)].filter(Boolean).join(" · "), gColor[g.id], c);
+        else push("zz:un","Unassigned","No group",null,c);
+      } else {
+        if (!g) push("zz:un","Unassigned","No group",null,c);
+        else if (g.teacher_id && tOf(g.teacher_id)) push("t:"+g.teacher_id, tOf(g.teacher_id), "", null, c);
+        else push("zy:nt","No teacher","Groups without a teacher",null,c);
+      }
+    });
+    // Teacher subtitles: the distinct groups feeding that teacher's section.
+    if (viewBy==="teacher") {
+      map.forEach(sec=>{ if(sec.key.indexOf("t:")===0){ sec.sub=[...new Set(sec.cards.map(c=>{const g=groupOf(c); return g?g.name:null;}).filter(Boolean))].join(", "); } });
+    }
+    // Real sections A–Z by title, then "No teacher", then "Unassigned" last.
+    sections = [...map.values()].sort((a,b)=>{
+      const rank=(k)=>k.indexOf("zz:")===0?2:(k.indexOf("zy:")===0?1:0);
+      return rank(a.key)-rank(b.key) || (a.title||"").localeCompare(b.title||"");
+    });
+    sections.forEach(sec=>{
+      sec.paid = sec.cards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;
+      sec.owed = Math.round(sec.cards.reduce((s,c)=>s+getStudentMonthStatus(c,biz,year).owedTotal,0));
+    });
+  }
+
+  return (     <div className="page">       <div style={{margin:"16px 16px 14px",borderRadius:20,overflow:"hidden",position:"relative",background:headerBg,boxShadow:"0 6px 24px rgba(0,0,0,.4)"}}>         {hasImg && <img src={biz.customCardImage} alt="" style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%",objectFit:"cover",opacity:0.4}} />}         <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"linear-gradient(180deg,rgba(0,0,0,.4) 0%,rgba(0,0,0,.7) 100%)"}} />         <div style={{position:"relative",zIndex:2,padding:"18px 20px 14px",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>           <div>             <div style={{fontSize:".68rem",fontWeight:800,color:p.acc,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}}>{p.icon} {biz.type}</div>             <div style={{fontSize:"1.4rem",fontWeight:900,color:"#fff",marginBottom:3}}>{biz.name}</div>             <div style={{fontSize:".75rem",color:"rgba(255,255,255,.5)",fontWeight:700}}>{biz.bizCode}</div>           </div>           <div style={{display:"flex",gap:8}}><button onClick={()=>setSheet(true)} aria-label="Settings" style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontSize:".95rem",lineHeight:1,cursor:"pointer",padding:"6px 10px",borderRadius:20}}>⚙️</button>{showFamily && <button onClick={onFamily} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontFamily:"var(--f)",fontSize:".75rem",fontWeight:800,cursor:"pointer",padding:"6px 14px",borderRadius:20}}>Family</button>}<button onClick={onLogout} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontFamily:"var(--f)",fontSize:".75rem",fontWeight:800,cursor:"pointer",padding:"6px 14px",borderRadius:20}}>out</button></div>         </div>         <div style={{position:"relative",zIndex:2,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",borderTop:"1px solid rgba(255,255,255,.1)"}}>           <div style={{padding:"12px 8px",textAlign:"center",borderRight:"1px solid rgba(255,255,255,.1)"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:"#fff"}}>{allCards.length}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>STUDENTS</div>           </div>           <div style={{padding:"12px 8px",textAlign:"center",borderRight:"1px solid rgba(255,255,255,.1)"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:p.acc}}>{paidNow+"/"+allCards.length}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>{"PAID "+MONTHS[nowIdx].toUpperCase()}</div>           </div>           <div style={{padding:"12px 8px",textAlign:"center"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:"#f87171"}}>{"€"+Math.round(totalOwed)}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>OWED</div>           </div>         </div>       </div>                {sheet && (<div onClick={()=>setSheet(false)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:200,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"flex-end"}}><div onClick={e=>e.stopPropagation()} onTouchStart={e=>{touchStartY=e.touches[0].clientY;}} onTouchEnd={e=>{ if(e.changedTouches[0].clientY-touchStartY>60) setSheet(false); }} style={{width:"100%",maxWidth:430,margin:"0 auto",background:"var(--bg2)",borderTopLeftRadius:24,borderTopRightRadius:24,padding:"10px 0 24px",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,.5)"}}><div style={{width:40,height:5,borderRadius:99,background:"var(--text3)",margin:"0 auto 10px"}} /><div style={{padding:"4px 20px 10px",fontSize:".7rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".16em"}}>Settings</div>{[["📅","Months","Manage active/inactive months",onMonths],["🎓","Levels","Edit student levels & fees",onLevels],["👥","Groups","Weekly schedule by group",onGroups],["🗂️","Manage","Create groups & assign teachers",onManage],["🎨","Card","Choose card design",onCustomCard],["📤","Export","Download payment records",onExport],["🔔","Remind","Send payment reminders",onRemind],["📣","Announcements","Post news to parents & students",onAnnouncements]].map(([ic,lb,st,fn],i)=>(<div key={i} onClick={()=>{setSheet(false); fn&&fn();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>{ic}</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--text)"}}>{lb}</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--text2)",marginTop:1}}>{st}</div></div><div style={{color:"var(--text3)",fontSize:"1.2rem",fontWeight:700}}>›</div></div>))}{onNewYear && (<div style={{height:1,background:"var(--border)",margin:"8px 20px"}} />)}{onNewYear && (<div onClick={()=>{setSheet(false); onNewYear();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>🗓️</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--partial)"}}>{"Start New Year ("+(year+1)+")"}</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--partial)",opacity:.8,marginTop:1}}>Roll over to next year</div></div><div style={{color:"var(--partial)",fontSize:"1.2rem",fontWeight:700,opacity:.7}}>›</div></div>)}{onDeleteAccount && (<div style={{height:1,background:"var(--border)",margin:"8px 20px"}} />)}{onDeleteAccount && (<div onClick={()=>{setSheet(false); onDeleteAccount();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 16px",margin:"2px 14px 0",borderRadius:14,border:"1px solid rgba(239,68,68,.4)",background:"rgba(239,68,68,.08)",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>🗑</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--red)"}}>Delete Business Account</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--red)",opacity:.85,marginTop:1}}>Permanently erase business &amp; data</div></div><div style={{color:"var(--red)",fontSize:"1.2rem",fontWeight:700,opacity:.7}}>›</div></div>)}</div></div>)}<div className="section">         <div className="sec-row">           <div className="sec-title">Students ({allCards.length})</div>           <button className="btn-new" onClick={onAdd}>+ New</button>         </div>         {allCards.length > 0 && hasLevels && (           <div style={{display:"flex",gap:8,marginBottom:14,overflowX:"auto",paddingBottom:4,scrollbarWidth:"none",borderBottom:"1px solid var(--border)",paddingTop:2}}>             <button onClick={()=>setLevelFilter("all")} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter==="all"?"var(--violet)":"var(--border)"),background:levelFilter==="all"?"var(--violet)":"var(--bg2)",color:levelFilter==="all"?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter==="all"?"0 4px 16px rgba(99,102,241,.3)":"none"}}>All Members</button>             {levels.map(lv=>(               <button key={lv.id} onClick={()=>setLevelFilter(lv.id)} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter===lv.id?"var(--violet)":"var(--border)"),background:levelFilter===lv.id?"var(--violet)":"var(--bg2)",color:levelFilter===lv.id?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter===lv.id?"0 4px 16px rgba(99,102,241,.3)":"none"}}>{lv.name}</button>             ))}             {allCards.some(c=>!c.level) && (               <button onClick={()=>setLevelFilter("none")} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter==="none"?"var(--violet)":"var(--border)"),background:levelFilter==="none"?"var(--violet)":"var(--bg2)",color:levelFilter==="none"?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter==="none"?"0 4px 16px rgba(99,102,241,.3)":"none"}}>No Level</button>             )}           </div>         )}         {allCards.length > 0 && (           <>             <div style={{position:"relative",marginBottom:10}}>               <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:"1rem",pointerEvents:"none"}}>🔍</span>               <input style={{width:"100%",background:"var(--bg3)",border:"1px solid var(--border)",borderRadius:14,padding:"11px 14px 11px 38px",fontFamily:"var(--f)",fontSize:".9rem",fontWeight:600,outline:"none",color:"var(--text)"}}                 placeholder="Search by name or code..." value={search} onChange={e=>setSearch(e.target.value)} />               {search && <button onClick={()=>setSearch("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",fontSize:"1rem",cursor:"pointer",color:"var(--text2)"}}>✕</button>}             </div>             <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>               <span style={{fontSize:".72rem",color:"var(--text2)",fontWeight:700,alignSelf:"center"}}>Sort:</span>               {[["name","A–Z"],["owed","Most Owed"],["progress","Most Paid"]].map(([v,l])=>(                 <button key={v} onClick={()=>setSort(v)} style={{padding:"5px 12px",borderRadius:20,border:"none",background:sort===v?"var(--accent)":"var(--bg3)",color:sort===v?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:800,cursor:"pointer"}}>                   {l}                 </button>               ))}             </div>
+             <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+               <span style={{fontSize:".72rem",color:"var(--text2)",fontWeight:700,alignSelf:"center"}}>View:</span>
+               {[["all","All Students"],["group","By Group"],["teacher","By Teacher"]].map(([v,l])=>(
+                 <button key={v} onClick={()=>setViewBy(v)} style={{padding:"5px 12px",borderRadius:20,border:"none",background:viewBy===v?"var(--accent)":"var(--bg3)",color:viewBy===v?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:800,cursor:"pointer"}}>{l}</button>
+               ))}
+             </div>           </>         )}         {!allCards.length ? <div className="empty">No cards yet. Tap + New.</div>           : !filtered.length ? <div className="empty">No results for "{search}"</div>           : viewBy==="all" ? <div className="card-list">{filtered.map(c=><CardTile key={c.id} card={c} biz={biz} onClick={()=>onCard(c.id)} />)}</div>
+          : <div>{(sections||[]).map(sec=>{
+              const isC = !!collapsed[sec.key];
+              return (
+                <div key={sec.key} style={{marginBottom:12}}>
+                  <div onClick={()=>setCollapsed(x=>({...x,[sec.key]:!x[sec.key]}))} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:14,cursor:"pointer"}}>
+                    <span style={{width:10,height:10,borderRadius:3,background:sec.color||"var(--text3)",flexShrink:0}} />
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:".92rem",fontWeight:800,color:"var(--text)"}}>{sec.title}</div>
+                      {sec.sub ? <div style={{fontSize:".7rem",color:"var(--text2)",fontWeight:600,marginTop:1}}>{sec.sub}</div> : null}
+                    </div>
+                    <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{fontSize:".72rem",fontWeight:800,color:"var(--text2)"}}>{sec.cards.length+" · paid "+sec.paid+"/"+sec.cards.length}</div>
+                      <div style={{fontSize:".72rem",fontWeight:800,color:sec.owed>0?"var(--red)":"var(--green)"}}>{"€"+sec.owed+" owed"}</div>
+                    </div>
+                    <span style={{color:"var(--text3)",fontSize:".95rem",fontWeight:700,display:"inline-block",transform:isC?"rotate(0deg)":"rotate(90deg)",transition:"transform .15s ease-out"}}>›</span>
+                  </div>
+                  {!isC && <div className="card-list" style={{marginTop:10}}>{sec.cards.map(c=><CardTile key={c.id} card={c} biz={biz} onClick={()=>onCard(c.id)} />)}</div>}
+                </div>
+              );
+            })}</div>
+         }       <div style={{textAlign:"center",padding:"22px 0 6px"}}><a href="/dpa" style={{color:"var(--text2)",fontSize:".7rem",textDecoration:"underline"}}>Data Processing Agreement</a></div>       </div>     </div>   ); }  function PgAddCard({ biz, onBack, onCreate }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [chan, setChan] = useState("whatsapp");
   const [lang, setLang] = useState("EN");
   const [enroll, setEnroll] = useState("");
   const [levelId, setLevelId] = useState("");
-  const [groupName, setGroupName] = useState("");
-  const [addingGroup, setAddingGroup] = useState(false);
-  const groupOpts = [...new Set(Object.values(biz.cards||{}).map(x=>(x.groupName||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const [groupId, setGroupId] = useState("");
   const [schedule, setSchedule] = useState([]);
   const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
   const levels = biz.levels||[];
@@ -448,12 +537,12 @@ async function loadMyAnnouncements() {
       )}
       {selLevel && <div style={{background:"var(--bg2)",borderRadius:12,padding:"12px 16px",marginBottom:14,fontSize:".85rem",color:"var(--text2)",fontWeight:700,border:"1px solid var(--border)"}}>Fee: <strong style={{color:"var(--accent)"}}>{"€"+selLevel.fee+"/mo"}</strong></div>}
       <div className="ig"><label>Group (optional)</label>
-        <select className="inp" value={addingGroup?"__new__":groupName} onChange={e=>{ const v=e.target.value; if(v==="__new__"){setAddingGroup(true);setGroupName("");} else {setAddingGroup(false);setGroupName(v);} }}>
+        <select className="inp" value={groupId} onChange={e=>setGroupId(e.target.value)}>
           <option value="">— No group —</option>
-          {groupOpts.map(g=><option key={g} value={g}>{g}</option>)}
-          <option value="__new__">+ Add new group…</option>
+          {(biz.groups||[]).map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
-        {addingGroup && <input className="inp" style={{marginTop:8}} placeholder="New group name" value={groupName} onChange={e=>setGroupName(e.target.value)} autoFocus />}
+        {(biz.groups||[]).length===0 && <div style={{fontSize:".72rem",color:"var(--text3)",fontWeight:600,marginTop:6}}>No groups yet — create them in Settings → 🗂️ Manage.</div>}
+        {groupId && (()=>{ const g=(biz.groups||[]).find(x=>x.id===groupId); if(!g) return null; const tn=(biz.teachers||[]).find(t=>t.id===g.teacher_id); const ab={Monday:"Mon",Tuesday:"Tue",Wednesday:"Wed",Thursday:"Thu",Friday:"Fri",Saturday:"Sat",Sunday:"Sun"}; const sc=(g.schedule||[]).map(x=>(ab[x.day]||x.day)+" "+(x.start_time||"")+(x.end_time?("–"+x.end_time):"")).join(", "); return <div style={{fontSize:".72rem",color:"var(--text2)",fontWeight:600,marginTop:6}}>{(tn?("👤 "+tn.name):"No teacher")+(sc?(" · "+sc):"")}</div>; })()}
       </div>
       <div className="ig"><label>Lesson Schedule (optional)</label>
         {schedule.map((row,i)=>(
@@ -471,7 +560,7 @@ async function loadMyAnnouncements() {
         ))}
         {schedule.length<5 && <button type="button" onClick={()=>setSchedule(s=>[...s,{day:"Monday",start_time:"17:00",end_time:"18:00"}])} className="btn-ghost" style={{marginTop:0,padding:"12px"}}>+ Add another day</button>}
       </div>
-      <button className="btn" style={{marginTop:8}} onClick={()=>onCreate({name,level:selLevel,phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupName:groupName.trim(),lessonSchedule:schedule.filter(r=>r.day&&r.start_time)})}>Create Card</button>
+      <button className="btn" style={{marginTop:8}} onClick={()=>onCreate({name,level:selLevel,phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupId:groupId||null,lessonSchedule:schedule.filter(r=>r.day&&r.start_time)})}>Create Card</button>
     </div>
   );
 }  function PgReveal({ card, onDone }) {   return (     <div className="reg-page">       <h2 style={{marginBottom:4}}>Card Created</h2>       <p>Share the code and PIN with the student.</p>       <div className="reveal-box">         <div className="rv-lbl">Student Code</div>         <div className="rv-val">{card.shareCode}</div>         <div className="rv-sep" />         <div className="rv-lbl">PIN</div>         <div className="rv-pin">{card.pin}</div>       </div>       <div className="info-box" style={{marginBottom:16}}>Write these down now.</div>       <button className="btn" onClick={onDone}>Done</button>     </div>   ); }  function PgCard({ biz, card, onBack, onUpdate, onRemove }) {
@@ -482,9 +571,7 @@ async function loadMyAnnouncements() {
   const [chan, setChan] = useState(card.preferredChannel||"whatsapp");
   const [lang, setLang] = useState(card.language||"EN");
   const [enroll, setEnroll] = useState(card.enrollmentStart||"");
-  const [groupName, setGroupName] = useState(card.groupName||"");
-  const [addingGroup, setAddingGroup] = useState(false);
-  const groupOpts = [...new Set(Object.values(biz.cards||{}).map(x=>(x.groupName||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const [groupId, setGroupId] = useState(card.groupId||"");
   const [sched, setSched] = useState((card.lessonSchedule||[]).map(s=>({day:s.day,start_time:s.start_time||s.time||"",end_time:s.end_time||""})));
   const SCHED_DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
   const [sendLang, setSendLang] = useState(card.language||"EN");
@@ -766,13 +853,13 @@ async function loadMyAnnouncements() {
         <div className="ws-lbl" style={{marginTop:14}}>Enrollment Start (optional)</div>
         <input className="ws-inp" type="month" value={enroll} onChange={e=>setEnroll(e.target.value)} />
         <div className="ws-lbl" style={{marginTop:14}}>Group (optional)</div>
-        <select className="ws-inp" value={addingGroup?"__new__":groupName} onChange={e=>{ const v=e.target.value; if(v==="__new__"){setAddingGroup(true);setGroupName("");} else {setAddingGroup(false);setGroupName(v);} }}>
+        <select className="ws-inp" value={groupId} onChange={e=>setGroupId(e.target.value)}>
           <option value="">— No group —</option>
-          {groupOpts.map(g=><option key={g} value={g}>{g}</option>)}
-          <option value="__new__">+ Add new group…</option>
+          {(biz.groups||[]).map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
-        {addingGroup && <input className="ws-inp" style={{marginTop:8}} placeholder="New group name" value={groupName} onChange={e=>setGroupName(e.target.value)} />}
-        <div className="ws-lbl" style={{marginTop:14}}>Lesson Schedule (optional)</div>
+        {(biz.groups||[]).length===0 && <div style={{fontSize:".72rem",color:"var(--text3)",fontWeight:600,marginTop:6}}>No groups yet — create them in Settings → 🗂️ Manage.</div>}
+        {groupId && (()=>{ const g=(biz.groups||[]).find(x=>x.id===groupId); if(!g) return null; const tn=(biz.teachers||[]).find(t=>t.id===g.teacher_id); const ab={Monday:"Mon",Tuesday:"Tue",Wednesday:"Wed",Thursday:"Thu",Friday:"Fri",Saturday:"Sat",Sunday:"Sun"}; const sc=(g.schedule||[]).map(x=>(ab[x.day]||x.day)+" "+(x.start_time||"")+(x.end_time?("–"+x.end_time):"")).join(", "); return <div style={{fontSize:".72rem",color:"var(--text2)",fontWeight:600,marginTop:6}}>{(tn?("👤 "+tn.name):"No teacher")+(sc?(" · "+sc):"")}</div>; })()}
+        {!groupId && (<><div className="ws-lbl" style={{marginTop:14}}>Lesson Schedule (optional)</div>
         {sched.map((row,i)=>(
           <div key={i} style={{marginBottom:10,padding:"10px",background:"var(--bg)",borderRadius:12,border:"1px solid var(--border)"}}>
             <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -786,8 +873,9 @@ async function loadMyAnnouncements() {
             </div>
           </div>
         ))}
-        {sched.length<5 && <button type="button" onClick={()=>setSched(s=>[...s,{day:"Monday",start_time:"17:00",end_time:"18:00"}])} className="btn-undo" style={{width:"100%",flex:"none",marginTop:2}}>+ Add another day</button>}
-        <button className="btn-add" style={{marginTop:14}} onClick={()=>{onUpdate({phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupName:groupName.trim(),lessonSchedule:sched.filter(r=>r.day&&r.start_time)}); setSendLang(lang);}}>Save Settings</button>
+        {sched.length<5 && <button type="button" onClick={()=>setSched(s=>[...s,{day:"Monday",start_time:"17:00",end_time:"18:00"}])} className="btn-undo" style={{width:"100%",flex:"none",marginTop:2}}>+ Add another day</button>}</>)}
+        {groupId && <div style={{fontSize:".72rem",color:"var(--text3)",fontWeight:600,marginTop:10,lineHeight:1.5}}>Schedule is managed by the group (edit it in 🗂️ Manage).</div>}
+        <button className="btn-add" style={{marginTop:14}} onClick={()=>{onUpdate({phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupId:groupId||null,lessonSchedule:sched.filter(r=>r.day&&r.start_time)}); setSendLang(lang);}}>Save Settings</button>
         </div>}
       </div>
 
@@ -875,7 +963,7 @@ async function loadMyAnnouncements() {
     if (!data) { setErr("Wrong code or PIN."); return; }
     const b = data.business, c = data.card;
     const biz = { id:b.biz_code, bizCode:b.biz_code, name:b.name, type:b.type, fee:Number(b.fee), year:b.year, inactiveMonths:b.inactive_months||[], levels:b.levels||[], customCardImage:b.custom_card_image||null };
-    const card = { name:c.name, level:c.level||null, shareCode:c.share_code, enrollmentStart:c.enrollment_start_month||null, pausedMonths:c.paused_months||[], feeHistory:c.fee_history||[], payments:c.payments||{}, history:c.history||[], groupName:c.group_name||"", lessonSchedule:c.lesson_schedule||[] };
+    const card = { name:c.name, level:c.level||null, shareCode:c.share_code, enrollmentStart:c.enrollment_start_month||null, pausedMonths:c.paused_months||[], feeHistory:c.fee_history||[], payments:c.payments||{}, history:c.history||[], groupId:c.group_id||null, group:c.group||null, groupName:c.group_name||"", lessonSchedule:c.lesson_schedule||[] };
     setFound({biz,card,announcements:data.announcements||[]}); setStep("view");
   }
   if (step==="view" && found) {
@@ -1396,6 +1484,140 @@ function PgAnnouncements({ biz, onBack }) {
     </div>
   );
 }
+function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, onDeleteGroup }) {
+  const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+  const ABBR = {Monday:"Mon",Tuesday:"Tue",Wednesday:"Wed",Thursday:"Thu",Friday:"Fri",Saturday:"Sat",Sunday:"Sun"};
+  const teachers = biz.teachers || [];
+  const groups = biz.groups || [];
+  const cards = Object.values(biz.cards || {});
+  const [tName, setTName] = useState("");
+  const [tEdit, setTEdit] = useState(null);   // {id,name} inline teacher edit
+  const [gEdit, setGEdit] = useState(null);   // {id?, name, schedule, teacher_id} group form
+  const [del, setDel] = useState(null);       // {kind, id, name, warn}
+  const [busy, setBusy] = useState(false);
+  const teacherName = (id)=>{ const t=teachers.find(x=>x.id===id); return t?t.name:null; };
+  const schedSummary = (sch)=> (sch&&sch.length) ? sch.map(s=>(ABBR[s.day]||s.day)+" "+(s.start_time||"")+(s.end_time?("–"+s.end_time):"")).join(", ") : "No schedule set";
+
+  async function addTeacher(){ if(!tName.trim()) return; setBusy(true); const ok=await onSaveTeacher({name:tName}); setBusy(false); if(ok) setTName(""); }
+  async function saveTeacherEdit(){ setBusy(true); const ok=await onSaveTeacher(tEdit); setBusy(false); if(ok) setTEdit(null); }
+  async function saveGroup(){ setBusy(true); const ok=await onSaveGroup(gEdit); setBusy(false); if(ok) setGEdit(null); }
+  async function confirmDelete(){ setBusy(true); const ok = del.kind==="teacher" ? await onDeleteTeacher(del.id) : await onDeleteGroup(del.id); setBusy(false); if(ok) setDel(null); }
+
+  function askDeleteTeacher(t){ const n=groups.filter(g=>g.teacher_id===t.id).length; setDel({kind:"teacher",id:t.id,name:t.name,warn:n>0?("Assigned to "+n+" group"+(n>1?"s":"")+" — they will show no teacher."):null}); }
+  function askDeleteGroup(g){ const n=cards.filter(c=>c.groupId===g.id).length; setDel({kind:"group",id:g.id,name:g.name,warn:n>0?(n+" student"+(n>1?"s":"")+" will become unassigned."):null}); }
+
+  const setSch = (fn)=> setGEdit(g=>({ ...g, schedule: fn(g.schedule||[]) }));
+  const lbl = {fontSize:".68rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".1em",margin:"14px 0 6px"};
+  const secTitle = {fontSize:".72rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".16em",marginBottom:12};
+
+  // ---- Group create/edit form ----
+  if (gEdit) {
+    return (
+      <div className="page">
+        <div className="topbar">
+          <button className="tb-back" onClick={()=>setGEdit(null)}>←</button>
+          <h2>{gEdit.id ? "Edit Group" : "New Group"}</h2>
+          <div style={{width:24}} />
+        </div>
+        <div className="section">
+          <div style={lbl}>Group name</div>
+          <input className="inp" placeholder="e.g. Τρ/Παρ 15:15" value={gEdit.name} onChange={e=>setGEdit(g=>({...g,name:e.target.value}))} autoFocus />
+          <div style={lbl}>Teacher</div>
+          <select className="inp" value={gEdit.teacher_id||""} onChange={e=>setGEdit(g=>({...g,teacher_id:e.target.value}))}>
+            <option value="">— No teacher —</option>
+            {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          {teachers.length===0 && <div style={{fontSize:".72rem",color:"var(--text3)",fontWeight:600,marginTop:6}}>Add a teacher below first to assign one.</div>}
+          <div style={lbl}>Schedule</div>
+          {(gEdit.schedule||[]).map((row,i)=>(
+            <div key={i} style={{marginBottom:10,padding:"10px",background:"var(--bg2)",borderRadius:12,border:"1px solid var(--border)"}}>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <select className="inp" style={{flex:1,marginBottom:0}} value={row.day} onChange={e=>setSch(s=>s.map((r,j)=>j===i?{...r,day:e.target.value}:r))}>{DAYS.map(d=><option key={d} value={d}>{d}</option>)}</select>
+                <button type="button" onClick={()=>setSch(s=>s.filter((_,j)=>j!==i))} aria-label="Remove" style={{background:"transparent",border:"1px solid var(--border)",borderRadius:10,minWidth:44,height:48,color:"var(--red)",fontWeight:900,fontSize:"1.1rem",cursor:"pointer",flexShrink:0}}>×</button>
+              </div>
+              <div style={{display:"flex",gap:6,alignItems:"center",marginTop:6}}>
+                <input className="inp" style={{flex:1,marginBottom:0}} type="time" value={row.start_time||""} onChange={e=>setSch(s=>s.map((r,j)=>j===i?{...r,start_time:e.target.value}:r))} />
+                <span style={{color:"var(--text2)",fontWeight:700}}>–</span>
+                <input className="inp" style={{flex:1,marginBottom:0}} type="time" value={row.end_time||""} onChange={e=>setSch(s=>s.map((r,j)=>j===i?{...r,end_time:e.target.value}:r))} />
+              </div>
+            </div>
+          ))}
+          {(gEdit.schedule||[]).length<7 && <button type="button" onClick={()=>setSch(s=>[...s,{day:"Monday",start_time:"17:00",end_time:"18:00"}])} className="btn-ghost" style={{padding:"12px",width:"100%"}}>+ Add day</button>}
+          <button className="btn" style={{marginTop:16}} onClick={saveGroup} disabled={busy}>{busy?"…":(gEdit.id?"Save Group":"Create Group")}</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- Lists ----
+  return (
+    <div className="page">
+      <div className="topbar">
+        <button className="tb-back" onClick={onBack}>←</button>
+        <h2>Manage</h2>
+        <div style={{width:24}} />
+      </div>
+
+      <div className="section">
+        <div style={secTitle}>Teachers</div>
+        {teachers.length===0 && <div style={{fontSize:".82rem",color:"var(--text3)",fontWeight:600,marginBottom:10}}>No teachers yet.</div>}
+        {teachers.map(t=>(
+          <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,marginBottom:8}}>
+            {tEdit && tEdit.id===t.id ? (
+              <>
+                <input className="inp" style={{flex:1,marginBottom:0}} value={tEdit.name} onChange={e=>setTEdit({...tEdit,name:e.target.value})} autoFocus />
+                <button className="btn-add" style={{minWidth:64,padding:"10px"}} onClick={saveTeacherEdit} disabled={busy}>Save</button>
+                <button className="btn-ghost" style={{minWidth:64,padding:"10px"}} onClick={()=>setTEdit(null)}>Cancel</button>
+              </>
+            ) : (
+              <>
+                <div style={{flex:1,fontWeight:700}}>{t.name}</div>
+                <button className="btn-ghost" style={{padding:"8px 12px"}} onClick={()=>setTEdit({id:t.id,name:t.name})}>Edit</button>
+                <button style={{background:"transparent",border:"1px solid var(--border)",borderRadius:10,padding:"8px 12px",color:"var(--red)",fontWeight:800,cursor:"pointer"}} onClick={()=>askDeleteTeacher(t)}>Delete</button>
+              </>
+            )}
+          </div>
+        ))}
+        <div style={{display:"flex",gap:8,marginTop:4}}>
+          <input className="inp" style={{flex:1,marginBottom:0}} placeholder="New teacher name" value={tName} onChange={e=>setTName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTeacher()} />
+          <button className="btn-add" style={{minWidth:72,padding:"12px"}} onClick={addTeacher} disabled={busy||!tName.trim()}>Add</button>
+        </div>
+      </div>
+
+      <div className="section">
+        <div style={secTitle}>Groups</div>
+        {groups.length===0 && <div style={{fontSize:".82rem",color:"var(--text3)",fontWeight:600,marginBottom:10}}>No groups yet.</div>}
+        {groups.map(g=>(
+          <div key={g.id} style={{padding:"12px 14px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,marginBottom:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:800,fontSize:".95rem"}}>{g.name}</div>
+                <div style={{fontSize:".72rem",color:"var(--text2)",fontWeight:600,marginTop:2}}>{teacherName(g.teacher_id) ? ("👤 "+teacherName(g.teacher_id)) : "No teacher"} · {schedSummary(g.schedule)}</div>
+              </div>
+              <button className="btn-ghost" style={{padding:"8px 12px"}} onClick={()=>setGEdit({id:g.id,name:g.name,schedule:(g.schedule||[]).map(s=>({day:s.day,start_time:s.start_time||s.time||"",end_time:s.end_time||""})),teacher_id:g.teacher_id||""})}>Edit</button>
+              <button style={{background:"transparent",border:"1px solid var(--border)",borderRadius:10,padding:"8px 12px",color:"var(--red)",fontWeight:800,cursor:"pointer"}} onClick={()=>askDeleteGroup(g)}>Delete</button>
+            </div>
+          </div>
+        ))}
+        <button className="btn" style={{marginTop:8}} onClick={()=>setGEdit({name:"",schedule:[],teacher_id:""})}>+ New Group</button>
+      </div>
+
+      {del && (
+        <div onClick={()=>!busy&&setDel(null)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:300,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:360,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:18,padding:"22px 20px"}}>
+            <div style={{fontSize:"1.05rem",fontWeight:900,marginBottom:8}}>Delete {del.kind}?</div>
+            <div style={{fontSize:".85rem",color:"var(--text2)",fontWeight:600,lineHeight:1.5,marginBottom:4}}>“{del.name}” will be permanently removed.</div>
+            {del.warn && <div style={{fontSize:".82rem",color:"var(--partial)",fontWeight:700,lineHeight:1.5,marginBottom:4}}>{del.warn}</div>}
+            <div style={{display:"flex",gap:8,marginTop:16}}>
+              <button className="btn-ghost" style={{flex:1,padding:"12px"}} onClick={()=>setDel(null)} disabled={busy}>Cancel</button>
+              <button style={{flex:1,padding:"12px",background:"var(--red)",border:"none",borderRadius:12,color:"#fff",fontWeight:800,cursor:"pointer"}} onClick={confirmDelete} disabled={busy}>{busy?"…":"Delete"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 function PgGroups({ biz, onBack }) {
   const [sel, setSel] = useState(null);
   const DAYS = [["Monday","Mon"],["Tuesday","Tue"],["Wednesday","Wed"],["Thursday","Thu"],["Friday","Fri"],["Saturday","Sat"],["Sunday","Sun"]];
@@ -1421,17 +1643,19 @@ function PgGroups({ biz, onBack }) {
     return { day:normDay(s.day), sm, em };
   };
 
-  const sig = (sched)=>(sched||[]).map(s=>{const m=slotMin(s); return (s.day||"")+">"+(m?m.sm+"-"+m.em:"none");}).sort().join("|");
-  const smap = {};
-  Object.values(biz.cards||{}).forEach(c=>{
-    const name=(c.groupName||"").trim(); if(!name) return;
-    const key=name+"@@"+sig(c.lessonSchedule);
-    if(!smap[key]) smap[key]={ key, name, schedule:(c.lessonSchedule||[]), students:[] };
-    smap[key].students.push(c.name||"Unnamed");
-  });
-  const names=[...new Set(Object.values(smap).map(s=>s.name))].sort((a,b)=>a.localeCompare(b));
-  const colorOf={}; names.forEach((n,i)=>{colorOf[n]=COLORS[i%COLORS.length];});
-  const sessions=Object.values(smap).map(s=>({ ...s, color:colorOf[s.name] })).sort((a,b)=>a.name.localeCompare(b.name)||a.key.localeCompare(b.key));
+  // Render one session per REAL group (from the groups table) — its schedule is
+  // the single source of truth, so a group is one clean block per scheduled slot
+  // (no more scattered per-student blocks).
+  const groups = biz.groups || [];
+  const allCards = Object.values(biz.cards || {});
+  const teacherName = (id)=>{ const t=(biz.teachers||[]).find(x=>x.id===id); return t ? t.name : null; };
+  // Students belong to a group by group_id; legacy students (no group_id) match
+  // by their old free-text group_name so they still appear until reassigned.
+  const studentsOf = (g)=> allCards.filter(c=> c.groupId ? c.groupId===g.id : ((c.groupName||"").trim()===(g.name||"").trim())).map(c=>c.name||"Unnamed");
+  // Stable color per group id, assigned in alphabetical name order.
+  const ordered = [...groups].sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+  const colorOf = {}; ordered.forEach((g,i)=>{ colorOf[g.id] = COLORS[i%COLORS.length]; });
+  const sessions = ordered.map(g=>({ key:g.id, name:g.name||"", schedule:g.schedule||[], teacherId:g.teacher_id||null, color:colorOf[g.id], students:studentsOf(g) }));
 
   // Visible window defaults to 16:00–21:00, but auto-fits (expands) to include
   // any session whose times fall outside that band — so no group is ever
@@ -1483,6 +1707,10 @@ function PgGroups({ biz, onBack }) {
   // covers both a missing/unparseable schedule and an unrecognized day — so a
   // group can never be silently invisible again.
   const noSched = [...new Set(sessions.filter(g=>!rendered.has(g.key)).map(g=>g.name))];
+  // Legacy students still on a free-text group_name that has no matching real
+  // group — surfaced so they can be reassigned in Manage (not lost silently).
+  const realNames = new Set(groups.map(g=>(g.name||"").trim()));
+  const legacyGroups = [...new Set(allCards.filter(c=>!c.groupId && (c.groupName||"").trim() && !realNames.has((c.groupName||"").trim())).map(c=>(c.groupName||"").trim()))];
 
   return (
     <div className="page">
@@ -1492,7 +1720,7 @@ function PgGroups({ biz, onBack }) {
         <div style={{width:24}} />
       </div>
       {sessions.length===0 ? (
-        <div className="empty">No groups yet. Set a Group Name &amp; Lesson Schedule in a student's Settings.</div>
+        <div className="empty">No groups yet. Create groups in Settings → 🗂️ Manage.</div>
       ) : (
         <div className="section">
           <div style={{fontSize:".72rem",color:"var(--text2)",fontWeight:600,marginBottom:12,lineHeight:1.5}}>Weekly schedule, {String(START_H).padStart(2,"0")+":00"}–{String(END_H).padStart(2,"0")+":00"}. Tap a block for details.</div>
@@ -1533,6 +1761,7 @@ function PgGroups({ biz, onBack }) {
                   <span style={{width:12,height:12,borderRadius:4,background:selG.color,flexShrink:0}} />
                   <div style={{fontSize:"1.05rem",fontWeight:900}}>{selG.name}</div>
                 </div>
+                <div style={{fontSize:".78rem",color:"var(--text2)",fontWeight:700,marginBottom:4}}>{teacherName(selG.teacherId) ? ("👤 "+teacherName(selG.teacherId)) : "No teacher"}</div>
                 <div style={{fontSize:".82rem",color:"var(--text2)",fontWeight:700,marginBottom:12}}>{schedStr||"No schedule set"}</div>
                 <div style={{fontSize:".62rem",fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".12em",marginBottom:8}}>Students ({selG.students.length})</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
@@ -1544,6 +1773,9 @@ function PgGroups({ biz, onBack }) {
 
           {noSched.length>0 && (
             <div style={{marginTop:16,fontSize:".72rem",color:"var(--text3)",fontWeight:600,lineHeight:1.5}}>No schedule set: {noSched.join(", ")}</div>
+          )}
+          {legacyGroups.length>0 && (
+            <div style={{marginTop:8,fontSize:".72rem",color:"var(--text3)",fontWeight:600,lineHeight:1.5}}>Legacy groups (reassign students in 🗂️ Manage): {legacyGroups.join(", ")}</div>
           )}
         </div>
       )}
@@ -1644,6 +1876,10 @@ function App() {
   const card = biz && cardId ? biz.cards[cardId] : null;
 
   async function refresh(){ try{ const b=await loadMyBusiness(); if(b){setDb({businesses:{[b.id]:b}});} }catch(e){} }
+  async function doSaveTeacher(t){ const name=(t.name||"").trim(); if(!name){ pop("Enter a teacher name","err"); return false; } let error; if(t.id){ ({error}=await sb.from("teachers").update({name}).eq("id",t.id)); } else { ({error}=await sb.from("teachers").insert({business_id:bizId,name})); } if(error){ pop(error.message,"err"); return false; } await refresh(); return true; }
+  async function doDeleteTeacher(id){ const { error }=await sb.from("teachers").delete().eq("id",id); if(error){ pop(error.message,"err"); return false; } await refresh(); return true; }
+  async function doSaveGroup(g){ const name=(g.name||"").trim(); if(!name){ pop("Enter a group name","err"); return false; } const row={ name, schedule:(g.schedule||[]).filter(r=>r.day&&r.start_time), teacher_id:g.teacher_id||null }; let error; if(g.id){ ({error}=await sb.from("groups").update(row).eq("id",g.id)); } else { ({error}=await sb.from("groups").insert({business_id:bizId,name:row.name,schedule:row.schedule,teacher_id:row.teacher_id})); } if(error){ pop(/duplicate|unique/i.test(error.message)?"A group with that name already exists.":error.message,"err"); return false; } await refresh(); return true; }
+  async function doDeleteGroup(id){ const { error }=await sb.from("groups").delete().eq("id",id); if(error){ pop(error.message,"err"); return false; } await refresh(); return true; }
 
   async function doLogout(){ await sb.auth.signOut(); setBizId(null); setDb({businesses:{}}); setMyCards([]); setChildren([]); setDashFilter("all"); setDashSort("name"); setApproval(null); setMode("teacher"); setView("landing"); }
 
@@ -1727,9 +1963,9 @@ function App() {
   async function doAddCard(data){
     if(!data.name.trim()){ pop("Enter a name","err"); return; }
     const shareCode=genShareCode(), pin=genPin();
-    const { data: ins, error } = await sb.from("cards").insert({ business_id:bizId, name:data.name.trim(), level:data.level||null, share_code:shareCode, pin, phone:data.phone||null, preferred_channel:data.preferredChannel||"whatsapp", language:data.language||"EN", enrollment_start_month:data.enrollmentStart||null, group_name:data.groupName||null, lesson_schedule:data.lessonSchedule||[], payments:{}, history:[] }).select("id").single();
+    const { data: ins, error } = await sb.from("cards").insert({ business_id:bizId, name:data.name.trim(), level:data.level||null, share_code:shareCode, pin, phone:data.phone||null, preferred_channel:data.preferredChannel||"whatsapp", language:data.language||"EN", enrollment_start_month:data.enrollmentStart||null, group_id:data.groupId||null, lesson_schedule:data.lessonSchedule||[], payments:{}, history:[] }).select("id").single();
     if(error){ pop(error.message,"err"); return; }
-    const newCard={id:ins.id,name:data.name.trim(),level:data.level||null,shareCode,pin,phone:data.phone||"",preferredChannel:data.preferredChannel||"whatsapp",language:data.language||"EN",enrollmentStart:data.enrollmentStart||null,groupName:data.groupName||"",lessonSchedule:data.lessonSchedule||[],pausedMonths:[],feeHistory:[],payments:{},history:[]};
+    const newCard={id:ins.id,name:data.name.trim(),level:data.level||null,shareCode,pin,phone:data.phone||"",preferredChannel:data.preferredChannel||"whatsapp",language:data.language||"EN",enrollmentStart:data.enrollmentStart||null,groupId:data.groupId||null,groupName:"",lessonSchedule:data.lessonSchedule||[],pausedMonths:[],feeHistory:[],payments:{},history:[]};
     setDb(d=>({businesses:{...d.businesses,[bizId]:{...d.businesses[bizId],cards:{...d.businesses[bizId].cards,[ins.id]:newCard}}}}));
     setRevealCard(newCard); setView("reveal");
   }
@@ -1746,6 +1982,7 @@ function App() {
     if("enrollmentStart" in updates) patch.enrollment_start_month=updates.enrollmentStart;
     if("pausedMonths" in updates) patch.paused_months=updates.pausedMonths;
     if("feeHistory" in updates) patch.fee_history=updates.feeHistory;
+    if("groupId" in updates) patch.group_id=updates.groupId;
     if("groupName" in updates) patch.group_name=updates.groupName;
     if("lessonSchedule" in updates) patch.lesson_schedule=updates.lessonSchedule;
     const { error } = await sb.from("cards").update(patch).eq("id",cardId);
@@ -1821,7 +2058,7 @@ function App() {
         {view==="register" && <PgRegister onBack={()=>setView("login")} onCreated={onRegistered} />}
         {view==="student" && <PgStudent onBack={()=>setView("landing")} />}
         {view==="parentAuth" && <PgParentAuth onBack={()=>setView("landing")} />}
-        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);setView("card");}} onAdd={()=>setView("addCard")} onMonths={()=>setView("months")} onLevels={()=>setView("levels")} onCustomCard={()=>setView("customCard")} onExport={()=>setView("export")} onRemind={()=>setView("remind")} onFamily={()=>{setMode("parent");setView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>setView("announcements")} onGroups={()=>setView("groups")} />}
+        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);setView("card");}} onAdd={()=>setView("addCard")} onMonths={()=>setView("months")} onLevels={()=>setView("levels")} onCustomCard={()=>setView("customCard")} onExport={()=>setView("export")} onRemind={()=>setView("remind")} onFamily={()=>{setMode("parent");setView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>setView("announcements")} onGroups={()=>setView("groups")} onManage={()=>setView("manage")} />}
         {view==="addCard" && biz && <PgAddCard biz={biz} onBack={()=>setView("dashboard")} onCreate={doAddCard} />}
         {view==="reveal" && revealCard && <PgReveal card={revealCard} onDone={()=>{setRevealCard(null);setView("dashboard");}} />}
         {view==="card" && biz && card && <PgCard biz={biz} card={card} onBack={()=>setView("dashboard")} onUpdate={doUpdateCard} onRemove={doRemoveCard} />}
@@ -1832,6 +2069,7 @@ function App() {
         {view==="remind" && biz && <PgRemind biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="announcements" && biz && <PgAnnouncements biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="groups" && biz && <PgGroups biz={biz} onBack={()=>setView("dashboard")} />}
+        {view==="manage" && biz && <PgManage biz={biz} onBack={()=>setView("dashboard")} onSaveTeacher={doSaveTeacher} onDeleteTeacher={doDeleteTeacher} onSaveGroup={doSaveGroup} onDeleteGroup={doDeleteGroup} />}
         </>}
         {toast && <div className={"toast t-"+toast.type}>{toast.msg}</div>}
       </div>
