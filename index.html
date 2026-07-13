@@ -1519,8 +1519,81 @@ function suggestPhoneColumn(headers, exclude) {
   return null;
 }
 
+function normalizePhone(raw) {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  // Keep digits and a leading '+' only; drop spaces, dashes, dots, parens, etc.
+  const cleaned = s.replace(/[^\d+]/g, "");
+  const hasPlus = cleaned.charAt(0) === "+";
+  const digits = cleaned.replace(/\+/g, "");
+  if (!digits) return null;
+
+  let intl = null; // full international digits, no '+'
+  if (hasPlus) {
+    intl = digits;
+  } else if (digits.slice(0, 2) === "00") {
+    intl = digits.slice(2); // "00" international dialing prefix used instead of '+'
+  } else if (digits.length === 8) {
+    intl = "357" + digits; // Cyprus local (mobiles start 9, landlines 2, etc.)
+  } else if (digits.length === 10 && (digits.charAt(0) === "6" || digits.charAt(0) === "2")) {
+    intl = "30" + digits; // Greek local (mobiles start 6, landlines start 2)
+  } else if (digits.length === 11 && digits.slice(0, 3) === "357") {
+    intl = digits; // CY country code present but Excel dropped the leading 00 (numeric cell)
+  } else if (digits.length === 12 && digits.slice(0, 2) === "30") {
+    intl = digits; // same, for Greece
+  }
+  if (!intl || intl.length < 8 || intl.length > 15 || !/^\d+$/.test(intl)) return null;
+  return "+" + intl;
+}
+
+// Turns raw parsed rows into validated import rows. Runs top-to-bottom so
+// duplicate detection sees earlier rows (and pre-existing students) before
+// later ones — order matters for which occurrence gets flagged.
+function buildImportRows(rawRows, headers, nameCol, phoneCol, feeCol, overrides, existingPhones) {
+  const nI = nameCol === "" ? null : parseInt(nameCol, 10);
+  const pI = phoneCol === "" ? null : parseInt(phoneCol, 10);
+  const fI = feeCol === "" ? null : parseInt(feeCol, 10);
+  const seen = new Set(existingPhones);
+  const out = [];
+  const matchesHeader = (col, val) => col != null && normalizeHeader(val) !== "" && normalizeHeader(headers[col]) === normalizeHeader(val);
+
+  rawRows.forEach((r, idx) => {
+    const ov = overrides[idx] || {};
+    const rawName = ov.name != null ? ov.name : (nI != null ? r[nI] : "");
+    const rawPhone = ov.phone != null ? ov.phone : (pI != null ? r[pI] : "");
+    const rawFee = ov.fee != null ? ov.fee : (fI != null ? r[fI] : "");
+    const name = String(rawName == null ? "" : rawName).trim();
+    const phoneRaw = String(rawPhone == null ? "" : rawPhone).trim();
+    const phone = normalizePhone(rawPhone);
+    const feeRaw = String(rawFee == null ? "" : rawFee).trim();
+    const feeNum = feeRaw === "" ? null : parseFloat(feeRaw.replace(",", "."));
+    const feeValid = feeRaw === "" || (feeNum != null && !isNaN(feeNum) && feeNum >= 0);
+
+    if (!name && !phoneRaw) return; // fully empty row -> silently excluded
+    if (matchesHeader(nI, rawName) && (pI == null || matchesHeader(pI, rawPhone))) return; // repeated header row -> excluded
+
+    let status;
+    if (!name) status = "missing_name";
+    else if (!phone) status = "missing_phone";
+    else if (seen.has(phone)) status = "duplicate";
+    else status = "ok";
+    if (phone && (status === "ok" || status === "duplicate")) seen.add(phone);
+
+    out.push({ rowIdx: idx, name, phone, phoneRaw, fee: feeValid && feeNum != null ? feeNum : null, feeRaw, feeValid, status });
+  });
+  return out;
+}
+const IMPORT_STATUS_LABEL = {
+  ok: "OK",
+  missing_name: "Missing name / Λείπει το όνομα",
+  missing_phone: "Missing or invalid phone / Λείπει ή μη έγκυρο τηλέφωνο",
+  duplicate: "Duplicate / Διπλότυπο",
+};
+const IMPORT_STATUS_COLOR = { ok: "var(--green)", missing_name: "var(--red)", missing_phone: "var(--red)", duplicate: "var(--partial)" };
+
 function PgImport({ biz, onBack }) {
-  const [step, setStep] = useState("upload"); // 'upload' | 'mapping'
+  const [step, setStep] = useState("upload"); // 'upload' | 'mapping' | 'preview'
   const [fileName, setFileName] = useState("");
   const [headers, setHeaders] = useState([]);   // header row, as-is per column
   const [rows, setRows] = useState([]);         // data rows (array-of-arrays), header excluded
@@ -1530,18 +1603,25 @@ function PgImport({ biz, onBack }) {
   const [groupId, setGroupId] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [staged, setStaged] = useState(false);
   const fileRef = useRef(null);
+
+  // Preview-step state: per-row edits, per-row manual include/exclude, and
+  // which single cell (if any) is currently being edited.
+  const [overrides, setOverrides] = useState({});       // { [rowIdx]: {name?,phone?,fee?} }
+  const [manualInclude, setManualInclude] = useState({}); // { [rowIdx]: boolean } — explicit user toggle
+  const [editing, setEditing] = useState(null);          // { rowIdx, field } | null
+  const [editDraft, setEditDraft] = useState("");
+  const [readyNote, setReadyNote] = useState(false);
 
   function reset() {
     setStep("upload"); setFileName(""); setHeaders([]); setRows([]);
     setNameCol(""); setPhoneCol(""); setFeeCol(""); setGroupId("");
-    setError(""); setStaged(false);
+    setError(""); setOverrides({}); setManualInclude({}); setEditing(null); setReadyNote(false);
   }
 
   function handleFile(file) {
     if (!file) return;
-    setError(""); setBusy(true); setStaged(false);
+    setError(""); setBusy(true);
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
@@ -1565,6 +1645,7 @@ function PgImport({ biz, onBack }) {
         setNameCol(sName != null ? String(sName) : "");
         setPhoneCol(sPhone != null ? String(sPhone) : "");
         setFeeCol(sFee != null ? String(sFee) : "");
+        setOverrides({}); setManualInclude({}); setReadyNote(false);
         setStep("mapping");
       } catch (err) {
         const msg = (err && err.message) || "";
@@ -1582,17 +1663,57 @@ function PgImport({ biz, onBack }) {
   const colLabel = (h, i) => (h != null && String(h).trim()) ? String(h).trim() : ("Column " + (i + 1));
   const canContinue = nameCol !== "" && phoneCol !== "" && !busy;
 
+  // Existing students' phones (normalized the same way) so duplicate
+  // detection compares apples to apples regardless of how they were typed.
+  const existingPhones = React.useMemo(() => {
+    const set = new Set();
+    Object.values(biz.cards || {}).forEach(c => { const n = normalizePhone(c.phone); if (n) set.add(n); });
+    return set;
+  }, [biz.cards]);
+
+  const processedRows = React.useMemo(() => {
+    if (step !== "preview") return [];
+    return buildImportRows(rows, headers, nameCol, phoneCol, feeCol, overrides, existingPhones);
+  }, [step, rows, headers, nameCol, phoneCol, feeCol, overrides, existingPhones]);
+
+  function isIncluded(row) {
+    return Object.prototype.hasOwnProperty.call(manualInclude, row.rowIdx) ? manualInclude[row.rowIdx] : row.status === "ok";
+  }
+  function toggleInclude(row) {
+    setManualInclude(m => ({ ...m, [row.rowIdx]: !isIncluded(row) }));
+  }
+  function startEdit(rowIdx, field, currentValue) {
+    setEditing({ rowIdx, field }); setEditDraft(currentValue == null ? "" : String(currentValue));
+  }
+  function commitEdit() {
+    if (!editing) return;
+    const { rowIdx, field } = editing;
+    setOverrides(o => ({ ...o, [rowIdx]: { ...(o[rowIdx] || {}), [field]: editDraft } }));
+    setManualInclude(m => { if (!(rowIdx in m)) return m; const n = { ...m }; delete n[rowIdx]; return n; }); // re-derive default after an edit
+    setEditing(null);
+  }
+  function cancelEdit() { setEditing(null); }
+
+  const willImport = processedRows.filter(isIncluded).length;
+  const skippedDup = processedRows.filter(r => r.status === "duplicate" && !isIncluded(r)).length;
+  const invalidCount = processedRows.filter(r => (r.status === "missing_name" || r.status === "missing_phone") && !isIncluded(r)).length;
+
+  const cellStyle = { cursor: "pointer", borderBottom: "1px dashed var(--border)", paddingBottom: 1 };
+  const editInpStyle = { padding: "6px 8px", fontSize: ".85rem", fontWeight: 700, width: "100%" };
+
   return (
     <div className="page">
       <div className="topbar">
-        <button className="tb-back" onClick={onBack}>←</button>
+        <button className="tb-back" onClick={step === "preview" ? () => setStep("mapping") : onBack}>←</button>
         <h2>Import Students</h2>
         <div style={{ width: 24 }} />
       </div>
       <div className="section">
-        <div style={{ fontSize: ".72rem", color: "var(--text2)", fontWeight: 600, marginBottom: 16, lineHeight: 1.5 }}>
-          Upload an Excel or CSV file to add many students at once. / Ανεβάστε αρχείο Excel ή CSV για να προσθέσετε πολλούς μαθητές μαζί.
-        </div>
+        {step !== "preview" && (
+          <div style={{ fontSize: ".72rem", color: "var(--text2)", fontWeight: 600, marginBottom: 16, lineHeight: 1.5 }}>
+            Upload an Excel or CSV file to add many students at once. / Ανεβάστε αρχείο Excel ή CSV για να προσθέσετε πολλούς μαθητές μαζί.
+          </div>
+        )}
 
         {step === "upload" && (
           <div className="wsec" style={{ margin: 0 }}>
@@ -1660,10 +1781,83 @@ function PgImport({ biz, onBack }) {
               )}
             </div>
 
-            <button className="btn" disabled={!canContinue} onClick={() => setStaged(true)}>Continue / Συνέχεια</button>
-            {staged && (
+            <button className="btn" disabled={!canContinue} onClick={() => setStep("preview")}>Continue / Συνέχεια</button>
+          </>
+        )}
+
+        {step === "preview" && (
+          <>
+            <div className="wsec" style={{ margin: "0 0 14px" }}>
+              <div style={{ fontSize: ".78rem", color: "var(--text2)", fontWeight: 700, lineHeight: 1.6 }}>
+                <span style={{ color: "var(--green)" }}>{willImport + " will be imported"}</span>
+                {" · "}<span style={{ color: "var(--partial)" }}>{skippedDup + " skipped (duplicates)"}</span>
+                {" · "}<span style={{ color: "var(--red)" }}>{invalidCount + " invalid"}</span>
+                <div style={{ color: "var(--text3)", fontWeight: 600, marginTop: 2 }}>
+                  {willImport + " θα εισαχθούν · " + skippedDup + " παραλείπονται (διπλότυπα) · " + invalidCount + " μη έγκυρα"}
+                </div>
+              </div>
+            </div>
+            <div style={{ fontSize: ".68rem", color: "var(--text3)", fontWeight: 600, marginBottom: 10, lineHeight: 1.5 }}>
+              Tap Name, Phone or Fee to fix a row. / Πατήστε Όνομα, Τηλέφωνο ή Δίδακτρα για διόρθωση.
+            </div>
+
+            {processedRows.map(row => {
+              const included = isIncluded(row);
+              const edName = editing && editing.rowIdx === row.rowIdx && editing.field === "name";
+              const edPhone = editing && editing.rowIdx === row.rowIdx && editing.field === "phone";
+              const edFee = editing && editing.rowIdx === row.rowIdx && editing.field === "fee";
+              return (
+                <div key={row.rowIdx} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "12px 14px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 14, marginBottom: 8, opacity: included ? 1 : .55 }}>
+                  <input type="checkbox" checked={included} onChange={() => toggleInclude(row)} style={{ marginTop: 4, width: 18, height: 18, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ marginBottom: 4 }}>
+                      {edName ? (
+                        <input autoFocus className="ws-inp" style={editInpStyle} value={editDraft} onChange={e => setEditDraft(e.target.value)}
+                          onBlur={commitEdit} onKeyDown={e => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }} />
+                      ) : (
+                        <span onClick={() => startEdit(row.rowIdx, "name", row.name)} style={{ ...cellStyle, fontWeight: 800, fontSize: ".92rem", color: row.name ? "var(--text)" : "var(--text3)" }}>
+                          {row.name || "(no name) / (χωρίς όνομα)"}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ marginBottom: 4 }}>
+                      {edPhone ? (
+                        <input autoFocus className="ws-inp" style={editInpStyle} value={editDraft} onChange={e => setEditDraft(e.target.value)}
+                          onBlur={commitEdit} onKeyDown={e => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }} />
+                      ) : (
+                        <span onClick={() => startEdit(row.rowIdx, "phone", row.phoneRaw)} style={{ ...cellStyle, fontSize: ".82rem", fontWeight: 700, color: row.phone ? "var(--text2)" : "var(--red)" }}>
+                          {row.phone || (row.phoneRaw ? (row.phoneRaw + " ⚠") : "(no phone) / (χωρίς τηλέφωνο)")}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      {edFee ? (
+                        <input autoFocus className="ws-inp" style={editInpStyle} value={editDraft} onChange={e => setEditDraft(e.target.value)}
+                          onBlur={commitEdit} onKeyDown={e => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }} />
+                      ) : (
+                        <span onClick={() => startEdit(row.rowIdx, "fee", row.feeRaw)} style={{ ...cellStyle, fontSize: ".78rem", fontWeight: 700, color: "var(--text2)" }}>
+                          {row.fee != null ? ("€" + row.fee) : (row.feeRaw && !row.feeValid ? (row.feeRaw + " ⚠ (using default)") : ("Default (€" + biz.fee + ")"))}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ flexShrink: 0, textAlign: "right" }}>
+                    <span style={{ fontSize: ".62rem", fontWeight: 800, color: IMPORT_STATUS_COLOR[row.status], textTransform: "uppercase", letterSpacing: ".06em" }}>{row.status === "ok" ? "OK" : IMPORT_STATUS_LABEL[row.status].split(" / ")[0]}</span>
+                  </div>
+                </div>
+              );
+            })}
+
+            {processedRows.length === 0 && (
+              <div className="empty">No usable rows found in this file. / Δεν βρέθηκαν χρησιμοποιήσιμες γραμμές.</div>
+            )}
+
+            <button className="btn" style={{ marginTop: 8 }} disabled={willImport === 0} onClick={() => setReadyNote(true)}>
+              {"Import " + willImport + " Students / Εισαγωγή " + willImport + " Μαθητών"}
+            </button>
+            {readyNote && (
               <div className="info-box" style={{ marginTop: 12 }}>
-                ✅ Mapping captured — Name, Phone{feeCol !== "" ? ", Fee" : ""}{groupId ? ", Group" : ""}. Preview &amp; Import (Stage 2/3) will be added next. / Η αντιστοίχιση καταγράφηκε. Η προεπισκόπηση και εισαγωγή έρχονται στα επόμενα στάδια.
+                ✅ Ready — {willImport} students validated and ready to go. The actual batch import (Stage 3) will be added next. / Έτοιμα προς εισαγωγή {willImport} — η πραγματική εισαγωγή έρχεται στο επόμενο στάδιο.
               </div>
             )}
           </>
