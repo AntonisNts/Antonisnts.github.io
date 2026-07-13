@@ -1547,14 +1547,20 @@ function normalizePhone(raw) {
   return "+" + intl;
 }
 
+// A phone number alone does NOT identify a duplicate: siblings routinely
+// share a parent's phone, so two different students with the same number are
+// normal, not an error. A duplicate is the same phone AND the same name —
+// i.e. the same student's row entered twice.
+function importDupeKey(phone, name) { return phone + "||" + normalizeHeader(name); }
+
 // Turns raw parsed rows into validated import rows. Runs top-to-bottom so
 // duplicate detection sees earlier rows (and pre-existing students) before
 // later ones — order matters for which occurrence gets flagged.
-function buildImportRows(rawRows, headers, nameCol, phoneCol, feeCol, overrides, existingPhones) {
+function buildImportRows(rawRows, headers, nameCol, phoneCol, feeCol, overrides, existingKeys) {
   const nI = nameCol === "" ? null : parseInt(nameCol, 10);
   const pI = phoneCol === "" ? null : parseInt(phoneCol, 10);
   const fI = feeCol === "" ? null : parseInt(feeCol, 10);
-  const seen = new Set(existingPhones);
+  const seen = new Set(existingKeys);
   const out = [];
   const matchesHeader = (col, val) => col != null && normalizeHeader(val) !== "" && normalizeHeader(headers[col]) === normalizeHeader(val);
 
@@ -1576,9 +1582,9 @@ function buildImportRows(rawRows, headers, nameCol, phoneCol, feeCol, overrides,
     let status;
     if (!name) status = "missing_name";
     else if (!phone) status = "missing_phone";
-    else if (seen.has(phone)) status = "duplicate";
+    else if (seen.has(importDupeKey(phone, name))) status = "duplicate";
     else status = "ok";
-    if (phone && (status === "ok" || status === "duplicate")) seen.add(phone);
+    if (phone && (status === "ok" || status === "duplicate")) seen.add(importDupeKey(phone, name));
 
     out.push({ rowIdx: idx, name, phone, phoneRaw, fee: feeValid && feeNum != null ? feeNum : null, feeRaw, feeValid, status });
   });
@@ -1665,16 +1671,16 @@ function PgImport({ biz, onBack }) {
 
   // Existing students' phones (normalized the same way) so duplicate
   // detection compares apples to apples regardless of how they were typed.
-  const existingPhones = React.useMemo(() => {
+  const existingKeys = React.useMemo(() => {
     const set = new Set();
-    Object.values(biz.cards || {}).forEach(c => { const n = normalizePhone(c.phone); if (n) set.add(n); });
+    Object.values(biz.cards || {}).forEach(c => { const n = normalizePhone(c.phone); if (n) set.add(importDupeKey(n, c.name || "")); });
     return set;
   }, [biz.cards]);
 
   const processedRows = React.useMemo(() => {
     if (step !== "preview") return [];
-    return buildImportRows(rows, headers, nameCol, phoneCol, feeCol, overrides, existingPhones);
-  }, [step, rows, headers, nameCol, phoneCol, feeCol, overrides, existingPhones]);
+    return buildImportRows(rows, headers, nameCol, phoneCol, feeCol, overrides, existingKeys);
+  }, [step, rows, headers, nameCol, phoneCol, feeCol, overrides, existingKeys]);
 
   function isIncluded(row) {
     return Object.prototype.hasOwnProperty.call(manualInclude, row.rowIdx) ? manualInclude[row.rowIdx] : row.status === "ok";
