@@ -1598,7 +1598,7 @@ const IMPORT_STATUS_LABEL = {
 };
 const IMPORT_STATUS_COLOR = { ok: "var(--green)", missing_name: "var(--red)", missing_phone: "var(--red)", duplicate: "var(--partial)" };
 
-function PgImport({ biz, onBack }) {
+function PgImport({ biz, onBack, onImport }) {
   const [step, setStep] = useState("upload"); // 'upload' | 'mapping' | 'preview'
   const [fileName, setFileName] = useState("");
   const [headers, setHeaders] = useState([]);   // header row, as-is per column
@@ -1617,12 +1617,15 @@ function PgImport({ biz, onBack }) {
   const [manualInclude, setManualInclude] = useState({}); // { [rowIdx]: boolean } — explicit user toggle
   const [editing, setEditing] = useState(null);          // { rowIdx, field } | null
   const [editDraft, setEditDraft] = useState("");
-  const [readyNote, setReadyNote] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null); // {ok:true,count} | {ok:false,error} | null
+  const [importedCount, setImportedCount] = useState(0);
 
   function reset() {
     setStep("upload"); setFileName(""); setHeaders([]); setRows([]);
     setNameCol(""); setPhoneCol(""); setFeeCol(""); setGroupId("");
-    setError(""); setOverrides({}); setManualInclude({}); setEditing(null); setReadyNote(false);
+    setError(""); setOverrides({}); setManualInclude({}); setEditing(null);
+    setImporting(false); setImportResult(null); setImportedCount(0);
   }
 
   function handleFile(file) {
@@ -1651,7 +1654,7 @@ function PgImport({ biz, onBack }) {
         setNameCol(sName != null ? String(sName) : "");
         setPhoneCol(sPhone != null ? String(sPhone) : "");
         setFeeCol(sFee != null ? String(sFee) : "");
-        setOverrides({}); setManualInclude({}); setReadyNote(false);
+        setOverrides({}); setManualInclude({}); setImportResult(null);
         setStep("mapping");
       } catch (err) {
         const msg = (err && err.message) || "";
@@ -1700,6 +1703,36 @@ function PgImport({ biz, onBack }) {
   }
   function cancelEdit() { setEditing(null); }
 
+  async function doImport() {
+    const toImport = processedRows.filter(isIncluded);
+    if (!toImport.length || importing) return;
+    setImporting(true); setImportResult(null);
+    const nowYm = nowYM();
+    const usedCodes = new Set();
+    const payload = toImport.map(row => {
+      let code; do { code = genShareCode(); } while (usedCodes.has(code)); usedCodes.add(code);
+      return {
+        business_id: biz.id,
+        name: row.name,
+        level: null,
+        share_code: code,
+        pin: genPin(),
+        phone: row.phone,
+        preferred_channel: "whatsapp",
+        language: "EN",
+        enrollment_start_month: nowYm,
+        group_id: groupId || null,
+        lesson_schedule: [],
+        fee_history: row.fee != null ? [{ from: 0, fee: row.fee }] : [],
+        payments: {},
+        history: [],
+      };
+    });
+    const result = await onImport(payload);
+    setImporting(false); setImportResult(result);
+    if (result && result.ok) { setImportedCount(result.count); setStep("done"); }
+  }
+
   const willImport = processedRows.filter(isIncluded).length;
   const skippedDup = processedRows.filter(r => r.status === "duplicate" && !isIncluded(r)).length;
   const invalidCount = processedRows.filter(r => (r.status === "missing_name" || r.status === "missing_phone") && !isIncluded(r)).length;
@@ -1715,7 +1748,7 @@ function PgImport({ biz, onBack }) {
         <div style={{ width: 24 }} />
       </div>
       <div className="section">
-        {step !== "preview" && (
+        {(step === "upload" || step === "mapping") && (
           <div style={{ fontSize: ".72rem", color: "var(--text2)", fontWeight: 600, marginBottom: 16, lineHeight: 1.5 }}>
             Upload an Excel or CSV file to add many students at once. / Ανεβάστε αρχείο Excel ή CSV για να προσθέσετε πολλούς μαθητές μαζί.
           </div>
@@ -1858,15 +1891,28 @@ function PgImport({ biz, onBack }) {
               <div className="empty">No usable rows found in this file. / Δεν βρέθηκαν χρησιμοποιήσιμες γραμμές.</div>
             )}
 
-            <button className="btn" style={{ marginTop: 8 }} disabled={willImport === 0} onClick={() => setReadyNote(true)}>
-              {"Import " + willImport + " Students / Εισαγωγή " + willImport + " Μαθητών"}
+            <button className="btn" style={{ marginTop: 8 }} disabled={willImport === 0 || importing} onClick={doImport}>
+              {importing ? "Importing… / Εισαγωγή…" : ("Import " + willImport + " Students / Εισαγωγή " + willImport + " Μαθητών")}
             </button>
-            {readyNote && (
-              <div className="info-box" style={{ marginTop: 12 }}>
-                ✅ Ready — {willImport} students validated and ready to go. The actual batch import (Stage 3) will be added next. / Έτοιμα προς εισαγωγή {willImport} — η πραγματική εισαγωγή έρχεται στο επόμενο στάδιο.
+            {importResult && !importResult.ok && (
+              <div className="err" style={{ marginTop: 12 }}>
+                Import failed — nothing was imported, your file is unchanged. / Η εισαγωγή απέτυχε — δεν έγινε καμία αλλαγή.
+                <div style={{ marginTop: 4, fontWeight: 600 }}>{importResult.error}</div>
               </div>
             )}
           </>
+        )}
+
+        {step === "done" && (
+          <div className="wsec" style={{ margin: 0, textAlign: "center" }}>
+            <div style={{ fontSize: "2.2rem", marginBottom: 8 }}>✅</div>
+            <div style={{ fontSize: "1.1rem", fontWeight: 900, marginBottom: 6 }}>{importedCount + " Students Imported"}</div>
+            <div style={{ fontSize: ".78rem", color: "var(--text2)", fontWeight: 600, lineHeight: 1.6, marginBottom: 20 }}>
+              {importedCount + " μαθητές εισήχθησαν επιτυχώς. Each student got a share code and PIN, visible on their card. / Κάθε μαθητής απέκτησε κωδικό και PIN, ορατά στην κάρτα του."}
+            </div>
+            <button className="btn" onClick={onBack}>Done / Τέλος</button>
+            <button className="btn-ghost" onClick={reset}>Import More / Εισαγωγή Περισσότερων</button>
+          </div>
         )}
       </div>
     </div>
@@ -2357,8 +2403,27 @@ function App() {
     setDb(d=>({businesses:{...d.businesses,[bizId]:{...d.businesses[bizId],cards:{...d.businesses[bizId].cards,[ins.id]:newCard}}}}));
     setRevealCard(newCard); setView("reveal");
   }
+  // Bulk import batch insert. `payload` rows are fully-formed by PgImport
+  // (which owns the mapping/defaults); this just does the single atomic
+  // multi-row insert and merges the results into local state, mirroring
+  // doAddCard's optimistic-update shape. A single INSERT with N value rows is
+  // one SQL statement — if ANY row violates a constraint, Postgres rolls the
+  // whole statement back and NOTHING is inserted, which is what gives this
+  // its all-or-nothing guarantee without a separate RPC/transaction.
+  async function doImportStudents(payload) {
+    const { data: ins, error } = await sb.from("cards").insert(payload).select("id, share_code");
+    if (error) return { ok:false, error: error.message || "Import failed." };
+    const byCode = {}; payload.forEach(p => { byCode[p.share_code] = p; });
+    const newCards = {};
+    ins.forEach(row => {
+      const p = byCode[row.share_code]; if (!p) return;
+      newCards[row.id] = { id:row.id, name:p.name, level:null, shareCode:p.share_code, pin:p.pin, phone:p.phone||"", preferredChannel:p.preferred_channel, language:p.language, enrollmentStart:p.enrollment_start_month, groupId:p.group_id, groupName:"", lessonSchedule:[], pausedMonths:[], feeHistory:p.fee_history||[], payments:{}, history:[] };
+    });
+    setDb(d=>({businesses:{...d.businesses,[bizId]:{...d.businesses[bizId],cards:{...d.businesses[bizId].cards,...newCards}}}}));
+    return { ok:true, count: ins.length };
+  }
 
-  async function doUpdateCard(updates){
+async function doUpdateCard(updates){
     setDb(d=>({businesses:{...d.businesses,[bizId]:{...d.businesses[bizId],cards:{...d.businesses[bizId].cards,[cardId]:{...d.businesses[bizId].cards[cardId],...updates}}}}}));
     const patch={};
     if("payments" in updates) patch.payments=updates.payments;
@@ -2448,7 +2513,7 @@ function App() {
         {view==="parentAuth" && <PgParentAuth onBack={()=>setView("landing")} />}
         {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);setView("card");}} onAdd={()=>setView("addCard")} onMonths={()=>setView("months")} onLevels={()=>setView("levels")} onCustomCard={()=>setView("customCard")} onExport={()=>setView("export")} onRemind={()=>setView("remind")} onFamily={()=>{setMode("parent");setView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>setView("announcements")} onGroups={()=>setView("groups")} onManage={()=>setView("manage")} onImport={()=>setView("import")} />}
         {view==="addCard" && biz && <PgAddCard biz={biz} onBack={()=>setView("dashboard")} onCreate={doAddCard} />}
-        {view==="import" && biz && <PgImport biz={biz} onBack={()=>setView("dashboard")} />}
+        {view==="import" && biz && <PgImport biz={biz} onBack={()=>setView("dashboard")} onImport={doImportStudents} />}
         {view==="reveal" && revealCard && <PgReveal card={revealCard} onDone={()=>{setRevealCard(null);setView("dashboard");}} />}
         {view==="card" && biz && card && <PgCard biz={biz} card={card} onBack={()=>setView("dashboard")} onUpdate={doUpdateCard} onRemove={doRemoveCard} />}
         {view==="months" && biz && <PgManageMonths biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveMonths} />}
