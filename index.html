@@ -23,6 +23,7 @@
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
 <script>
   // Force the classic JSX runtime (React.createElement via the React UMD
@@ -419,7 +420,7 @@ async function loadMyAnnouncements() {
       <button className="btn" style={{marginTop:8}} onClick={doCreate} disabled={busy}>{busy?"…":"Create Business"}</button>
     </div>
   );
-}  function PgDashboard({ biz, onCard, onAdd, onMonths, onLevels, onCustomCard, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [viewBy, setViewBy] = useState("all");   const [collapsed, setCollapsed] = useState({});   let touchStartY = 0;   const p = getPal(biz.type);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const hasImg = !!biz.customCardImage;   const headerBg = hasImg ? "#000" : "linear-gradient(135deg,"+p.bg1+","+p.bg2+")";    const filtered = allCards     .filter(c=>{       if (levelFilter==="all") return true;       if (levelFilter==="none") return !c.level;       return c.level && c.level.id===levelFilter;     })     .filter(c=>!search||(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.shareCode||"").toLowerCase().includes(search.toLowerCase()))     .sort((a,b)=>{       if (sort==="owed") {         const oA=getStudentMonthStatus(a,biz,year).owedTotal;         const oB=getStudentMonthStatus(b,biz,year).owedTotal;         return oB-oA;       }       if (sort==="progress") { return monthsPaid(b.payments||{},year,inactive.concat(b.pausedMonths||[]),b.enrollmentStart)-monthsPaid(a.payments||{},year,inactive.concat(a.pausedMonths||[]),a.enrollmentStart); }       return (a.name||"").localeCompare(b.name||"");     });
+}  function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [viewBy, setViewBy] = useState("all");   const [collapsed, setCollapsed] = useState({});   let touchStartY = 0;   const p = getPal(biz.type);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const hasImg = !!biz.customCardImage;   const headerBg = hasImg ? "#000" : "linear-gradient(135deg,"+p.bg1+","+p.bg2+")";    const filtered = allCards     .filter(c=>{       if (levelFilter==="all") return true;       if (levelFilter==="none") return !c.level;       return c.level && c.level.id===levelFilter;     })     .filter(c=>!search||(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.shareCode||"").toLowerCase().includes(search.toLowerCase()))     .sort((a,b)=>{       if (sort==="owed") {         const oA=getStudentMonthStatus(a,biz,year).owedTotal;         const oB=getStudentMonthStatus(b,biz,year).owedTotal;         return oB-oA;       }       if (sort==="progress") { return monthsPaid(b.payments||{},year,inactive.concat(b.pausedMonths||[]),b.enrollmentStart)-monthsPaid(a.payments||{},year,inactive.concat(a.pausedMonths||[]),a.enrollmentStart); }       return (a.name||"").localeCompare(b.name||"");     });
 
   // Grouped dashboard sections (View by Group / Teacher). Students attach to a
   // real group by group_id (legacy free-text group_name matches by name so
@@ -464,7 +465,7 @@ async function loadMyAnnouncements() {
     });
   }
 
-  return (     <div className="page">       <div style={{margin:"16px 16px 14px",borderRadius:20,overflow:"hidden",position:"relative",background:headerBg,boxShadow:"0 6px 24px rgba(0,0,0,.4)"}}>         {hasImg && <img src={biz.customCardImage} alt="" style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%",objectFit:"cover",opacity:0.4}} />}         <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"linear-gradient(180deg,rgba(0,0,0,.4) 0%,rgba(0,0,0,.7) 100%)"}} />         <div style={{position:"relative",zIndex:2,padding:"18px 20px 14px",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>           <div>             <div style={{fontSize:".68rem",fontWeight:800,color:p.acc,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}}>{p.icon} {biz.type}</div>             <div style={{fontSize:"1.4rem",fontWeight:900,color:"#fff",marginBottom:3}}>{biz.name}</div>             <div style={{fontSize:".75rem",color:"rgba(255,255,255,.5)",fontWeight:700}}>{biz.bizCode}</div>           </div>           <div style={{display:"flex",gap:8}}><button onClick={()=>setSheet(true)} aria-label="Settings" style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontSize:".95rem",lineHeight:1,cursor:"pointer",padding:"6px 10px",borderRadius:20}}>⚙️</button>{showFamily && <button onClick={onFamily} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontFamily:"var(--f)",fontSize:".75rem",fontWeight:800,cursor:"pointer",padding:"6px 14px",borderRadius:20}}>Family</button>}<button onClick={onLogout} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontFamily:"var(--f)",fontSize:".75rem",fontWeight:800,cursor:"pointer",padding:"6px 14px",borderRadius:20}}>out</button></div>         </div>         <div style={{position:"relative",zIndex:2,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",borderTop:"1px solid rgba(255,255,255,.1)"}}>           <div style={{padding:"12px 8px",textAlign:"center",borderRight:"1px solid rgba(255,255,255,.1)"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:"#fff"}}>{allCards.length}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>STUDENTS</div>           </div>           <div style={{padding:"12px 8px",textAlign:"center",borderRight:"1px solid rgba(255,255,255,.1)"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:p.acc}}>{paidNow+"/"+allCards.length}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>{"PAID "+MONTHS[nowIdx].toUpperCase()}</div>           </div>           <div style={{padding:"12px 8px",textAlign:"center"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:"#f87171"}}>{"€"+Math.round(totalOwed)}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>OWED</div>           </div>         </div>       </div>                {sheet && (<div onClick={()=>setSheet(false)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:200,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"flex-end"}}><div onClick={e=>e.stopPropagation()} onTouchStart={e=>{touchStartY=e.touches[0].clientY;}} onTouchEnd={e=>{ if(e.changedTouches[0].clientY-touchStartY>60) setSheet(false); }} style={{width:"100%",maxWidth:430,margin:"0 auto",background:"var(--bg2)",borderTopLeftRadius:24,borderTopRightRadius:24,padding:"10px 0 24px",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,.5)"}}><div style={{width:40,height:5,borderRadius:99,background:"var(--text3)",margin:"0 auto 10px"}} /><div style={{padding:"4px 20px 10px",fontSize:".7rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".16em"}}>Settings</div>{[["📅","Months","Manage active/inactive months",onMonths],["🎓","Levels","Edit student levels & fees",onLevels],["👥","Groups","Weekly schedule by group",onGroups],["🗂️","Manage","Create groups & assign teachers",onManage],["🎨","Card","Choose card design",onCustomCard],["📤","Export","Download payment records",onExport],["🔔","Remind","Send payment reminders",onRemind],["📣","Announcements","Post news to parents & students",onAnnouncements]].map(([ic,lb,st,fn],i)=>(<div key={i} onClick={()=>{setSheet(false); fn&&fn();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>{ic}</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--text)"}}>{lb}</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--text2)",marginTop:1}}>{st}</div></div><div style={{color:"var(--text3)",fontSize:"1.2rem",fontWeight:700}}>›</div></div>))}{onNewYear && (<div style={{height:1,background:"var(--border)",margin:"8px 20px"}} />)}{onNewYear && (<div onClick={()=>{setSheet(false); onNewYear();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>🗓️</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--partial)"}}>{"Start New Year ("+(year+1)+")"}</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--partial)",opacity:.8,marginTop:1}}>Roll over to next year</div></div><div style={{color:"var(--partial)",fontSize:"1.2rem",fontWeight:700,opacity:.7}}>›</div></div>)}{onDeleteAccount && (<div style={{height:1,background:"var(--border)",margin:"8px 20px"}} />)}{onDeleteAccount && (<div onClick={()=>{setSheet(false); onDeleteAccount();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 16px",margin:"2px 14px 0",borderRadius:14,border:"1px solid rgba(239,68,68,.4)",background:"rgba(239,68,68,.08)",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>🗑</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--red)"}}>Delete Business Account</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--red)",opacity:.85,marginTop:1}}>Permanently erase business &amp; data</div></div><div style={{color:"var(--red)",fontSize:"1.2rem",fontWeight:700,opacity:.7}}>›</div></div>)}</div></div>)}<div className="section">         <div className="sec-row">           <div className="sec-title">Students ({allCards.length})</div>           <button className="btn-new" onClick={onAdd}>+ New</button>         </div>         {allCards.length > 0 && hasLevels && (           <div style={{display:"flex",gap:8,marginBottom:14,overflowX:"auto",paddingBottom:4,scrollbarWidth:"none",borderBottom:"1px solid var(--border)",paddingTop:2}}>             <button onClick={()=>setLevelFilter("all")} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter==="all"?"var(--violet)":"var(--border)"),background:levelFilter==="all"?"var(--violet)":"var(--bg2)",color:levelFilter==="all"?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter==="all"?"0 4px 16px rgba(99,102,241,.3)":"none"}}>All Members</button>             {levels.map(lv=>(               <button key={lv.id} onClick={()=>setLevelFilter(lv.id)} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter===lv.id?"var(--violet)":"var(--border)"),background:levelFilter===lv.id?"var(--violet)":"var(--bg2)",color:levelFilter===lv.id?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter===lv.id?"0 4px 16px rgba(99,102,241,.3)":"none"}}>{lv.name}</button>             ))}             {allCards.some(c=>!c.level) && (               <button onClick={()=>setLevelFilter("none")} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter==="none"?"var(--violet)":"var(--border)"),background:levelFilter==="none"?"var(--violet)":"var(--bg2)",color:levelFilter==="none"?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter==="none"?"0 4px 16px rgba(99,102,241,.3)":"none"}}>No Level</button>             )}           </div>         )}         {allCards.length > 0 && (           <>             <div style={{position:"relative",marginBottom:10}}>               <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:"1rem",pointerEvents:"none"}}>🔍</span>               <input style={{width:"100%",background:"var(--bg3)",border:"1px solid var(--border)",borderRadius:14,padding:"11px 14px 11px 38px",fontFamily:"var(--f)",fontSize:".9rem",fontWeight:600,outline:"none",color:"var(--text)"}}                 placeholder="Search by name or code..." value={search} onChange={e=>setSearch(e.target.value)} />               {search && <button onClick={()=>setSearch("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",fontSize:"1rem",cursor:"pointer",color:"var(--text2)"}}>✕</button>}             </div>             <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>               <span style={{fontSize:".72rem",color:"var(--text2)",fontWeight:700,alignSelf:"center"}}>Sort:</span>               {[["name","A–Z"],["owed","Most Owed"],["progress","Most Paid"]].map(([v,l])=>(                 <button key={v} onClick={()=>setSort(v)} style={{padding:"5px 12px",borderRadius:20,border:"none",background:sort===v?"var(--accent)":"var(--bg3)",color:sort===v?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:800,cursor:"pointer"}}>                   {l}                 </button>               ))}             </div>
+  return (     <div className="page">       <div style={{margin:"16px 16px 14px",borderRadius:20,overflow:"hidden",position:"relative",background:headerBg,boxShadow:"0 6px 24px rgba(0,0,0,.4)"}}>         {hasImg && <img src={biz.customCardImage} alt="" style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%",objectFit:"cover",opacity:0.4}} />}         <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"linear-gradient(180deg,rgba(0,0,0,.4) 0%,rgba(0,0,0,.7) 100%)"}} />         <div style={{position:"relative",zIndex:2,padding:"18px 20px 14px",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>           <div>             <div style={{fontSize:".68rem",fontWeight:800,color:p.acc,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}}>{p.icon} {biz.type}</div>             <div style={{fontSize:"1.4rem",fontWeight:900,color:"#fff",marginBottom:3}}>{biz.name}</div>             <div style={{fontSize:".75rem",color:"rgba(255,255,255,.5)",fontWeight:700}}>{biz.bizCode}</div>           </div>           <div style={{display:"flex",gap:8}}><button onClick={()=>setSheet(true)} aria-label="Settings" style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontSize:".95rem",lineHeight:1,cursor:"pointer",padding:"6px 10px",borderRadius:20}}>⚙️</button>{showFamily && <button onClick={onFamily} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontFamily:"var(--f)",fontSize:".75rem",fontWeight:800,cursor:"pointer",padding:"6px 14px",borderRadius:20}}>Family</button>}<button onClick={onLogout} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontFamily:"var(--f)",fontSize:".75rem",fontWeight:800,cursor:"pointer",padding:"6px 14px",borderRadius:20}}>out</button></div>         </div>         <div style={{position:"relative",zIndex:2,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",borderTop:"1px solid rgba(255,255,255,.1)"}}>           <div style={{padding:"12px 8px",textAlign:"center",borderRight:"1px solid rgba(255,255,255,.1)"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:"#fff"}}>{allCards.length}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>STUDENTS</div>           </div>           <div style={{padding:"12px 8px",textAlign:"center",borderRight:"1px solid rgba(255,255,255,.1)"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:p.acc}}>{paidNow+"/"+allCards.length}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>{"PAID "+MONTHS[nowIdx].toUpperCase()}</div>           </div>           <div style={{padding:"12px 8px",textAlign:"center"}}>             <div style={{fontSize:"var(--fs-hero)",fontWeight:900,color:"#f87171"}}>{"€"+Math.round(totalOwed)}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>OWED</div>           </div>         </div>       </div>                {sheet && (<div onClick={()=>setSheet(false)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:200,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"flex-end"}}><div onClick={e=>e.stopPropagation()} onTouchStart={e=>{touchStartY=e.touches[0].clientY;}} onTouchEnd={e=>{ if(e.changedTouches[0].clientY-touchStartY>60) setSheet(false); }} style={{width:"100%",maxWidth:430,margin:"0 auto",background:"var(--bg2)",borderTopLeftRadius:24,borderTopRightRadius:24,padding:"10px 0 24px",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,.5)"}}><div style={{width:40,height:5,borderRadius:99,background:"var(--text3)",margin:"0 auto 10px"}} /><div style={{padding:"4px 20px 10px",fontSize:".7rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".16em"}}>Settings</div>{[["📅","Months","Manage active/inactive months",onMonths],["🎓","Levels","Edit student levels & fees",onLevels],["👥","Groups","Weekly schedule by group",onGroups],["🗂️","Manage","Create groups & assign teachers",onManage],["🎨","Card","Choose card design",onCustomCard],["📤","Export","Download payment records",onExport],["🔔","Remind","Send payment reminders",onRemind],["📣","Announcements","Post news to parents & students",onAnnouncements]].map(([ic,lb,st,fn],i)=>(<div key={i} onClick={()=>{setSheet(false); fn&&fn();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>{ic}</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--text)"}}>{lb}</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--text2)",marginTop:1}}>{st}</div></div><div style={{color:"var(--text3)",fontSize:"1.2rem",fontWeight:700}}>›</div></div>))}{onNewYear && (<div style={{height:1,background:"var(--border)",margin:"8px 20px"}} />)}{onNewYear && (<div onClick={()=>{setSheet(false); onNewYear();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>🗓️</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--partial)"}}>{"Start New Year ("+(year+1)+")"}</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--partial)",opacity:.8,marginTop:1}}>Roll over to next year</div></div><div style={{color:"var(--partial)",fontSize:"1.2rem",fontWeight:700,opacity:.7}}>›</div></div>)}{onDeleteAccount && (<div style={{height:1,background:"var(--border)",margin:"8px 20px"}} />)}{onDeleteAccount && (<div onClick={()=>{setSheet(false); onDeleteAccount();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 16px",margin:"2px 14px 0",borderRadius:14,border:"1px solid rgba(239,68,68,.4)",background:"rgba(239,68,68,.08)",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>🗑</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--red)"}}>Delete Business Account</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--red)",opacity:.85,marginTop:1}}>Permanently erase business &amp; data</div></div><div style={{color:"var(--red)",fontSize:"1.2rem",fontWeight:700,opacity:.7}}>›</div></div>)}</div></div>)}<div className="section">         <div className="sec-row">           <div className="sec-title">Students ({allCards.length})</div>           <div style={{display:"flex",gap:8}}>{onImport && <button onClick={onImport} style={{background:"var(--bg2)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:14,padding:"11px 16px",fontFamily:"var(--f)",fontWeight:700,fontSize:".85rem",cursor:"pointer"}}>⇪ Import</button>}<button className="btn-new" onClick={onAdd}>+ New</button></div>         </div>         {allCards.length > 0 && hasLevels && (           <div style={{display:"flex",gap:8,marginBottom:14,overflowX:"auto",paddingBottom:4,scrollbarWidth:"none",borderBottom:"1px solid var(--border)",paddingTop:2}}>             <button onClick={()=>setLevelFilter("all")} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter==="all"?"var(--violet)":"var(--border)"),background:levelFilter==="all"?"var(--violet)":"var(--bg2)",color:levelFilter==="all"?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter==="all"?"0 4px 16px rgba(99,102,241,.3)":"none"}}>All Members</button>             {levels.map(lv=>(               <button key={lv.id} onClick={()=>setLevelFilter(lv.id)} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter===lv.id?"var(--violet)":"var(--border)"),background:levelFilter===lv.id?"var(--violet)":"var(--bg2)",color:levelFilter===lv.id?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter===lv.id?"0 4px 16px rgba(99,102,241,.3)":"none"}}>{lv.name}</button>             ))}             {allCards.some(c=>!c.level) && (               <button onClick={()=>setLevelFilter("none")} style={{padding:"9px 18px",borderRadius:99,border:"1px solid "+(levelFilter==="none"?"var(--violet)":"var(--border)"),background:levelFilter==="none"?"var(--violet)":"var(--bg2)",color:levelFilter==="none"?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:".12em",flexShrink:0,boxShadow:levelFilter==="none"?"0 4px 16px rgba(99,102,241,.3)":"none"}}>No Level</button>             )}           </div>         )}         {allCards.length > 0 && (           <>             <div style={{position:"relative",marginBottom:10}}>               <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:"1rem",pointerEvents:"none"}}>🔍</span>               <input style={{width:"100%",background:"var(--bg3)",border:"1px solid var(--border)",borderRadius:14,padding:"11px 14px 11px 38px",fontFamily:"var(--f)",fontSize:".9rem",fontWeight:600,outline:"none",color:"var(--text)"}}                 placeholder="Search by name or code..." value={search} onChange={e=>setSearch(e.target.value)} />               {search && <button onClick={()=>setSearch("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",fontSize:"1rem",cursor:"pointer",color:"var(--text2)"}}>✕</button>}             </div>             <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>               <span style={{fontSize:".72rem",color:"var(--text2)",fontWeight:700,alignSelf:"center"}}>Sort:</span>               {[["name","A–Z"],["owed","Most Owed"],["progress","Most Paid"]].map(([v,l])=>(                 <button key={v} onClick={()=>setSort(v)} style={{padding:"5px 12px",borderRadius:20,border:"none",background:sort===v?"var(--accent)":"var(--bg3)",color:sort===v?"#fff":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:800,cursor:"pointer"}}>                   {l}                 </button>               ))}             </div>
              <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
                <span style={{fontSize:".72rem",color:"var(--text2)",fontWeight:700,alignSelf:"center"}}>View:</span>
                {[["all","All Students"],["group","By Group"],["teacher","By Teacher"]].map(([v,l])=>(
@@ -1484,6 +1485,439 @@ function PgAnnouncements({ biz, onBack }) {
     </div>
   );
 }
+// ---------------------------------------------------------------------------
+// Bulk student import — Stage 1: upload + column mapping. Parsing is 100%
+// client-side (SheetJS); nothing is sent to Supabase until Stage 3.
+// ---------------------------------------------------------------------------
+function normalizeHeader(h) {
+  return String(h == null ? "" : h)
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // strip Greek/Latin accents (tonos etc.)
+    .toUpperCase().trim();
+}
+const IMPORT_NAME_HINTS = ["ΟΝΟΜΑ/ΕΠΙΘΕΤΟ", "NAME SURNAME", "ΟΝΟΜΑΤΕΠΩΝΥΜΟ", "ΟΝΟΜΑ", "NAME", "STUDENT"];
+const IMPORT_PHONE_HINTS = [["ΤΗΛ", "prefix"], ["ΚΙΝΗΤΟ", "contains"], ["PHONE", "contains"], ["MOBILE", "contains"]];
+const IMPORT_FEE_HINTS = ["ΔΙΔΑΚΤΡΑ", "ΠΟΣΟ", "FEE", "PRICE", "AMOUNT"];
+function suggestContainsColumn(headers, hints, exclude) {
+  for (const hint of hints) {
+    const nh = normalizeHeader(hint);
+    for (let i = 0; i < headers.length; i++) {
+      if (exclude.has(i)) continue;
+      if (normalizeHeader(headers[i]).includes(nh)) return i;
+    }
+  }
+  return null;
+}
+function suggestPhoneColumn(headers, exclude) {
+  for (const [kw, mode] of IMPORT_PHONE_HINTS) {
+    const nh = normalizeHeader(kw);
+    for (let i = 0; i < headers.length; i++) {
+      if (exclude.has(i)) continue;
+      const H = normalizeHeader(headers[i]);
+      if (mode === "prefix" ? H.startsWith(nh) : H.includes(nh)) return i;
+    }
+  }
+  return null;
+}
+
+function normalizePhone(raw) {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  // Keep digits and a leading '+' only; drop spaces, dashes, dots, parens, etc.
+  const cleaned = s.replace(/[^\d+]/g, "");
+  const hasPlus = cleaned.charAt(0) === "+";
+  const digits = cleaned.replace(/\+/g, "");
+  if (!digits) return null;
+
+  let intl = null; // full international digits, no '+'
+  if (hasPlus) {
+    intl = digits;
+  } else if (digits.slice(0, 2) === "00") {
+    intl = digits.slice(2); // "00" international dialing prefix used instead of '+'
+  } else if (digits.length === 8) {
+    intl = "357" + digits; // Cyprus local (mobiles start 9, landlines 2, etc.)
+  } else if (digits.length === 10 && (digits.charAt(0) === "6" || digits.charAt(0) === "2")) {
+    intl = "30" + digits; // Greek local (mobiles start 6, landlines start 2)
+  } else if (digits.length === 11 && digits.slice(0, 3) === "357") {
+    intl = digits; // CY country code present but Excel dropped the leading 00 (numeric cell)
+  } else if (digits.length === 12 && digits.slice(0, 2) === "30") {
+    intl = digits; // same, for Greece
+  }
+  if (!intl || intl.length < 8 || intl.length > 15 || !/^\d+$/.test(intl)) return null;
+  return "+" + intl;
+}
+
+// A phone number alone does NOT identify a duplicate: siblings routinely
+// share a parent's phone, so two different students with the same number are
+// normal, not an error. A duplicate is the same phone AND the same name —
+// i.e. the same student's row entered twice.
+function importDupeKey(phone, name) { return phone + "||" + normalizeHeader(name); }
+
+// Turns raw parsed rows into validated import rows. Runs top-to-bottom so
+// duplicate detection sees earlier rows (and pre-existing students) before
+// later ones — order matters for which occurrence gets flagged.
+function buildImportRows(rawRows, headers, nameCol, phoneCol, feeCol, overrides, existingKeys) {
+  const nI = nameCol === "" ? null : parseInt(nameCol, 10);
+  const pI = phoneCol === "" ? null : parseInt(phoneCol, 10);
+  const fI = feeCol === "" ? null : parseInt(feeCol, 10);
+  const seen = new Set(existingKeys);
+  const out = [];
+  const matchesHeader = (col, val) => col != null && normalizeHeader(val) !== "" && normalizeHeader(headers[col]) === normalizeHeader(val);
+
+  rawRows.forEach((r, idx) => {
+    const ov = overrides[idx] || {};
+    const rawName = ov.name != null ? ov.name : (nI != null ? r[nI] : "");
+    const rawPhone = ov.phone != null ? ov.phone : (pI != null ? r[pI] : "");
+    const rawFee = ov.fee != null ? ov.fee : (fI != null ? r[fI] : "");
+    const name = String(rawName == null ? "" : rawName).trim();
+    const phoneRaw = String(rawPhone == null ? "" : rawPhone).trim();
+    const phone = normalizePhone(rawPhone);
+    const feeRaw = String(rawFee == null ? "" : rawFee).trim();
+    const feeNum = feeRaw === "" ? null : parseFloat(feeRaw.replace(",", "."));
+    const feeValid = feeRaw === "" || (feeNum != null && !isNaN(feeNum) && feeNum >= 0);
+
+    if (!name && !phoneRaw) return; // fully empty row -> silently excluded
+    if (matchesHeader(nI, rawName) && (pI == null || matchesHeader(pI, rawPhone))) return; // repeated header row -> excluded
+
+    let status;
+    if (!name) status = "missing_name";
+    else if (!phone) status = "missing_phone";
+    else if (seen.has(importDupeKey(phone, name))) status = "duplicate";
+    else status = "ok";
+    if (phone && (status === "ok" || status === "duplicate")) seen.add(importDupeKey(phone, name));
+
+    out.push({ rowIdx: idx, name, phone, phoneRaw, fee: feeValid && feeNum != null ? feeNum : null, feeRaw, feeValid, status });
+  });
+  return out;
+}
+const IMPORT_STATUS_LABEL = {
+  ok: "OK",
+  missing_name: "Missing name / Λείπει το όνομα",
+  missing_phone: "Missing or invalid phone / Λείπει ή μη έγκυρο τηλέφωνο",
+  duplicate: "Duplicate / Διπλότυπο",
+};
+const IMPORT_STATUS_COLOR = { ok: "var(--green)", missing_name: "var(--red)", missing_phone: "var(--red)", duplicate: "var(--partial)" };
+
+function PgImport({ biz, onBack, onImport }) {
+  const [step, setStep] = useState("upload"); // 'upload' | 'mapping' | 'preview'
+  const [fileName, setFileName] = useState("");
+  const [headers, setHeaders] = useState([]);   // header row, as-is per column
+  const [rows, setRows] = useState([]);         // data rows (array-of-arrays), header excluded
+  const [nameCol, setNameCol] = useState("");
+  const [phoneCol, setPhoneCol] = useState("");
+  const [feeCol, setFeeCol] = useState("");
+  const [groupId, setGroupId] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
+
+  // Preview-step state: per-row edits, per-row manual include/exclude, and
+  // which single cell (if any) is currently being edited.
+  const [overrides, setOverrides] = useState({});       // { [rowIdx]: {name?,phone?,fee?} }
+  const [manualInclude, setManualInclude] = useState({}); // { [rowIdx]: boolean } — explicit user toggle
+  const [editing, setEditing] = useState(null);          // { rowIdx, field } | null
+  const [editDraft, setEditDraft] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null); // {ok:true,count} | {ok:false,error} | null
+  const [importedCount, setImportedCount] = useState(0);
+
+  function reset() {
+    setStep("upload"); setFileName(""); setHeaders([]); setRows([]);
+    setNameCol(""); setPhoneCol(""); setFeeCol(""); setGroupId("");
+    setError(""); setOverrides({}); setManualInclude({}); setEditing(null);
+    setImporting(false); setImportResult(null); setImportedCount(0);
+  }
+
+  function handleFile(file) {
+    if (!file) return;
+    setError(""); setBusy(true);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: "array" });
+        const wsName = wb.SheetNames[0];
+        if (!wsName) throw new Error("empty-workbook");
+        const ws = wb.Sheets[wsName];
+        const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true });
+        // Drop fully-blank rows (trailing blank lines Excel/Sheets often append).
+        const nonBlank = raw.filter(r => (r || []).some(c => String(c == null ? "" : c).trim() !== ""));
+        if (!nonBlank.length) throw new Error("no-rows");
+        const hdr = nonBlank[0].map(c => (c == null ? "" : c));
+        const body = nonBlank.slice(1);
+        if (!body.length) throw new Error("no-data-rows");
+        const exclude = new Set();
+        const sName = suggestContainsColumn(hdr, IMPORT_NAME_HINTS, exclude); if (sName != null) exclude.add(sName);
+        const sPhone = suggestPhoneColumn(hdr, exclude); if (sPhone != null) exclude.add(sPhone);
+        const sFee = suggestContainsColumn(hdr, IMPORT_FEE_HINTS, exclude);
+        setHeaders(hdr); setRows(body); setFileName(file.name);
+        setNameCol(sName != null ? String(sName) : "");
+        setPhoneCol(sPhone != null ? String(sPhone) : "");
+        setFeeCol(sFee != null ? String(sFee) : "");
+        setOverrides({}); setManualInclude({}); setImportResult(null);
+        setStep("mapping");
+      } catch (err) {
+        const msg = (err && err.message) || "";
+        if (msg === "no-data-rows") setError("This file only has a header row — no student data found below it. / Το αρχείο έχει μόνο επικεφαλίδα — δεν βρέθηκαν δεδομένα μαθητών.");
+        else if (msg === "no-rows" || msg === "empty-workbook") setError("This file looks empty. / Το αρχείο φαίνεται άδειο.");
+        else setError("Couldn't read this file. Please upload an Excel (.xlsx) or CSV (.csv) file. / Δεν ήταν δυνατή η ανάγνωση του αρχείου. Ανεβάστε αρχείο Excel (.xlsx) ή CSV (.csv).");
+      } finally {
+        setBusy(false);
+      }
+    };
+    reader.onerror = () => { setBusy(false); setError("Couldn't read this file. / Δεν ήταν δυνατή η ανάγνωση του αρχείου."); };
+    reader.readAsArrayBuffer(file);
+  }
+
+  const colLabel = (h, i) => (h != null && String(h).trim()) ? String(h).trim() : ("Column " + (i + 1));
+  const canContinue = nameCol !== "" && phoneCol !== "" && !busy;
+
+  // Existing students' phones (normalized the same way) so duplicate
+  // detection compares apples to apples regardless of how they were typed.
+  const existingKeys = React.useMemo(() => {
+    const set = new Set();
+    Object.values(biz.cards || {}).forEach(c => { const n = normalizePhone(c.phone); if (n) set.add(importDupeKey(n, c.name || "")); });
+    return set;
+  }, [biz.cards]);
+
+  const processedRows = React.useMemo(() => {
+    if (step !== "preview") return [];
+    return buildImportRows(rows, headers, nameCol, phoneCol, feeCol, overrides, existingKeys);
+  }, [step, rows, headers, nameCol, phoneCol, feeCol, overrides, existingKeys]);
+
+  function isIncluded(row) {
+    return Object.prototype.hasOwnProperty.call(manualInclude, row.rowIdx) ? manualInclude[row.rowIdx] : row.status === "ok";
+  }
+  function toggleInclude(row) {
+    setManualInclude(m => ({ ...m, [row.rowIdx]: !isIncluded(row) }));
+  }
+  function startEdit(rowIdx, field, currentValue) {
+    setEditing({ rowIdx, field }); setEditDraft(currentValue == null ? "" : String(currentValue));
+  }
+  function commitEdit() {
+    if (!editing) return;
+    const { rowIdx, field } = editing;
+    setOverrides(o => ({ ...o, [rowIdx]: { ...(o[rowIdx] || {}), [field]: editDraft } }));
+    setManualInclude(m => { if (!(rowIdx in m)) return m; const n = { ...m }; delete n[rowIdx]; return n; }); // re-derive default after an edit
+    setEditing(null);
+  }
+  function cancelEdit() { setEditing(null); }
+
+  async function doImport() {
+    const toImport = processedRows.filter(isIncluded);
+    if (!toImport.length || importing) return;
+    setImporting(true); setImportResult(null);
+    const nowYm = nowYM();
+    const usedCodes = new Set();
+    const payload = toImport.map(row => {
+      let code; do { code = genShareCode(); } while (usedCodes.has(code)); usedCodes.add(code);
+      return {
+        business_id: biz.id,
+        name: row.name,
+        level: null,
+        share_code: code,
+        pin: genPin(),
+        phone: row.phone,
+        preferred_channel: "whatsapp",
+        language: "EN",
+        enrollment_start_month: nowYm,
+        group_id: groupId || null,
+        lesson_schedule: [],
+        fee_history: row.fee != null ? [{ from: 0, fee: row.fee }] : [],
+        payments: {},
+        history: [],
+      };
+    });
+    const result = await onImport(payload);
+    setImporting(false); setImportResult(result);
+    if (result && result.ok) { setImportedCount(result.count); setStep("done"); }
+  }
+
+  const willImport = processedRows.filter(isIncluded).length;
+  const skippedDup = processedRows.filter(r => r.status === "duplicate" && !isIncluded(r)).length;
+  const invalidCount = processedRows.filter(r => (r.status === "missing_name" || r.status === "missing_phone") && !isIncluded(r)).length;
+
+  const cellStyle = { cursor: "pointer", borderBottom: "1px dashed var(--border)", paddingBottom: 1 };
+  const editInpStyle = { padding: "6px 8px", fontSize: ".85rem", fontWeight: 700, width: "100%" };
+
+  return (
+    <div className="page">
+      <div className="topbar">
+        <button className="tb-back" onClick={step === "preview" ? () => setStep("mapping") : onBack}>←</button>
+        <h2>Import Students</h2>
+        <div style={{ width: 24 }} />
+      </div>
+      <div className="section">
+        {(step === "upload" || step === "mapping") && (
+          <div style={{ fontSize: ".72rem", color: "var(--text2)", fontWeight: 600, marginBottom: 16, lineHeight: 1.5 }}>
+            Upload an Excel or CSV file to add many students at once. / Ανεβάστε αρχείο Excel ή CSV για να προσθέσετε πολλούς μαθητές μαζί.
+          </div>
+        )}
+
+        {step === "upload" && (
+          <div className="wsec" style={{ margin: 0 }}>
+            <div className="ws-t">Upload File / Ανέβασμα Αρχείου</div>
+            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }}
+              onChange={e => handleFile(e.target.files && e.target.files[0])} />
+            <button className="btn" onClick={() => fileRef.current && fileRef.current.click()} disabled={busy}>
+              {busy ? "Reading…" : "Choose File / Επιλογή Αρχείου"}
+            </button>
+            <div style={{ fontSize: ".72rem", color: "var(--text3)", fontWeight: 600, marginTop: 12, lineHeight: 1.5 }}>
+              Accepted: .xlsx, .csv — the first row should be column headers. / Δεκτά: .xlsx, .csv — η πρώτη γραμμή πρέπει να είναι επικεφαλίδες στηλών.
+            </div>
+            {error && <div className="err">{error}</div>}
+          </div>
+        )}
+
+        {step === "mapping" && (
+          <>
+            <div className="wsec" style={{ margin: "0 0 16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <div style={{ fontSize: ".85rem", fontWeight: 800, color: "var(--text)" }}>📄 {fileName}</div>
+                <button onClick={reset} style={{ background: "none", border: "none", color: "var(--violet-glow)", fontFamily: "var(--f)", fontSize: ".72rem", fontWeight: 700, cursor: "pointer" }}>Change file / Αλλαγή</button>
+              </div>
+              <div style={{ fontSize: ".78rem", color: "var(--text2)", fontWeight: 600 }}>
+                {headers.length + " columns · " + rows.length + " rows found / " + headers.length + " στήλες · " + rows.length + " γραμμές"}
+              </div>
+            </div>
+
+            <div className="wsec" style={{ margin: "0 0 16px" }}>
+              <div className="ws-t">Column Mapping / Αντιστοίχιση Στηλών</div>
+
+              <div className="ig" style={{ marginBottom: 16 }}>
+                <label>Name column (required) / Στήλη Ονόματος (υποχρεωτικό)</label>
+                <select className="ws-inp" value={nameCol} onChange={e => setNameCol(e.target.value)}>
+                  <option value="">— Select column — / — Επιλέξτε στήλη —</option>
+                  {headers.map((h, i) => <option key={i} value={i}>{colLabel(h, i)}</option>)}
+                </select>
+              </div>
+
+              <div className="ig" style={{ marginBottom: 16 }}>
+                <label>Phone column (required) / Στήλη Τηλεφώνου (υποχρεωτικό)</label>
+                <select className="ws-inp" value={phoneCol} onChange={e => setPhoneCol(e.target.value)}>
+                  <option value="">— Select column — / — Επιλέξτε στήλη —</option>
+                  {headers.map((h, i) => <option key={i} value={i}>{colLabel(h, i)}</option>)}
+                </select>
+              </div>
+
+              <div className="ig" style={{ marginBottom: 0 }}>
+                <label>Monthly Fee column (optional) / Στήλη Διδάκτρων (προαιρετικό)</label>
+                <select className="ws-inp" value={feeCol} onChange={e => setFeeCol(e.target.value)}>
+                  <option value="">None — use school default fee / Καμία — προεπιλεγμένα δίδακτρα</option>
+                  {headers.map((h, i) => <option key={i} value={i}>{colLabel(h, i)}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="wsec" style={{ margin: "0 0 16px" }}>
+              <div className="ws-t">Assign to Group / Ανάθεση σε Ομάδα</div>
+              <select className="ws-inp" value={groupId} onChange={e => setGroupId(e.target.value)}>
+                <option value="">No group / Χωρίς ομάδα</option>
+                {(biz.groups || []).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+              {(biz.groups || []).length === 0 && (
+                <div style={{ fontSize: ".72rem", color: "var(--text3)", fontWeight: 600, marginTop: 8 }}>No groups yet — create them in Settings → 🗂️ Manage. / Δεν υπάρχουν ακόμη ομάδες.</div>
+              )}
+            </div>
+
+            <button className="btn" disabled={!canContinue} onClick={() => setStep("preview")}>Continue / Συνέχεια</button>
+          </>
+        )}
+
+        {step === "preview" && (
+          <>
+            <div className="wsec" style={{ margin: "0 0 14px" }}>
+              <div style={{ fontSize: ".78rem", color: "var(--text2)", fontWeight: 700, lineHeight: 1.6 }}>
+                <span style={{ color: "var(--green)" }}>{willImport + " will be imported"}</span>
+                {" · "}<span style={{ color: "var(--partial)" }}>{skippedDup + " skipped (duplicates)"}</span>
+                {" · "}<span style={{ color: "var(--red)" }}>{invalidCount + " invalid"}</span>
+                <div style={{ color: "var(--text3)", fontWeight: 600, marginTop: 2 }}>
+                  {willImport + " θα εισαχθούν · " + skippedDup + " παραλείπονται (διπλότυπα) · " + invalidCount + " μη έγκυρα"}
+                </div>
+              </div>
+            </div>
+            <div style={{ fontSize: ".68rem", color: "var(--text3)", fontWeight: 600, marginBottom: 10, lineHeight: 1.5 }}>
+              Tap Name, Phone or Fee to fix a row. / Πατήστε Όνομα, Τηλέφωνο ή Δίδακτρα για διόρθωση.
+            </div>
+
+            {processedRows.map(row => {
+              const included = isIncluded(row);
+              const edName = editing && editing.rowIdx === row.rowIdx && editing.field === "name";
+              const edPhone = editing && editing.rowIdx === row.rowIdx && editing.field === "phone";
+              const edFee = editing && editing.rowIdx === row.rowIdx && editing.field === "fee";
+              return (
+                <div key={row.rowIdx} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "12px 14px", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 14, marginBottom: 8, opacity: included ? 1 : .55 }}>
+                  <input type="checkbox" checked={included} onChange={() => toggleInclude(row)} style={{ marginTop: 4, width: 18, height: 18, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ marginBottom: 4 }}>
+                      {edName ? (
+                        <input autoFocus className="ws-inp" style={editInpStyle} value={editDraft} onChange={e => setEditDraft(e.target.value)}
+                          onBlur={commitEdit} onKeyDown={e => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }} />
+                      ) : (
+                        <span onClick={() => startEdit(row.rowIdx, "name", row.name)} style={{ ...cellStyle, fontWeight: 800, fontSize: ".92rem", color: row.name ? "var(--text)" : "var(--text3)" }}>
+                          {row.name || "(no name) / (χωρίς όνομα)"}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ marginBottom: 4 }}>
+                      {edPhone ? (
+                        <input autoFocus className="ws-inp" style={editInpStyle} value={editDraft} onChange={e => setEditDraft(e.target.value)}
+                          onBlur={commitEdit} onKeyDown={e => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }} />
+                      ) : (
+                        <span onClick={() => startEdit(row.rowIdx, "phone", row.phoneRaw)} style={{ ...cellStyle, fontSize: ".82rem", fontWeight: 700, color: row.phone ? "var(--text2)" : "var(--red)" }}>
+                          {row.phone || (row.phoneRaw ? (row.phoneRaw + " ⚠") : "(no phone) / (χωρίς τηλέφωνο)")}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      {edFee ? (
+                        <input autoFocus className="ws-inp" style={editInpStyle} value={editDraft} onChange={e => setEditDraft(e.target.value)}
+                          onBlur={commitEdit} onKeyDown={e => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }} />
+                      ) : (
+                        <span onClick={() => startEdit(row.rowIdx, "fee", row.feeRaw)} style={{ ...cellStyle, fontSize: ".78rem", fontWeight: 700, color: "var(--text2)" }}>
+                          {row.fee != null ? ("€" + row.fee) : (row.feeRaw && !row.feeValid ? (row.feeRaw + " ⚠ (using default)") : ("Default (€" + biz.fee + ")"))}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ flexShrink: 0, textAlign: "right" }}>
+                    <span style={{ fontSize: ".62rem", fontWeight: 800, color: IMPORT_STATUS_COLOR[row.status], textTransform: "uppercase", letterSpacing: ".06em" }}>{row.status === "ok" ? "OK" : IMPORT_STATUS_LABEL[row.status].split(" / ")[0]}</span>
+                  </div>
+                </div>
+              );
+            })}
+
+            {processedRows.length === 0 && (
+              <div className="empty">No usable rows found in this file. / Δεν βρέθηκαν χρησιμοποιήσιμες γραμμές.</div>
+            )}
+
+            <button className="btn" style={{ marginTop: 8 }} disabled={willImport === 0 || importing} onClick={doImport}>
+              {importing ? "Importing… / Εισαγωγή…" : ("Import " + willImport + " Students / Εισαγωγή " + willImport + " Μαθητών")}
+            </button>
+            {importResult && !importResult.ok && (
+              <div className="err" style={{ marginTop: 12 }}>
+                Import failed — nothing was imported, your file is unchanged. / Η εισαγωγή απέτυχε — δεν έγινε καμία αλλαγή.
+                <div style={{ marginTop: 4, fontWeight: 600 }}>{importResult.error}</div>
+              </div>
+            )}
+          </>
+        )}
+
+        {step === "done" && (
+          <div className="wsec" style={{ margin: 0, textAlign: "center" }}>
+            <div style={{ fontSize: "2.2rem", marginBottom: 8 }}>✅</div>
+            <div style={{ fontSize: "1.1rem", fontWeight: 900, marginBottom: 6 }}>{importedCount + " Students Imported"}</div>
+            <div style={{ fontSize: ".78rem", color: "var(--text2)", fontWeight: 600, lineHeight: 1.6, marginBottom: 20 }}>
+              {importedCount + " μαθητές εισήχθησαν επιτυχώς. Each student got a share code and PIN, visible on their card. / Κάθε μαθητής απέκτησε κωδικό και PIN, ορατά στην κάρτα του."}
+            </div>
+            <button className="btn" onClick={onBack}>Done / Τέλος</button>
+            <button className="btn-ghost" onClick={reset}>Import More / Εισαγωγή Περισσότερων</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, onDeleteGroup }) {
   const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
   const ABBR = {Monday:"Mon",Tuesday:"Tue",Wednesday:"Wed",Thursday:"Thu",Friday:"Fri",Saturday:"Sat",Sunday:"Sun"};
@@ -1969,8 +2403,27 @@ function App() {
     setDb(d=>({businesses:{...d.businesses,[bizId]:{...d.businesses[bizId],cards:{...d.businesses[bizId].cards,[ins.id]:newCard}}}}));
     setRevealCard(newCard); setView("reveal");
   }
+  // Bulk import batch insert. `payload` rows are fully-formed by PgImport
+  // (which owns the mapping/defaults); this just does the single atomic
+  // multi-row insert and merges the results into local state, mirroring
+  // doAddCard's optimistic-update shape. A single INSERT with N value rows is
+  // one SQL statement — if ANY row violates a constraint, Postgres rolls the
+  // whole statement back and NOTHING is inserted, which is what gives this
+  // its all-or-nothing guarantee without a separate RPC/transaction.
+  async function doImportStudents(payload) {
+    const { data: ins, error } = await sb.from("cards").insert(payload).select("id, share_code");
+    if (error) return { ok:false, error: error.message || "Import failed." };
+    const byCode = {}; payload.forEach(p => { byCode[p.share_code] = p; });
+    const newCards = {};
+    ins.forEach(row => {
+      const p = byCode[row.share_code]; if (!p) return;
+      newCards[row.id] = { id:row.id, name:p.name, level:null, shareCode:p.share_code, pin:p.pin, phone:p.phone||"", preferredChannel:p.preferred_channel, language:p.language, enrollmentStart:p.enrollment_start_month, groupId:p.group_id, groupName:"", lessonSchedule:[], pausedMonths:[], feeHistory:p.fee_history||[], payments:{}, history:[] };
+    });
+    setDb(d=>({businesses:{...d.businesses,[bizId]:{...d.businesses[bizId],cards:{...d.businesses[bizId].cards,...newCards}}}}));
+    return { ok:true, count: ins.length };
+  }
 
-  async function doUpdateCard(updates){
+async function doUpdateCard(updates){
     setDb(d=>({businesses:{...d.businesses,[bizId]:{...d.businesses[bizId],cards:{...d.businesses[bizId].cards,[cardId]:{...d.businesses[bizId].cards[cardId],...updates}}}}}));
     const patch={};
     if("payments" in updates) patch.payments=updates.payments;
@@ -2058,8 +2511,9 @@ function App() {
         {view==="register" && <PgRegister onBack={()=>setView("login")} onCreated={onRegistered} />}
         {view==="student" && <PgStudent onBack={()=>setView("landing")} />}
         {view==="parentAuth" && <PgParentAuth onBack={()=>setView("landing")} />}
-        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);setView("card");}} onAdd={()=>setView("addCard")} onMonths={()=>setView("months")} onLevels={()=>setView("levels")} onCustomCard={()=>setView("customCard")} onExport={()=>setView("export")} onRemind={()=>setView("remind")} onFamily={()=>{setMode("parent");setView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>setView("announcements")} onGroups={()=>setView("groups")} onManage={()=>setView("manage")} />}
+        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);setView("card");}} onAdd={()=>setView("addCard")} onMonths={()=>setView("months")} onLevels={()=>setView("levels")} onCustomCard={()=>setView("customCard")} onExport={()=>setView("export")} onRemind={()=>setView("remind")} onFamily={()=>{setMode("parent");setView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>setView("announcements")} onGroups={()=>setView("groups")} onManage={()=>setView("manage")} onImport={()=>setView("import")} />}
         {view==="addCard" && biz && <PgAddCard biz={biz} onBack={()=>setView("dashboard")} onCreate={doAddCard} />}
+        {view==="import" && biz && <PgImport biz={biz} onBack={()=>setView("dashboard")} onImport={doImportStudents} />}
         {view==="reveal" && revealCard && <PgReveal card={revealCard} onDone={()=>{setRevealCard(null);setView("dashboard");}} />}
         {view==="card" && biz && card && <PgCard biz={biz} card={card} onBack={()=>setView("dashboard")} onUpdate={doUpdateCard} onRemove={doRemoveCard} />}
         {view==="months" && biz && <PgManageMonths biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveMonths} />}
