@@ -2030,6 +2030,14 @@ function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, on
   const setSch = (fn)=> setGEdit(g=>({ ...g, schedule: fn(g.schedule||[]) }));
   const lbl = {fontSize:".68rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".1em",margin:"14px 0 6px"};
   const secTitle = {fontSize:".72rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".16em",marginBottom:12};
+  // Compact, content-sized row actions. These deliberately do NOT use .btn-ghost
+  // / .btn-add: those are full-width form buttons (.btn-ghost is width:100%),
+  // which is what previously stretched Edit across the row and crushed the name
+  // and schedule text beside it at every viewport width.
+  const rowActions = {display:"flex",gap:8,marginTop:12,flexWrap:"wrap"};
+  const rowBtn = {flex:"0 0 auto",width:"auto",padding:"9px 16px",borderRadius:10,border:"1px solid var(--border)",background:"var(--bg3)",color:"var(--text)",fontFamily:"var(--f)",fontWeight:700,fontSize:".8rem",cursor:"pointer",margin:0};
+  const rowBtnDanger = {...rowBtn,background:"transparent",color:"var(--red)",fontWeight:800};
+  const rowBtnPrimary = {...rowBtn,background:"var(--violet)",color:"#fff",border:"none",fontWeight:800};
 
   // ---- Group create/edit form ----
   if (gEdit) {
@@ -2083,25 +2091,29 @@ function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, on
         <div style={secTitle}>Teachers</div>
         {teachers.length===0 && <div style={{fontSize:".82rem",color:"var(--text3)",fontWeight:600,marginBottom:10}}>No teachers yet.</div>}
         {teachers.map(t=>(
-          <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,marginBottom:8}}>
+          <div key={t.id} style={{padding:"12px 14px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,marginBottom:8}}>
             {tEdit && tEdit.id===t.id ? (
               <>
-                <input className="inp" style={{flex:1,marginBottom:0}} value={tEdit.name} onChange={e=>setTEdit({...tEdit,name:e.target.value})} autoFocus />
-                <button className="btn-add" style={{minWidth:64,padding:"10px"}} onClick={saveTeacherEdit} disabled={busy}>Save</button>
-                <button className="btn-ghost" style={{minWidth:64,padding:"10px"}} onClick={()=>setTEdit(null)}>Cancel</button>
+                <input className="inp" style={{width:"100%",marginBottom:0}} value={tEdit.name} onChange={e=>setTEdit({...tEdit,name:e.target.value})} autoFocus />
+                <div style={rowActions}>
+                  <button style={rowBtnPrimary} onClick={saveTeacherEdit} disabled={busy}>Save</button>
+                  <button style={rowBtn} onClick={()=>setTEdit(null)}>Cancel</button>
+                </div>
               </>
             ) : (
               <>
-                <div style={{flex:1,fontWeight:700}}>{t.name}</div>
-                <button className="btn-ghost" style={{padding:"8px 12px"}} onClick={()=>setTEdit({id:t.id,name:t.name})}>Edit</button>
-                <button style={{background:"transparent",border:"1px solid var(--border)",borderRadius:10,padding:"8px 12px",color:"var(--red)",fontWeight:800,cursor:"pointer"}} onClick={()=>askDeleteTeacher(t)}>Delete</button>
+                <div style={{fontWeight:700,fontSize:".95rem",overflowWrap:"anywhere"}}>{t.name}</div>
+                <div style={rowActions}>
+                <button style={rowBtn} onClick={()=>setTEdit({id:t.id,name:t.name})}>Edit</button>
+                <button style={rowBtnDanger} onClick={()=>askDeleteTeacher(t)}>Delete</button>
+                </div>
               </>
             )}
           </div>
         ))}
         <div style={{display:"flex",gap:8,marginTop:4}}>
           <input className="inp" style={{flex:1,marginBottom:0}} placeholder="New teacher name" value={tName} onChange={e=>setTName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTeacher()} />
-          <button className="btn-add" style={{minWidth:72,padding:"12px"}} onClick={addTeacher} disabled={busy||!tName.trim()}>Add</button>
+          <button style={{...rowBtnPrimary,padding:"12px 20px",fontSize:".85rem",opacity:(busy||!tName.trim())?.4:1,cursor:(busy||!tName.trim())?"not-allowed":"pointer"}} onClick={addTeacher} disabled={busy||!tName.trim()}>Add</button>
         </div>
       </div>
 
@@ -2110,13 +2122,13 @@ function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, on
         {groups.length===0 && <div style={{fontSize:".82rem",color:"var(--text3)",fontWeight:600,marginBottom:10}}>No groups yet.</div>}
         {groups.map(g=>(
           <div key={g.id} style={{padding:"12px 14px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,marginBottom:8}}>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontWeight:800,fontSize:".95rem"}}>{g.name}</div>
-                <div style={{fontSize:".72rem",color:"var(--text2)",fontWeight:600,marginTop:2}}>{teacherName(g.teacher_id) ? ("👤 "+teacherName(g.teacher_id)) : "No teacher"} · {schedSummary(g.schedule)}</div>
+            <div>
+              <div style={{fontWeight:800,fontSize:".95rem",overflowWrap:"anywhere"}}>{g.name}</div>
+              <div style={{fontSize:".72rem",color:"var(--text2)",fontWeight:600,marginTop:3,lineHeight:1.5,overflowWrap:"anywhere"}}>{teacherName(g.teacher_id) ? ("👤 "+teacherName(g.teacher_id)) : "No teacher"} · {schedSummary(g.schedule)}</div>
+              <div style={rowActions}>
+                <button style={rowBtn} onClick={()=>setGEdit({id:g.id,name:g.name,schedule:(g.schedule||[]).map(s=>({day:s.day,start_time:s.start_time||s.time||"",end_time:s.end_time||""})),teacher_id:g.teacher_id||""})}>Edit</button>
+                <button style={rowBtnDanger} onClick={()=>askDeleteGroup(g)}>Delete</button>
               </div>
-              <button className="btn-ghost" style={{padding:"8px 12px"}} onClick={()=>setGEdit({id:g.id,name:g.name,schedule:(g.schedule||[]).map(s=>({day:s.day,start_time:s.start_time||s.time||"",end_time:s.end_time||""})),teacher_id:g.teacher_id||""})}>Edit</button>
-              <button style={{background:"transparent",border:"1px solid var(--border)",borderRadius:10,padding:"8px 12px",color:"var(--red)",fontWeight:800,cursor:"pointer"}} onClick={()=>askDeleteGroup(g)}>Delete</button>
             </div>
           </div>
         ))}
@@ -2130,7 +2142,7 @@ function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, on
             <div style={{fontSize:".85rem",color:"var(--text2)",fontWeight:600,lineHeight:1.5,marginBottom:4}}>“{del.name}” will be permanently removed.</div>
             {del.warn && <div style={{fontSize:".82rem",color:"var(--partial)",fontWeight:700,lineHeight:1.5,marginBottom:4}}>{del.warn}</div>}
             <div style={{display:"flex",gap:8,marginTop:16}}>
-              <button className="btn-ghost" style={{flex:1,padding:"12px"}} onClick={()=>setDel(null)} disabled={busy}>Cancel</button>
+              <button className="btn-ghost" style={{flex:1,padding:"12px",marginTop:0}} onClick={()=>setDel(null)} disabled={busy}>Cancel</button>
               <button style={{flex:1,padding:"12px",background:"var(--red)",border:"none",borderRadius:12,color:"#fff",fontWeight:800,cursor:"pointer"}} onClick={confirmDelete} disabled={busy}>{busy?"…":"Delete"}</button>
             </div>
           </div>
