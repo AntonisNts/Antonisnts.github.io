@@ -52,7 +52,7 @@
     <p>This password-reset link is no longer valid — links can only be used once
        and expire after a short time.</p>
     <p style="margin-bottom:0;">Please request a new one: open
-       <a href="/">PayStamp</a>, choose your login, and tap
+       <a href="/app/">PayStamp</a>, choose your login, and tap
        <b style="color:var(--text)">“Forgot Password?”</b>.</p>
   </div>
 
@@ -71,10 +71,10 @@
     <div class="ok-icon">✅</div>
     <h1 style="text-align:center;">Password updated</h1>
     <p style="text-align:center;margin-bottom:0;">Taking you to the login page…</p>
-    <button class="btn" onclick="location.replace('/')">Log in now</button>
+    <button class="btn" onclick="location.replace('/app/')">Log in now</button>
   </div>
 
-  <div class="muted"><a href="/">← Back to PayStamp</a></div>
+  <div class="muted"><a href="/app/">← Back to PayStamp</a></div>
 </div>
 
 <script>
@@ -149,7 +149,7 @@
       // Sign out of the temporary recovery session so "/" shows the login
       // screen and the new password gets used immediately.
       sb.auth.signOut().catch(function () {}).then(function () {
-        setTimeout(function () { location.replace("/"); }, 2500);
+        setTimeout(function () { location.replace("/app/"); }, 2500);
       });
     });
   }
