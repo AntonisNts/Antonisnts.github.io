@@ -269,7 +269,16 @@ async function loadMyAnnouncements() {
       </div>
     </div>
   );
-}  function CardTile({ card, biz, onClick, selectable, checked, onToggle }) {   const p = getPal(biz.type);   const inactive = biz.inactiveMonths || [];   const fee = cardFee(card, biz);   const pmts = card.payments || {};   const hist = card.history || [];   const tp = totalPaid(pmts, hist);   const es = card.enrollmentStart||null;   const inact = (inactive||[]).concat(card.pausedMonths||[]);   const mp = monthsPaid(pmts, biz.year, inact, es);   const ac = billableCount(biz.year, inact, es);   const pct = ac > 0 ? Math.round((mp/ac)*100) : 0;   let owed = Math.round(card ? getStudentMonthStatus(card, biz, biz.year).owedTotal : 0);   return (     <div className="card" onClick={selectable ? onToggle : onClick} style={{padding:"18px 20px",borderColor:(selectable&&checked)?"var(--violet)":undefined,background:(selectable&&checked)?"rgba(99,102,241,.10)":undefined}}>       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>         {selectable && <input type="checkbox" checked={!!checked} readOnly aria-label={"Select "+(card.name||"student")} style={{width:20,height:20,flexShrink:0,accentColor:"var(--violet)",pointerEvents:"none"}} />}         <div style={{flex:1,minWidth:0}}>           <div style={{fontSize:".62rem",fontWeight:700,color:p.acc,textTransform:"uppercase",letterSpacing:".12em",marginBottom:4}}>             {card.level ? card.level.name : biz.name}           </div>           <div style={{fontSize:"1.15rem",fontWeight:700,color:"#fff",letterSpacing:"-.01em",marginBottom:2}}>             {card.name || "Card"}           </div>         </div>         <div style={{background:"rgba(99,102,241,.12)",borderRadius:10,padding:"6px 12px",flexShrink:0}}>           <div style={{fontSize:".85rem",fontWeight:800,color:p.acc}}>{pct+"%"}</div>         </div>       </div>       <div style={{fontSize:".72rem",fontWeight:700,marginTop:10,color:owed>0?"var(--red)":"var(--green)"}}>{owed>0?("owes €"+owed+" · "+mp+"/"+ac+" months"):("Up to date · "+mp+"/"+ac+" months")}</div>       <div style={{height:3,background:"rgba(255,255,255,.06)",borderRadius:99,marginTop:8,overflow:"hidden"}}>         <div style={{height:"100%",width:pct+"%",background:p.acc,borderRadius:99,transition:"width .3s"}} />       </div>     </div>   ); }  function PgLanding({ onTeacher, onParent, onStudent }) {
+}  // Checkbox that can render the indeterminate ("some but not all") state.
+// `indeterminate` is a DOM property, not an HTML attribute, so it has to be
+// set imperatively on the node rather than passed as a prop.
+function TriCheck({ checked, indeterminate, onChange, label, style }) {
+  const ref = useRef(null);
+  useEffect(()=>{ if(ref.current) ref.current.indeterminate = !!indeterminate; }, [indeterminate, checked]);
+  return <input ref={ref} type="checkbox" checked={!!checked} onChange={onChange} aria-label={label}
+    style={{width:20,height:20,flexShrink:0,accentColor:"var(--violet)",cursor:"pointer",...(style||{})}} />;
+}
+function CardTile({ card, biz, onClick, selectable, checked, onToggle }) {   const p = getPal(biz.type);   const inactive = biz.inactiveMonths || [];   const fee = cardFee(card, biz);   const pmts = card.payments || {};   const hist = card.history || [];   const tp = totalPaid(pmts, hist);   const es = card.enrollmentStart||null;   const inact = (inactive||[]).concat(card.pausedMonths||[]);   const mp = monthsPaid(pmts, biz.year, inact, es);   const ac = billableCount(biz.year, inact, es);   const pct = ac > 0 ? Math.round((mp/ac)*100) : 0;   let owed = Math.round(card ? getStudentMonthStatus(card, biz, biz.year).owedTotal : 0);   return (     <div className="card" onClick={selectable ? onToggle : onClick} style={{padding:"18px 20px",borderColor:(selectable&&checked)?"var(--violet)":undefined,background:(selectable&&checked)?"rgba(99,102,241,.10)":undefined}}>       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>         {selectable && <input type="checkbox" checked={!!checked} readOnly aria-label={"Select "+(card.name||"student")} style={{width:20,height:20,flexShrink:0,accentColor:"var(--violet)",pointerEvents:"none"}} />}         <div style={{flex:1,minWidth:0}}>           <div style={{fontSize:".62rem",fontWeight:700,color:p.acc,textTransform:"uppercase",letterSpacing:".12em",marginBottom:4}}>             {card.level ? card.level.name : biz.name}           </div>           <div style={{fontSize:"1.15rem",fontWeight:700,color:"#fff",letterSpacing:"-.01em",marginBottom:2}}>             {card.name || "Card"}           </div>         </div>         <div style={{background:"rgba(99,102,241,.12)",borderRadius:10,padding:"6px 12px",flexShrink:0}}>           <div style={{fontSize:".85rem",fontWeight:800,color:p.acc}}>{pct+"%"}</div>         </div>       </div>       <div style={{fontSize:".72rem",fontWeight:700,marginTop:10,color:owed>0?"var(--red)":"var(--green)"}}>{owed>0?("owes €"+owed+" · "+mp+"/"+ac+" months"):("Up to date · "+mp+"/"+ac+" months")}</div>       <div style={{height:3,background:"rgba(255,255,255,.06)",borderRadius:99,marginTop:8,overflow:"hidden"}}>         <div style={{height:"100%",width:pct+"%",background:p.acc,borderRadius:99,transition:"width .3s"}} />       </div>     </div>   ); }  function PgLanding({ onTeacher, onParent, onStudent }) {
   return (
     <div className="login-page" style={{display:"flex",flexDirection:"column",justifyContent:"center",minHeight:"100vh",padding:"40px 24px"}}>
       <div style={{textAlign:"center",marginBottom:40}}>
@@ -466,16 +475,33 @@ async function loadMyAnnouncements() {
     });
   }
 
-  // Selection operates on `filtered`, i.e. exactly the students currently
-  // visible under the active search / level filter — so "select all" can never
-  // quietly pick up someone the owner can't see. Grouped views show the same
-  // students, just partitioned, so this covers those too.
+  // Selection is always scoped to `filtered` — exactly the students visible
+  // under the active view / level filter / search — so "select all", the
+  // Delete count and the confirmation list can never include someone the owner
+  // can't currently see.
   const selectableIds = filtered.map(c=>c.id);
   const selectedIds = selectableIds.filter(id=>selected[id]);
   const allSelected = selectableIds.length>0 && selectedIds.length===selectableIds.length;
+  const someSelected = selectedIds.length>0 && !allSelected;
   const toggleOne = (id)=> setSelected(s=>({ ...s, [id]: !s[id] }));
   const toggleAll = ()=> setSelected(()=>{ if(allSelected) return {}; const n={}; selectableIds.forEach(id=>{n[id]=true;}); return n; });
   const exitSelect = ()=>{ setSelectMode(false); setSelected({}); setDelAsk(false); };
+  // Changing what's visible invalidates the selection: keeping stale ids around
+  // means the checkbox state and the real selection quietly disagree (and a
+  // hidden student could be carried into a delete). Clear on any change to
+  // view / level filter / search.
+  useEffect(()=>{ setSelected({}); setDelAsk(false); }, [viewBy, levelFilter, search]);
+  // Per-section (group / teacher) checkbox state, derived from that section's
+  // own visible members only.
+  const secState = (sec)=>{
+    const ids = sec.cards.map(c=>c.id);
+    const sel = ids.filter(id=>selected[id]).length;
+    return { ids, all: ids.length>0 && sel===ids.length, some: sel>0 && sel<ids.length, count: sel };
+  };
+  const toggleSection = (sec)=>{
+    const { ids, all } = secState(sec);
+    setSelected(s=>{ const n={...s}; ids.forEach(id=>{ if(all) delete n[id]; else n[id]=true; }); return n; });
+  };
   async function confirmBulkDelete(){
     if(!selectedIds.length || deleting) return;
     setDeleting(true);
@@ -493,7 +519,7 @@ async function loadMyAnnouncements() {
              </div>           </>         )}         {selectMode && filtered.length>0 && (
           <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:14,marginBottom:12,position:"sticky",top:8,zIndex:20}}>
             <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",flex:1,minWidth:0}}>
-              <input type="checkbox" checked={allSelected} onChange={toggleAll} style={{width:20,height:20,flexShrink:0,accentColor:"var(--violet)"}} />
+              <TriCheck checked={allSelected} indeterminate={someSelected} onChange={toggleAll} label="Select all visible students" />
               <span style={{fontSize:".82rem",fontWeight:800,color:"var(--text)"}}>{allSelected ? "Deselect all" : "Select all"}</span>
               <span style={{fontSize:".76rem",fontWeight:700,color:"var(--text2)"}}>{selectedIds.length+" of "+selectableIds.length+" selected"}</span>
             </label>
@@ -506,9 +532,11 @@ async function loadMyAnnouncements() {
         {!allCards.length ? <div className="empty">No cards yet. Tap + New.</div>           : !filtered.length ? <div className="empty">No results for "{search}"</div>           : viewBy==="all" ? <div className="card-list">{filtered.map(c=><CardTile key={c.id} card={c} biz={biz} onClick={()=>onCard(c.id)} selectable={selectMode} checked={!!selected[c.id]} onToggle={()=>toggleOne(c.id)} />)}</div>
           : <div>{(sections||[]).map(sec=>{
               const isC = !!collapsed[sec.key];
+              const ss = secState(sec);
               return (
                 <div key={sec.key} style={{marginBottom:12}}>
                   <div onClick={()=>setCollapsed(x=>({...x,[sec.key]:!x[sec.key]}))} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:14,cursor:"pointer"}}>
+                    {selectMode && <span onClick={e=>e.stopPropagation()} style={{display:"flex",flexShrink:0}}><TriCheck checked={ss.all} indeterminate={ss.some} onChange={()=>toggleSection(sec)} label={"Select all in "+sec.title} /></span>}
                     <span style={{width:10,height:10,borderRadius:3,background:sec.color||"var(--text3)",flexShrink:0}} />
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:".92rem",fontWeight:800,color:"var(--text)"}}>{sec.title}</div>
