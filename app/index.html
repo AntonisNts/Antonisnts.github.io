@@ -1359,8 +1359,16 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   const annReadItems = annAll.filter(a=>readSet[a.id]);
   const annReadShown = annShowAll ? annReadItems : annReadItems.slice(0,3);
   function openAnnItem(a){
+    if (!readSet[a.id]) {
+      // The tap that marks an announcement read collapses it into the read
+      // pile rather than expanding it — the unread card already showed the
+      // opening lines, and expanding here would leave a just-read item sitting
+      // open above the collapsed ones. Tapping again expands it.
+      setAnnOpenItem(s=>({ ...s, [a.id]: false }));
+      if (onMarkAnnRead) onMarkAnnRead(a.id);
+      return;
+    }
     setAnnOpenItem(s=>({ ...s, [a.id]: !s[a.id] }));
-    if (!readSet[a.id] && onMarkAnnRead) onMarkAnnRead(a.id);
   }
   // Announcements only carry the school's name, so resolve its palette accent
   // via the linked cards — this gives the school label the same treatment it
@@ -1461,8 +1469,8 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
         )}
 
         {annAll.length>0 && (
-          <div style={{marginBottom:22}}>
-            <div className="sec-row">
+          <div style={{marginBottom:6}}>
+            <div className="sec-row" style={{marginBottom:10}}>
               <div className="sec-title">Announcements</div>
               {annUnread.length>0 && <div style={{fontSize:".7rem",fontWeight:800,color:"var(--red)"}}>{annUnread.length+" new"}</div>}
             </div>
@@ -1496,11 +1504,17 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
             {annReadShown.map(a=>{
               const open = !!annOpenItem[a.id];
               return (
-                <div key={a.id} onClick={()=>openAnnItem(a)} style={{padding:"9px 4px",borderBottom:"1px solid var(--border)",cursor:"pointer"}}>
-                  <div style={{fontSize:".78rem",fontWeight:600,color:"var(--text2)",whiteSpace:open?"normal":"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                    {a.business_name+" · "+a.title+" · "+relTime(a.created_at)}
+                <div key={a.id} onClick={()=>openAnnItem(a)} style={{background:"var(--bg)",border:"1px solid var(--border)",borderRadius:16,padding:"14px 16px",marginBottom:10,cursor:"pointer"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:12}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:".64rem",fontWeight:800,color:annAccent(a.business_name),textTransform:"uppercase",letterSpacing:".1em",opacity:.65,marginBottom:2}}>{a.business_name}</div>
+                      <div style={{fontSize:".82rem",fontWeight:600,color:"var(--text2)",whiteSpace:open?"normal":"nowrap",overflow:"hidden",textOverflow:"ellipsis",overflowWrap:"anywhere"}}>
+                        {a.title}<span style={{color:"var(--text3)",fontWeight:600}}>{" · "+relTime(a.created_at)}</span>
+                      </div>
+                    </div>
+                    <span style={{flexShrink:0,color:"var(--text3)",fontSize:".8rem",lineHeight:1,display:"inline-block",transform:open?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s ease-out"}}>⌄</span>
                   </div>
-                  {open && a.body && <div style={{fontSize:".82rem",color:"var(--text2)",lineHeight:1.5,whiteSpace:"pre-wrap",marginTop:6,overflowWrap:"anywhere"}}>{a.body}</div>}
+                  {open && a.body && <div style={{fontSize:".82rem",color:"var(--text2)",lineHeight:1.5,whiteSpace:"pre-wrap",marginTop:10,overflowWrap:"anywhere"}}>{a.body}</div>}
                   {open && a.image_url && <img src={a.image_url} alt="" style={{display:"block",width:"100%",height:"auto",maxHeight:340,objectFit:"contain",borderRadius:12,marginTop:8,background:"var(--bg)"}} />}
                 </div>
               );
