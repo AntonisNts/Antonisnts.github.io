@@ -1357,7 +1357,16 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   const annAll = (announcements||[]).slice().sort((a,b)=>String(b.created_at||"").localeCompare(String(a.created_at||"")));
   const annUnread = annAll.filter(a=>!readSet[a.id]);
   const annReadItems = annAll.filter(a=>readSet[a.id]);
-  const annReadShown = annShowAll ? annReadItems : annReadItems.slice(0,3);
+  // The feed is bounded so a run of announcements can't push the CARDS section
+  // (the reason parents open this screen) below the fold. Only the newest few
+  // unread get the tall full-card treatment; everything beyond that collapses
+  // into compact rows, and the rest sits behind "Show all". Overflowed unread
+  // items keep their unread dot, so nothing unread is ever silently buried.
+  const ANN_FULL_CAP = 2, ANN_COMPACT_CAP = 2;
+  const annFull = annShowAll ? annUnread : annUnread.slice(0, ANN_FULL_CAP);
+  const annCompactAll = (annShowAll ? [] : annUnread.slice(ANN_FULL_CAP)).concat(annReadItems);
+  const annCompactShown = annShowAll ? annReadItems : annCompactAll.slice(0, ANN_COMPACT_CAP);
+  const annHidden = annAll.length - annFull.length - annCompactShown.length;
   function openAnnItem(a){
     if (!readSet[a.id]) {
       // The tap that marks an announcement read collapses it into the read
@@ -1475,7 +1484,7 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
               {annUnread.length>0 && <div style={{fontSize:".7rem",fontWeight:800,color:"var(--red)"}}>{annUnread.length+" new"}</div>}
             </div>
 
-            {annUnread.map(a=>{
+            {annFull.map(a=>{
               const acc = annAccent(a.business_name);
               const open = !!annOpenItem[a.id];
               return (
@@ -1501,8 +1510,9 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
               );
             })}
 
-            {annReadShown.map(a=>{
+            {annCompactShown.map(a=>{
               const open = !!annOpenItem[a.id];
+              const isUnread = !readSet[a.id];
               return (
                 <div key={a.id} onClick={()=>openAnnItem(a)} style={{background:"var(--bg)",border:"1px solid var(--border)",borderRadius:16,padding:"14px 16px",marginBottom:10,cursor:"pointer"}}>
                   <div style={{display:"flex",alignItems:"center",gap:12}}>
@@ -1512,6 +1522,7 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
                         {a.title}<span style={{color:"var(--text3)",fontWeight:600}}>{" · "+relTime(a.created_at)}</span>
                       </div>
                     </div>
+                    {isUnread && <span style={{width:10,height:10,borderRadius:99,flexShrink:0,background:"var(--red)",boxShadow:"0 0 8px rgba(239,68,68,.6)"}} />}
                     <span style={{flexShrink:0,color:"var(--text3)",fontSize:".8rem",lineHeight:1,display:"inline-block",transform:open?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s ease-out"}}>⌄</span>
                   </div>
                   {open && a.body && <div style={{fontSize:".82rem",color:"var(--text2)",lineHeight:1.5,whiteSpace:"pre-wrap",marginTop:10,overflowWrap:"anywhere"}}>{a.body}</div>}
@@ -1520,9 +1531,9 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
               );
             })}
 
-            {annReadItems.length>3 && (
-              <button onClick={()=>setAnnShowAll(v=>!v)} style={{background:"none",border:"none",padding:"10px 4px 0",fontFamily:"var(--f)",fontSize:".76rem",fontWeight:800,color:"var(--violet-glow)",cursor:"pointer"}}>
-                {annShowAll ? "Show less" : ("Show all ("+annReadItems.length+")")}
+            {(annHidden>0 || annShowAll) && (
+              <button onClick={()=>setAnnShowAll(v=>!v)} style={{background:"none",border:"none",padding:"6px 4px 0",fontFamily:"var(--f)",fontSize:".76rem",fontWeight:800,color:"var(--violet-glow)",cursor:"pointer"}}>
+                {annShowAll ? "Show less" : ("Show all ("+annAll.length+")")}
               </button>
             )}
           </div>
