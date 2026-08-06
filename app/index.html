@@ -1375,6 +1375,7 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   const annOrdered = annAll;
   const annShown = annShowAll ? annOrdered : annOrdered.slice(0, ANN_CAP);
   const annHidden = annOrdered.length - annShown.length;
+  const annNewest = annOrdered[0];
   // A tap always toggles the body and marks an unread item read. An earlier
   // version deliberately collapsed on the read-marking tap, which suited the
   // old layout where unread items were tall cards already showing a preview of
@@ -1483,15 +1484,27 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
         )}
 
         {annAll.length>0 && (
-          <div style={{marginBottom:6}}>
-            <div onClick={()=>setAnnSecOpen(v=>!v)} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 4px",cursor:"pointer"}}>
-              <span style={{fontSize:".82rem",fontWeight:800,color:"#fff"}}>Announcements</span>
-              <span style={{fontSize:".72rem",fontWeight:700,color:"var(--text2)"}}>{"("+annAll.length+")"}</span>
-              {annUnread.length>0 && <span style={{width:8,height:8,borderRadius:99,background:"var(--red)"}} />}
-              {annUnread.length>0 && <span style={{fontSize:".7rem",fontWeight:800,color:"var(--red)"}}>{annUnread.length+" new"}</span>}
-              <span style={{marginLeft:"auto",color:"var(--text2)",fontSize:".8rem"}}>{annSecOpen?"\u25be":"\u25b8"}</span>
+          <div style={{marginBottom:10}}>
+            {/* Rendered with the exact anatomy of a card row (renderRow): same
+                40px icon tile, same three-line stack \u2014 accent eyebrow, white
+                title, muted sub \u2014 and the same status dot on the right. It is
+                the announcements "card", sitting alongside the student cards
+                rather than looking like a separate widget bolted above them.
+                Collapsed it costs one row; the newest headline still shows, so
+                the row carries information rather than just a count. */}
+            <div onClick={()=>setAnnSecOpen(v=>!v)} style={{display:"flex",alignItems:"center",gap:12,background:"var(--bg2)",border:"1px solid "+(annSecOpen?"rgba(99,102,241,.35)":"var(--border)"),borderRadius:16,padding:"13px 16px",cursor:"pointer"}}>
+              <div style={{width:40,height:40,borderRadius:12,background:"rgba(255,255,255,.06)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.3rem",flexShrink:0}}>📣</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:".64rem",fontWeight:800,color:"var(--violet-glow)",textTransform:"uppercase",letterSpacing:".1em",marginBottom:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Announcements</div>
+                <div style={{fontSize:"1rem",fontWeight:700,color:"#fff",marginBottom:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{annNewest ? annNewest.title : "Announcements"}</div>
+                <div style={{fontSize:".72rem",fontWeight:600,color:"var(--text2)"}}>
+                  {(annUnread.length>0 ? annUnread.length+" new" : annAll.length+(annAll.length===1?" announcement":" announcements"))
+                    + (annNewest ? " \u00b7 "+relTime(annNewest.created_at) : "")}
+                </div>
+              </div>
+              <div style={{width:12,height:12,borderRadius:99,flexShrink:0,background:annUnread.length>0?"var(--red)":"var(--green)",boxShadow:annUnread.length>0?"0 0 8px rgba(239,68,68,.6)":"0 0 8px rgba(16,185,129,.5)"}} />
             </div>
-            {annSecOpen && (<>
+            {annSecOpen && (<div style={{marginTop:8}}>
 {annShown.map((a,idx)=>{
               const open = !!annOpenItem[a.id];
               const isUnread = !readSet[a.id];
@@ -1527,7 +1540,7 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
                 {annShowAll ? "Show less" : ("Show all ("+annAll.length+")")}
               </button>
             )}
-            </>)}
+            </div>)}
           </div>
         )}
 
