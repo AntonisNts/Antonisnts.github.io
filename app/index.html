@@ -1350,7 +1350,8 @@ function PgLinkChild({ onBack, onLink, kids, onAssign, onCreateChild }) {
 function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead, onLink, onUnlink, onAssign, onCreateChild, onRenameChild, onDeleteChild, onLogout, onTeacher, onSettings }) {
   const [expanded, setExpanded] = useState({});
   const [openGroups, setOpenGroups] = useState({});
-  const [annShowAll, setAnnShowAll] = useState(false);   // "Show all" for the read pile
+  const [annSecOpen, setAnnSecOpen] = useState(false);   // announcements section, collapsed by default
+  const [annShowAll, setAnnShowAll] = useState(false);   // "Show all" within the expanded section
   const [annOpenItem, setAnnOpenItem] = useState({});    // per-announcement expand (read items + "More")
   const readSet = {}; (annRead||[]).forEach(id=>{readSet[id]=true;});
   // Single merged feed across every linked school, newest first.
@@ -1483,12 +1484,15 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
 
         {annAll.length>0 && (
           <div style={{marginBottom:6}}>
-            <div className="sec-row" style={{marginBottom:10}}>
-              <div className="sec-title">Announcements</div>
-              {annUnread.length>0 && <div style={{fontSize:".7rem",fontWeight:800,color:"var(--red)"}}>{annUnread.length+" new"}</div>}
+            <div onClick={()=>setAnnSecOpen(v=>!v)} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 4px",cursor:"pointer"}}>
+              <span style={{fontSize:".82rem",fontWeight:800,color:"#fff"}}>Announcements</span>
+              <span style={{fontSize:".72rem",fontWeight:700,color:"var(--text2)"}}>{"("+annAll.length+")"}</span>
+              {annUnread.length>0 && <span style={{width:8,height:8,borderRadius:99,background:"var(--red)"}} />}
+              {annUnread.length>0 && <span style={{fontSize:".7rem",fontWeight:800,color:"var(--red)"}}>{annUnread.length+" new"}</span>}
+              <span style={{marginLeft:"auto",color:"var(--text2)",fontSize:".8rem"}}>{annSecOpen?"\u25be":"\u25b8"}</span>
             </div>
-
-            {annShown.map((a,idx)=>{
+            {annSecOpen && (<>
+{annShown.map((a,idx)=>{
               const open = !!annOpenItem[a.id];
               const isUnread = !readSet[a.id];
               // Only label the school when it changes from the row above —
@@ -1523,6 +1527,7 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
                 {annShowAll ? "Show less" : ("Show all ("+annAll.length+")")}
               </button>
             )}
+            </>)}
           </div>
         )}
 
