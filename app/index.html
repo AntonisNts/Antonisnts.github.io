@@ -1357,27 +1357,31 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   const annAll = (announcements||[]).slice().sort((a,b)=>String(b.created_at||"").localeCompare(String(a.created_at||"")));
   const annUnread = annAll.filter(a=>!readSet[a.id]);
   const annReadItems = annAll.filter(a=>readSet[a.id]);
-  // The feed is bounded so a run of announcements can't push the CARDS section
-  // (the reason parents open this screen) below the fold. Only the newest few
-  // unread get the tall full-card treatment; everything beyond that collapses
-  // into compact rows, and the rest sits behind "Show all". Overflowed unread
-  // items keep their unread dot, so nothing unread is ever silently buried.
-  const ANN_FULL_CAP = 2, ANN_COMPACT_CAP = 2;
-  const annFull = annShowAll ? annUnread : annUnread.slice(0, ANN_FULL_CAP);
-  const annCompactAll = (annShowAll ? [] : annUnread.slice(ANN_FULL_CAP)).concat(annReadItems);
-  const annCompactShown = annShowAll ? annReadItems : annCompactAll.slice(0, ANN_COMPACT_CAP);
-  const annHidden = annAll.length - annFull.length - annCompactShown.length;
+  // Every announcement renders as the same compact row. An earlier version gave
+  // the newest two a tall card and the rest a thin row, but with several unread
+  // items from one school that split looked arbitrary — the size implied a
+  // status difference that didn't exist — and the tall cards wasted height when
+  // an announcement had little or no body. One row shape, distinguished by
+  // weight/fill/dot instead of size, keeps the block short so the CARDS section
+  // (the reason parents open this screen) stays on screen.
+  // Strictly newest-first, with read state never affecting order. Sorting unread
+  // ahead of read makes an item jump the moment you tap it — it becomes read,
+  // moves to the back, and with a cap in place can vanish out of the list before
+  // you've read the body you just opened. Unread is signalled by fill, weight
+  // and dot instead, and the "N new" badge plus "Show all" cover any unread item
+  // sitting below the cap.
+  const ANN_CAP = 4;
+  const annOrdered = annAll;
+  const annShown = annShowAll ? annOrdered : annOrdered.slice(0, ANN_CAP);
+  const annHidden = annOrdered.length - annShown.length;
+  // A tap always toggles the body and marks an unread item read. An earlier
+  // version deliberately collapsed on the read-marking tap, which suited the
+  // old layout where unread items were tall cards already showing a preview of
+  // the body. In this uniform list a row shows only title and time, so that
+  // same tap would clear the dot and reveal nothing — a dead interaction.
   function openAnnItem(a){
-    if (!readSet[a.id]) {
-      // The tap that marks an announcement read collapses it into the read
-      // pile rather than expanding it — the unread card already showed the
-      // opening lines, and expanding here would leave a just-read item sitting
-      // open above the collapsed ones. Tapping again expands it.
-      setAnnOpenItem(s=>({ ...s, [a.id]: false }));
-      if (onMarkAnnRead) onMarkAnnRead(a.id);
-      return;
-    }
     setAnnOpenItem(s=>({ ...s, [a.id]: !s[a.id] }));
+    if (!readSet[a.id] && onMarkAnnRead) onMarkAnnRead(a.id);
   }
   // Announcements only carry the school's name, so resolve its palette accent
   // via the linked cards — this gives the school label the same treatment it
@@ -1484,54 +1488,37 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
               {annUnread.length>0 && <div style={{fontSize:".7rem",fontWeight:800,color:"var(--red)"}}>{annUnread.length+" new"}</div>}
             </div>
 
-            {annFull.map(a=>{
-              const acc = annAccent(a.business_name);
-              const open = !!annOpenItem[a.id];
-              return (
-                <div key={a.id} onClick={()=>openAnnItem(a)} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:16,padding:"14px 16px",marginBottom:10,cursor:"pointer"}}>
-                  <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:3}}>
-                        {a.is_pinned && <span style={{fontSize:".58rem",fontWeight:800,color:"var(--violet-glow)",background:"rgba(99,102,241,.15)",borderRadius:6,padding:"2px 7px"}}>📌 PINNED</span>}
-                        <span style={{fontSize:".64rem",fontWeight:800,color:acc,textTransform:"uppercase",letterSpacing:".1em"}}>{a.business_name}</span>
-                      </div>
-                      <div style={{fontSize:".98rem",fontWeight:800,color:"#fff",marginBottom:3,overflowWrap:"anywhere"}}>{a.title}</div>
-                      {a.body && (
-                        <div style={{fontSize:".84rem",color:"var(--text2)",lineHeight:1.5,whiteSpace:"pre-wrap",overflowWrap:"anywhere",
-                          ...(open?{}:{display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"})}}>{a.body}</div>
-                      )}
-                      {a.body && !open && a.body.length>90 && <div style={{fontSize:".76rem",fontWeight:800,color:"var(--violet-glow)",marginTop:3}}>More</div>}
-                      {open && a.image_url && <img src={a.image_url} alt="" style={{display:"block",width:"100%",height:"auto",maxHeight:340,objectFit:"contain",borderRadius:12,marginTop:8,background:"var(--bg)"}} />}
-                      <div style={{fontSize:".7rem",color:"var(--text3)",fontWeight:700,marginTop:6}}>{relTime(a.created_at)}</div>
-                    </div>
-                    <div style={{width:12,height:12,borderRadius:99,flexShrink:0,marginTop:4,background:"var(--red)",boxShadow:"0 0 8px rgba(239,68,68,.6)"}} />
-                  </div>
-                </div>
-              );
-            })}
-
-            {annCompactShown.map(a=>{
+            {annShown.map((a,idx)=>{
               const open = !!annOpenItem[a.id];
               const isUnread = !readSet[a.id];
+              // Only label the school when it changes from the row above —
+              // repeating it on every row is noise when a run of announcements
+              // comes from the same school.
+              const showSchool = idx===0 || annShown[idx-1].business_name!==a.business_name;
               return (
-                <div key={a.id} onClick={()=>openAnnItem(a)} style={{background:"var(--bg)",border:"1px solid var(--border)",borderRadius:16,padding:"14px 16px",marginBottom:10,cursor:"pointer"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <div key={a.id} onClick={()=>openAnnItem(a)} style={{background:isUnread?"var(--bg2)":"var(--bg)",border:"1px solid "+(isUnread?"rgba(99,102,241,.28)":"var(--border)"),borderRadius:14,padding:"11px 14px",marginBottom:8,cursor:"pointer"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:".64rem",fontWeight:800,color:annAccent(a.business_name),textTransform:"uppercase",letterSpacing:".1em",opacity:.65,marginBottom:2}}>{a.business_name}</div>
-                      <div style={{fontSize:".82rem",fontWeight:600,color:"var(--text2)",whiteSpace:open?"normal":"nowrap",overflow:"hidden",textOverflow:"ellipsis",overflowWrap:"anywhere"}}>
+                      {showSchool && (
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                          {a.is_pinned && <span style={{fontSize:".54rem",fontWeight:800,color:"var(--violet-glow)",background:"rgba(99,102,241,.15)",borderRadius:5,padding:"1px 6px"}}>PINNED</span>}
+                          <span style={{fontSize:".62rem",fontWeight:800,color:annAccent(a.business_name),textTransform:"uppercase",letterSpacing:".1em",opacity:isUnread?1:.6}}>{a.business_name}</span>
+                        </div>
+                      )}
+                      <div style={{fontSize:".86rem",fontWeight:isUnread?800:600,color:isUnread?"#fff":"var(--text2)",whiteSpace:open?"normal":"nowrap",overflow:"hidden",textOverflow:"ellipsis",overflowWrap:"anywhere"}}>
                         {a.title}<span style={{color:"var(--text3)",fontWeight:600}}>{" · "+relTime(a.created_at)}</span>
                       </div>
                     </div>
-                    {isUnread && <span style={{width:10,height:10,borderRadius:99,flexShrink:0,background:"var(--red)",boxShadow:"0 0 8px rgba(239,68,68,.6)"}} />}
+                    {isUnread && <span style={{width:9,height:9,borderRadius:99,flexShrink:0,background:"var(--red)",boxShadow:"0 0 8px rgba(239,68,68,.6)"}} />}
                     <span style={{flexShrink:0,color:"var(--text3)",fontSize:".8rem",lineHeight:1,display:"inline-block",transform:open?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s ease-out"}}>⌄</span>
                   </div>
-                  {open && a.body && <div style={{fontSize:".82rem",color:"var(--text2)",lineHeight:1.5,whiteSpace:"pre-wrap",marginTop:10,overflowWrap:"anywhere"}}>{a.body}</div>}
+                  {open && a.body && <div style={{fontSize:".82rem",color:"var(--text2)",lineHeight:1.5,whiteSpace:"pre-wrap",marginTop:9,overflowWrap:"anywhere"}}>{a.body}</div>}
                   {open && a.image_url && <img src={a.image_url} alt="" style={{display:"block",width:"100%",height:"auto",maxHeight:340,objectFit:"contain",borderRadius:12,marginTop:8,background:"var(--bg)"}} />}
                 </div>
               );
             })}
 
-            {(annHidden>0 || annShowAll) && (
+{(annHidden>0 || annShowAll) && (
               <button onClick={()=>setAnnShowAll(v=>!v)} style={{background:"none",border:"none",padding:"6px 4px 0",fontFamily:"var(--f)",fontSize:".76rem",fontWeight:800,color:"var(--violet-glow)",cursor:"pointer"}}>
                 {annShowAll ? "Show less" : ("Show all ("+annAll.length+")")}
               </button>
