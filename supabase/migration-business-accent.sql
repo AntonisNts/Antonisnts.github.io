@@ -48,18 +48,14 @@ comment on column public.businesses.accent is
 --  Parents and students keep seeing the category colour until PART B, which
 --  adds the field to get_my_cards() and get_student_card().
 --
---  PART B has to be written against the definitions that are actually LIVE.
---  The functions in this repo are OUT OF DATE -- the groups/teachers work was
---  pasted straight into Supabase and never committed here, so the live
---  get_my_cards() returns an inline `group` object that no file here mentions.
---  Re-creating them from these files would silently revert group support.
---  Dump the live definitions first:
---
---    select p.proname, pg_get_functiondef(p.oid)
---      from pg_proc p
---      join pg_namespace n on n.oid = p.pronamespace
---     where n.nspname = 'public'
---       and p.proname in ('get_my_cards', 'get_student_card');
+--  PART B is migration-business-accent-part-b.sql. It had to be written
+--  against the definitions that are actually LIVE: the functions in this repo
+--  were OUT OF DATE, because the groups/teachers work was pasted straight into
+--  Supabase and never committed here, so the live get_my_cards() returns an
+--  inline `group` object that no file here mentioned. Re-creating them from
+--  these files would have silently reverted group support. Part B was built
+--  from a pg_get_functiondef() dump of the running database, so it doubles as
+--  the recovered record of what those two functions actually are.
 --
 --  ROLLBACK (removes only this column and any chosen themes):
 --    alter table public.businesses drop column if exists accent;
