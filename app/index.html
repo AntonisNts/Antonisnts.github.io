@@ -696,6 +696,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
         </div>
       )}
     </div>   ); }  function PgAddCard({ biz, onBack, onCreate }) {
+  const p = bizPal(biz);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [chan, setChan] = useState("whatsapp");
@@ -708,7 +709,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
   const levels = biz.levels||[];
   const selLevel = levels.find(l=>l.id===levelId)||null;
   return (
-    <div className="reg-page">
+    <div className="reg-page" style={{"--accent":p.acc}}>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
         <button className="tb-back" onClick={onBack}>←</button>
         <h2>New Card</h2>
@@ -719,14 +720,14 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
       <div className="ig"><label>Preferred Channel</label>
         <div style={{display:"flex",gap:6}}>
           {[["whatsapp","WhatsApp"],["viber","Viber"],["sms","SMS"]].map(([v,l])=>(
-            <button key={v} type="button" onClick={()=>setChan(v)} style={{flex:1,padding:"12px 6px",borderRadius:12,border:"1px solid "+(chan===v?"var(--violet)":"var(--border)"),background:chan===v?"var(--violet)":"var(--bg2)",color:chan===v?"#fff":"var(--text2)",fontFamily:"var(--f)",fontWeight:700,fontSize:".8rem",cursor:"pointer"}}>{l}</button>
+            <button key={v} type="button" onClick={()=>setChan(v)} style={{flex:1,padding:"12px 6px",borderRadius:99,border:"1px solid "+(chan===v?"var(--accent)":"var(--border)"),background:chan===v?"var(--accent)":"rgba(255,255,255,.06)",color:chan===v?"var(--accent-ink)":"var(--text2)",fontFamily:"var(--f)",fontWeight:700,fontSize:".8rem",cursor:"pointer"}}>{l}</button>
           ))}
         </div>
       </div>
       <div className="ig"><label>Receipt Language</label>
         <div style={{display:"flex",gap:6}}>
           {[["EN","English"],["EL","Ελληνικά"]].map(([v,l])=>(
-            <button key={v} type="button" onClick={()=>setLang(v)} style={{flex:1,padding:"12px 6px",borderRadius:12,border:"1px solid "+(lang===v?"var(--violet)":"var(--border)"),background:lang===v?"var(--violet)":"var(--bg2)",color:lang===v?"#fff":"var(--text2)",fontFamily:"var(--f)",fontWeight:700,fontSize:".8rem",cursor:"pointer"}}>{l}</button>
+            <button key={v} type="button" onClick={()=>setLang(v)} style={{flex:1,padding:"12px 6px",borderRadius:99,border:"1px solid "+(lang===v?"var(--accent)":"var(--border)"),background:lang===v?"var(--accent)":"rgba(255,255,255,.06)",color:lang===v?"var(--accent-ink)":"var(--text2)",fontFamily:"var(--f)",fontWeight:700,fontSize:".8rem",cursor:"pointer"}}>{l}</button>
           ))}
         </div>
       </div>
@@ -753,7 +754,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
           <div key={i} style={{marginBottom:10,padding:"10px",background:"var(--bg2)",borderRadius:12,border:"1px solid var(--border)"}}>
             <div style={{display:"flex",gap:6,alignItems:"center"}}>
               <select className="inp" style={{flex:1,marginBottom:0}} value={row.day} onChange={e=>setSchedule(s=>s.map((r,j)=>j===i?{...r,day:e.target.value}:r))}>{DAYS.map(d=><option key={d} value={d}>{d}</option>)}</select>
-              <button type="button" onClick={()=>setSchedule(s=>s.filter((_,j)=>j!==i))} aria-label="Remove" style={{background:"transparent",border:"1px solid var(--border)",borderRadius:10,minWidth:44,height:48,color:"var(--red)",fontWeight:900,fontSize:"1.1rem",cursor:"pointer",flexShrink:0}}>×</button>
+              <button type="button" onClick={()=>setSchedule(s=>s.filter((_,j)=>j!==i))} aria-label="Remove" style={{background:"transparent",border:"1px solid var(--border)",borderRadius:10,minWidth:44,height:48,color:"var(--red)",fontWeight:800,fontSize:"1.1rem",cursor:"pointer",flexShrink:0}}>×</button>
             </div>
             <div style={{display:"flex",gap:6,alignItems:"center",marginTop:6}}>
               <input className="inp" style={{flex:1,marginBottom:0}} type="time" value={row.start_time||""} onChange={e=>setSchedule(s=>s.map((r,j)=>j===i?{...r,start_time:e.target.value}:r))} />
@@ -767,7 +768,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
       <button className="btn" style={{marginTop:8}} onClick={()=>onCreate({name,level:selLevel,phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupId:groupId||null,lessonSchedule:schedule.filter(r=>r.day&&r.start_time)})}>Create Card</button>
     </div>
   );
-}  function PgReveal({ card, onDone }) {   return (     <div className="reg-page">       <h2 style={{marginBottom:4}}>Card Created</h2>       <p>Share the code and PIN with the student.</p>       <div className="reveal-box">         <div className="rv-lbl">Student Code</div>         <div className="rv-val">{card.shareCode}</div>         <div className="rv-sep" />         <div className="rv-lbl">PIN</div>         <div className="rv-pin">{card.pin}</div>       </div>       <div className="info-box" style={{marginBottom:16}}>Write these down now.</div>       <button className="btn" onClick={onDone}>Done</button>     </div>   ); }  function PgCard({ biz, card, onBack, onUpdate, onRemove }) {
+}  function PgReveal({ biz, card, onDone }) {   return (     <div className="reg-page" style={{"--accent":bizPal(biz).acc}}>       <h2 style={{marginBottom:4}}>Card Created</h2>       <p>Share the code and PIN with the student.</p>       <div className="reveal-box">         <div className="rv-lbl">Student Code</div>         <div className="rv-val">{card.shareCode}</div>         <div className="rv-sep" />         <div className="rv-lbl">PIN</div>         <div className="rv-pin">{card.pin}</div>       </div>       <div className="info-box" style={{marginBottom:16}}>Write these down now.</div>       <button className="btn" onClick={onDone}>Done</button>     </div>   ); }  function PgCard({ biz, card, onBack, onUpdate, onRemove }) {
   const p = bizPal(biz);   // palette accent, published as --accent on the page root
   const [amount, setAmount] = useState("");
   const [confirm, setConfirm] = useState(null);
@@ -1249,7 +1250,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
       <button className="btn" onClick={doCode}>Find My Card</button>
     </div>
   );
-}  function PgManageMonths({ biz, onBack, onSave }) {   const [inactive, setInactive] = useState(biz.inactiveMonths||[]);   function toggle(mi) { setInactive(prev=>prev.includes(mi)?prev.filter(x=>x!==mi):[...prev,mi]); }   return (     <div className="reg-page">       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>         <button className="tb-back" onClick={onBack}>←</button>         <h2>Manage Months</h2>       </div>       <p>Tap to mark months as inactive. They will be skipped in payment distribution.</p>       <div className="mth-grid">         {MONTHS.map((m,mi)=>(           <div key={mi} className={"mth-btn"+(inactive.includes(mi)?" off":"")} onClick={()=>toggle(mi)}>             <div className="mth-btn-lbl">{m}</div>             <div className="mth-btn-char">{inactive.includes(mi)?"–":"✓"}</div>           </div>         ))}       </div>       <div className="info-box" style={{marginBottom:20}}>         <strong style={{color:"var(--text)"}}>Active: </strong>{MONTHS.filter((_,mi)=>!inactive.includes(mi)).join(", ")}         <br /><strong style={{color:"var(--text)"}}>Inactive: </strong>{inactive.length===0?"None":MONTHS.filter((_,mi)=>inactive.includes(mi)).join(", ")}       </div>       <button className="btn" onClick={()=>onSave(inactive)}>Save</button>     </div>   ); }  function PgManageLevels({ biz, onBack, onSave }) {   const [levels, setLevels] = useState(biz.levels||[]);   const [name, setName] = useState("");   const [fee, setFee] = useState("");   const [err, setErr] = useState("");   function addLevel() {     if (!name.trim()) { setErr("Enter a level name."); return; }     if (!fee||+fee<=0) { setErr("Enter a valid fee."); return; }     setLevels(prev=>[...prev,{id:"l"+Date.now(),name:name.trim(),fee:+fee}]);     setName(""); setFee(""); setErr("");   }   return (     <div className="reg-page">       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>         <button className="tb-back" onClick={onBack}>←</button>         <h2>Manage Levels</h2>       </div>       <p>Define levels with their own monthly fees.</p>       {levels.length===0 ? <div className="empty" style={{padding:"20px 0"}}>No levels yet.</div>         : levels.map(l=>(           <div key={l.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--bg3)",borderRadius:14,padding:"14px 16px",marginBottom:8,border:"1px solid var(--border)"}}>             <div><div style={{fontWeight:900,fontSize:".95rem"}}>{l.name}</div><div style={{fontSize:".78rem",color:"var(--accent)",fontWeight:800,marginTop:2}}>{"€"+l.fee+"/mo"}</div></div>             <button onClick={()=>setLevels(prev=>prev.filter(x=>x.id!==l.id))} style={{background:"none",border:"none",color:"var(--text3)",fontSize:"1.1rem",cursor:"pointer",padding:"4px 8px"}}>✕</button>           </div>         ))       }       <div style={{background:"var(--bg3)",borderRadius:16,padding:16,marginTop:8,marginBottom:16,border:"1px solid var(--border)"}}>         <div style={{fontSize:".8rem",fontWeight:800,color:"var(--text2)",marginBottom:12,textTransform:"uppercase",letterSpacing:".04em"}}>Add New Level</div>         <div className="ig" style={{marginBottom:10}}><label>Level Name</label><input className="inp" placeholder="e.g. Beginner / Age 6-10" value={name} onChange={e=>{setName(e.target.value);setErr("");}} /></div>         <div className="ig" style={{marginBottom:10}}><label>Monthly Fee</label><input className="inp" type="number" placeholder={"e.g. "+biz.fee} value={fee} onChange={e=>{setFee(e.target.value);setErr("");}} /></div>         {err && <div className="err" style={{marginBottom:8}}>{err}</div>}         <button onClick={addLevel} style={{width:"100%",padding:"11px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,fontFamily:"var(--f)",fontWeight:800,fontSize:".88rem",cursor:"pointer",color:"var(--text)"}}>+ Add Level</button>       </div>       <button className="btn" onClick={()=>onSave(levels)}>Save Levels</button>     </div>   ); }  function PgTheme({ biz, onBack, onSave }) {
+}  function PgManageMonths({ biz, onBack, onSave }) {   const p = bizPal(biz);   const [inactive, setInactive] = useState(biz.inactiveMonths||[]);   function toggle(mi) { setInactive(prev=>prev.includes(mi)?prev.filter(x=>x!==mi):[...prev,mi]); }   return (     <div className="reg-page" style={{"--accent":p.acc}}>       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>         <button className="tb-back" onClick={onBack}>←</button>         <h2>Manage Months</h2>       </div>       <p>Tap to mark months as inactive. They will be skipped in payment distribution.</p>       <div className="mth-grid">         {MONTHS.map((m,mi)=>(           <div key={mi} className={"mth-btn"+(inactive.includes(mi)?" off":"")} onClick={()=>toggle(mi)}>             <div className="mth-btn-lbl">{m}</div>             <div className="mth-btn-char">{inactive.includes(mi)?"–":"✓"}</div>           </div>         ))}       </div>       <div className="info-box" style={{marginBottom:20}}>         <strong style={{color:"var(--text)"}}>Active: </strong>{MONTHS.filter((_,mi)=>!inactive.includes(mi)).join(", ")}         <br /><strong style={{color:"var(--text)"}}>Inactive: </strong>{inactive.length===0?"None":MONTHS.filter((_,mi)=>inactive.includes(mi)).join(", ")}       </div>       <button className="btn" onClick={()=>onSave(inactive)}>Save</button>     </div>   ); }  function PgManageLevels({ biz, onBack, onSave }) {   const p = bizPal(biz);   const [levels, setLevels] = useState(biz.levels||[]);   const [name, setName] = useState("");   const [fee, setFee] = useState("");   const [err, setErr] = useState("");   function addLevel() {     if (!name.trim()) { setErr("Enter a level name."); return; }     if (!fee||+fee<=0) { setErr("Enter a valid fee."); return; }     setLevels(prev=>[...prev,{id:"l"+Date.now(),name:name.trim(),fee:+fee}]);     setName(""); setFee(""); setErr("");   }   return (     <div className="reg-page" style={{"--accent":p.acc}}>       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>         <button className="tb-back" onClick={onBack}>←</button>         <h2>Manage Levels</h2>       </div>       <p>Define levels with their own monthly fees.</p>       {levels.length===0 ? <div className="empty" style={{padding:"20px 0"}}>No levels yet.</div>         : levels.map(l=>(           <div key={l.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--bg3)",borderRadius:14,padding:"14px 16px",marginBottom:8,border:"1px solid var(--border)"}}>             <div><div style={{fontWeight:800,fontSize:".95rem"}}>{l.name}</div><div style={{fontSize:".78rem",color:"var(--accent)",fontWeight:800,marginTop:2}}>{"€"+l.fee+"/mo"}</div></div>             <button onClick={()=>setLevels(prev=>prev.filter(x=>x.id!==l.id))} style={{background:"none",border:"none",color:"var(--text3)",fontSize:"1.1rem",cursor:"pointer",padding:"4px 8px"}}>✕</button>           </div>         ))       }       <div style={{background:"var(--bg3)",borderRadius:16,padding:16,marginTop:8,marginBottom:16,border:"1px solid var(--border)"}}>         <div style={{fontSize:".8rem",fontWeight:800,color:"var(--text2)",marginBottom:12,textTransform:"uppercase",letterSpacing:".04em"}}>Add New Level</div>         <div className="ig" style={{marginBottom:10}}><label>Level Name</label><input className="inp" placeholder="e.g. Beginner / Age 6-10" value={name} onChange={e=>{setName(e.target.value);setErr("");}} /></div>         <div className="ig" style={{marginBottom:10}}><label>Monthly Fee</label><input className="inp" type="number" placeholder={"e.g. "+biz.fee} value={fee} onChange={e=>{setFee(e.target.value);setErr("");}} /></div>         {err && <div className="err" style={{marginBottom:8}}>{err}</div>}         <button onClick={addLevel} style={{width:"100%",padding:"11px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,fontFamily:"var(--f)",fontWeight:800,fontSize:".88rem",cursor:"pointer",color:"var(--text)"}}>+ Add Level</button>       </div>       <button className="btn" onClick={()=>onSave(levels)}>Save Levels</button>     </div>   ); }  function PgTheme({ biz, onBack, onSave }) {
   const [sel, setSel] = useState(biz.accent || "");
   const base = getPal(biz.type);
   const t = sel ? THEMES[sel] : null;
@@ -1301,7 +1302,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
       <button className="btn" disabled={!dirty} onClick={()=>onSave(sel||null)}>Save Colour</button>
     </div>
   );
-}  function PgCustomCard({ biz, onBack, onSave }) {   const [preview, setPreview] = useState(biz.customCardImage||null);   const [err, setErr] = useState("");   const p = bizPal(biz);   const fileRef = useRef(null);   function handleFile(e) {     const file = e.target.files[0];     if (!file) return;     if (file.size > 2*1024*1024) { setErr("Image must be under 2MB."); return; }     if (!file.type.startsWith("image/")) { setErr("Please select an image file."); return; }     setErr("");     const reader = new FileReader();     reader.onload = ev => setPreview(ev.target.result);     reader.readAsDataURL(file);   }   const previewBg = preview ? "#000" : "linear-gradient(135deg,"+p.bg1+","+p.bg2+")";   return (     <div className="reg-page">       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>         <button className="tb-back" onClick={onBack}>←</button>         <h2>Card Design</h2>       </div>       <p>Upload a custom background for student cards. Max 2MB.</p>       <div style={{borderRadius:22,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,.4)",marginBottom:20,position:"relative",background:previewBg}}>         {preview && <img src={preview} alt="" style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%",objectFit:"cover",opacity:0.45}} />}         <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"linear-gradient(180deg,rgba(0,0,0,.5) 0%,rgba(0,0,0,.75) 100%)"}} />         <div style={{position:"relative",zIndex:2,padding:20}}>           <div style={{fontSize:".7rem",fontWeight:800,color:p.acc,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}}>{p.icon} {biz.type}</div>           <div style={{fontSize:"1.2rem",fontWeight:900,color:"#fff",marginBottom:2}}>{biz.name}</div>           <div style={{fontSize:".78rem",color:"rgba(255,255,255,.5)",fontWeight:700,marginBottom:16}}>{biz.bizCode}</div>           <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:5}}>             {MONTHS.map((m,mi)=>(               <div key={mi} style={{borderRadius:10,padding:"6px 2px",textAlign:"center",background:mi<3?"rgba(255,255,255,.25)":"rgba(255,255,255,.08)"}}>                 <div style={{fontSize:".5rem",color:"rgba(255,255,255,.5)",fontWeight:700}}>{m}</div>                 <div style={{fontSize:".75rem",fontWeight:900,color:"#fff"}}>{m.slice(0,1)}</div>               </div>             ))}           </div>         </div>       </div>       {err && <div className="err" style={{marginBottom:12}}>{err}</div>}       <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFile} />       <button className="btn" onClick={()=>fileRef.current.click()}>Upload Image</button>       {preview && <button onClick={()=>setPreview(null)} className="btn-ghost" style={{color:"var(--red)"}}>Remove Custom Image</button>}       <button className="btn" style={{marginTop:10,background:"var(--green)"}} onClick={()=>onSave(preview)}>Save Card Design</button>     </div>   ); }  function PgCreateBusiness({ email, onCreated, onLogout }) {
+}  function PgCustomCard({ biz, onBack, onSave }) {   const [preview, setPreview] = useState(biz.customCardImage||null);   const [err, setErr] = useState("");   const p = bizPal(biz);   const fileRef = useRef(null);   function handleFile(e) {     const file = e.target.files[0];     if (!file) return;     if (file.size > 2*1024*1024) { setErr("Image must be under 2MB."); return; }     if (!file.type.startsWith("image/")) { setErr("Please select an image file."); return; }     setErr("");     const reader = new FileReader();     reader.onload = ev => setPreview(ev.target.result);     reader.readAsDataURL(file);   }   const previewBg = preview ? "#000" : "linear-gradient(135deg,"+p.bg1+","+p.bg2+")";   return (     <div className="reg-page" style={{"--accent":p.acc}}>       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>         <button className="tb-back" onClick={onBack}>←</button>         <h2>Card Design</h2>       </div>       <p>Upload a custom background for student cards. Max 2MB.</p>       <div style={{borderRadius:22,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,.4)",marginBottom:20,position:"relative",background:previewBg}}>         {preview && <img src={preview} alt="" style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%",objectFit:"cover",opacity:0.45}} />}         <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"linear-gradient(180deg,rgba(0,0,0,.5) 0%,rgba(0,0,0,.75) 100%)"}} />         <div style={{position:"relative",zIndex:2,padding:20}}>           <div style={{fontSize:".7rem",fontWeight:800,color:p.acc,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}}>{p.icon} {biz.type}</div>           <div style={{fontSize:"1.2rem",fontWeight:800,color:"#fff",marginBottom:2}}>{biz.name}</div>           <div style={{fontSize:".78rem",color:"rgba(255,255,255,.5)",fontWeight:700,marginBottom:16}}>{biz.bizCode}</div>           <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:5}}>             {MONTHS.map((m,mi)=>(               <div key={mi} style={{borderRadius:10,padding:"6px 2px",textAlign:"center",background:mi<3?"rgba(255,255,255,.25)":"rgba(255,255,255,.08)"}}>                 <div style={{fontSize:".5rem",color:"rgba(255,255,255,.5)",fontWeight:700}}>{m}</div>                 <div style={{fontSize:".75rem",fontWeight:800,color:"#fff"}}>{m.slice(0,1)}</div>               </div>             ))}           </div>         </div>       </div>       {err && <div className="err" style={{marginBottom:12}}>{err}</div>}       <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFile} />       <button className="btn" onClick={()=>fileRef.current.click()}>Upload Image</button>       {preview && <button onClick={()=>setPreview(null)} className="btn-ghost" style={{color:"var(--red)"}}>Remove Custom Image</button>}       <button className="btn" style={{marginTop:10,background:"var(--green)"}} onClick={()=>onSave(preview)}>Save Card Design</button>     </div>   ); }  function PgCreateBusiness({ email, onCreated, onLogout }) {
   const [v, setV] = useState({name:"",type:TYPES[0],fee:""});
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1768,6 +1769,7 @@ function PgRejected({ onLogout }) {
 }
 
 function PgAnnouncements({ biz, onBack }) {
+  const p = bizPal(biz);
   const [list, setList] = useState(null);
   const [editing, setEditing] = useState(null);
   const [title, setTitle] = useState("");
@@ -1820,7 +1822,7 @@ function PgAnnouncements({ biz, onBack }) {
   }
 
   return (
-    <div className="page">
+    <div className="page" style={{"--accent":p.acc}}>
       <div className="topbar">
         <button className="tb-back" onClick={onBack}>←</button>
         <h2>Announcements</h2>
@@ -1846,7 +1848,7 @@ function PgAnnouncements({ biz, onBack }) {
             <input ref={fileRef} type="file" accept="image/*" onChange={pickImage} style={{display:"none"}} />
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:14}}>
               <div><div style={{fontWeight:800,fontSize:".9rem"}}>📌 Pin to top</div><div style={{fontSize:".72rem",color:"var(--text2)"}}>One pinned at a time</div></div>
-              <button onClick={()=>setPinned(p=>!p)} style={{width:48,height:28,borderRadius:99,border:"none",cursor:"pointer",background:pinned?"var(--violet)":"var(--bg3)",position:"relative",flexShrink:0}}><span style={{position:"absolute",top:3,left:pinned?23:3,width:22,height:22,borderRadius:99,background:"#fff",transition:"left .15s"}} /></button>
+              <button onClick={()=>setPinned(p=>!p)} style={{width:48,height:28,borderRadius:99,border:"none",cursor:"pointer",background:pinned?"var(--accent)":"var(--bg3)",position:"relative",flexShrink:0}}><span style={{position:"absolute",top:3,left:pinned?23:3,width:22,height:22,borderRadius:99,background:"#fff",transition:"left .15s"}} /></button>
             </div>
             <div className="ws-lbl" style={{marginTop:14}}>Expires (optional)</div>
             <input className="ws-inp" type="date" value={expires} onChange={e=>setExpires(e.target.value)} />
@@ -1866,7 +1868,7 @@ function PgAnnouncements({ biz, onBack }) {
            : list.map(a=>{ const expired = a.expires_at && new Date(a.expires_at) < new Date(); return (
             <div key={a.id} className="card" style={{cursor:"default"}}>
               <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
-                {a.is_pinned && <span style={{fontSize:".6rem",fontWeight:800,color:"var(--violet-glow)",background:"rgba(99,102,241,.15)",borderRadius:6,padding:"2px 7px"}}>📌 PINNED</span>}
+                {a.is_pinned && <span style={{fontSize:".6rem",fontWeight:800,color:"var(--accent)",background:"rgba(255,255,255,.06)",borderRadius:99,padding:"2px 7px"}}>📌 PINNED</span>}
                 {!a.is_active && <span style={{fontSize:".6rem",fontWeight:800,color:"var(--text2)",background:"var(--bg3)",borderRadius:6,padding:"2px 7px"}}>HIDDEN</span>}
                 {expired && <span style={{fontSize:".6rem",fontWeight:800,color:"var(--partial)",background:"rgba(251,191,36,.12)",borderRadius:6,padding:"2px 7px"}}>EXPIRED</span>}
               </div>
@@ -1999,6 +2001,7 @@ const IMPORT_STATUS_LABEL = {
 const IMPORT_STATUS_COLOR = { ok: "var(--green)", missing_name: "var(--red)", missing_phone: "var(--red)", duplicate: "var(--partial)" };
 
 function PgImport({ biz, onBack, onImport }) {
+  const p = bizPal(biz);
   const [step, setStep] = useState("upload"); // 'upload' | 'mapping' | 'preview'
   const [fileName, setFileName] = useState("");
   const [headers, setHeaders] = useState([]);   // header row, as-is per column
@@ -2141,7 +2144,7 @@ function PgImport({ biz, onBack, onImport }) {
   const editInpStyle = { padding: "6px 8px", fontSize: ".85rem", fontWeight: 700, width: "100%" };
 
   return (
-    <div className="page">
+    <div className="page" style={{"--accent":p.acc}}>
       <div className="topbar">
         <button className="tb-back" onClick={step === "preview" ? () => setStep("mapping") : onBack}>←</button>
         <h2>Import Students</h2>
@@ -2174,7 +2177,7 @@ function PgImport({ biz, onBack, onImport }) {
             <div className="wsec" style={{ margin: "0 0 16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                 <div style={{ fontSize: ".85rem", fontWeight: 800, color: "var(--text)" }}>📄 {fileName}</div>
-                <button onClick={reset} style={{ background: "none", border: "none", color: "var(--violet-glow)", fontFamily: "var(--f)", fontSize: ".72rem", fontWeight: 700, cursor: "pointer" }}>Change file / Αλλαγή</button>
+                <button onClick={reset} style={{ background: "none", border: "none", color: "var(--accent)", fontFamily: "var(--f)", fontSize: ".72rem", fontWeight: 700, cursor: "pointer" }}>Change file / Αλλαγή</button>
               </div>
               <div style={{ fontSize: ".78rem", color: "var(--text2)", fontWeight: 600 }}>
                 {headers.length + " columns · " + rows.length + " rows found / " + headers.length + " στήλες · " + rows.length + " γραμμές"}
@@ -2319,6 +2322,7 @@ function PgImport({ biz, onBack, onImport }) {
   );
 }
 function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, onDeleteGroup }) {
+  const p = bizPal(biz);
   const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
   const ABBR = {Monday:"Mon",Tuesday:"Tue",Wednesday:"Wed",Thursday:"Thu",Friday:"Fri",Saturday:"Sat",Sunday:"Sun"};
   const teachers = biz.teachers || [];
@@ -2350,12 +2354,12 @@ function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, on
   const rowActions = {display:"flex",gap:8,marginTop:12,flexWrap:"wrap"};
   const rowBtn = {flex:"0 0 auto",width:"auto",padding:"9px 16px",borderRadius:10,border:"1px solid var(--border)",background:"var(--bg3)",color:"var(--text)",fontFamily:"var(--f)",fontWeight:700,fontSize:".8rem",cursor:"pointer",margin:0};
   const rowBtnDanger = {...rowBtn,background:"transparent",color:"var(--red)",fontWeight:800};
-  const rowBtnPrimary = {...rowBtn,background:"var(--violet)",color:"#fff",border:"none",fontWeight:800};
+  const rowBtnPrimary = {...rowBtn,background:"var(--accent)",color:"var(--accent-ink)",border:"none",fontWeight:800};
 
   // ---- Group create/edit form ----
   if (gEdit) {
     return (
-      <div className="page">
+      <div className="page" style={{"--accent":p.acc}}>
         <div className="topbar">
           <button className="tb-back" onClick={()=>setGEdit(null)}>←</button>
           <h2>{gEdit.id ? "Edit Group" : "New Group"}</h2>
@@ -2375,7 +2379,7 @@ function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, on
             <div key={i} style={{marginBottom:10,padding:"10px",background:"var(--bg2)",borderRadius:12,border:"1px solid var(--border)"}}>
               <div style={{display:"flex",gap:6,alignItems:"center"}}>
                 <select className="inp" style={{flex:1,marginBottom:0}} value={row.day} onChange={e=>setSch(s=>s.map((r,j)=>j===i?{...r,day:e.target.value}:r))}>{DAYS.map(d=><option key={d} value={d}>{d}</option>)}</select>
-                <button type="button" onClick={()=>setSch(s=>s.filter((_,j)=>j!==i))} aria-label="Remove" style={{background:"transparent",border:"1px solid var(--border)",borderRadius:10,minWidth:44,height:48,color:"var(--red)",fontWeight:900,fontSize:"1.1rem",cursor:"pointer",flexShrink:0}}>×</button>
+                <button type="button" onClick={()=>setSch(s=>s.filter((_,j)=>j!==i))} aria-label="Remove" style={{background:"transparent",border:"1px solid var(--border)",borderRadius:10,minWidth:44,height:48,color:"var(--red)",fontWeight:800,fontSize:"1.1rem",cursor:"pointer",flexShrink:0}}>×</button>
               </div>
               <div style={{display:"flex",gap:6,alignItems:"center",marginTop:6}}>
                 <input className="inp" style={{flex:1,marginBottom:0}} type="time" value={row.start_time||""} onChange={e=>setSch(s=>s.map((r,j)=>j===i?{...r,start_time:e.target.value}:r))} />
@@ -2393,7 +2397,7 @@ function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, on
 
   // ---- Lists ----
   return (
-    <div className="page">
+    <div className="page" style={{"--accent":p.acc}}>
       <div className="topbar">
         <button className="tb-back" onClick={onBack}>←</button>
         <h2>Manage</h2>
@@ -2451,7 +2455,7 @@ function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, on
       {del && (
         <div onClick={()=>!busy&&setDel(null)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:300,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:360,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:18,padding:"22px 20px"}}>
-            <div style={{fontSize:"1.05rem",fontWeight:900,marginBottom:8}}>Delete {del.kind}?</div>
+            <div style={{fontSize:"1.05rem",fontWeight:800,marginBottom:8}}>Delete {del.kind}?</div>
             <div style={{fontSize:".85rem",color:"var(--text2)",fontWeight:600,lineHeight:1.5,marginBottom:4}}>“{del.name}” will be permanently removed.</div>
             {del.warn && <div style={{fontSize:".82rem",color:"var(--partial)",fontWeight:700,lineHeight:1.5,marginBottom:4}}>{del.warn}</div>}
             <div style={{display:"flex",gap:8,marginTop:16}}>
@@ -2465,6 +2469,7 @@ function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, on
   );
 }
 function PgGroups({ biz, onBack }) {
+  const p = bizPal(biz);
   const [sel, setSel] = useState(null);
   const DAYS = [["Monday","Mon"],["Tuesday","Tue"],["Wednesday","Wed"],["Thursday","Thu"],["Friday","Fri"],["Saturday","Sat"],["Sunday","Sun"]];
   const ABBR = {Monday:"Mon",Tuesday:"Tue",Wednesday:"Wed",Thursday:"Thu",Friday:"Fri",Saturday:"Sat",Sunday:"Sun"};
@@ -2559,7 +2564,7 @@ function PgGroups({ biz, onBack }) {
   const legacyGroups = [...new Set(allCards.filter(c=>!c.groupId && (c.groupName||"").trim() && !realNames.has((c.groupName||"").trim())).map(c=>(c.groupName||"").trim()))];
 
   return (
-    <div className="page">
+    <div className="page" style={{"--accent":p.acc}}>
       <div className="topbar">
         <button className="tb-back" onClick={onBack}>←</button>
         <h2>Groups</h2>
@@ -2605,7 +2610,7 @@ function PgGroups({ biz, onBack }) {
               <div style={{marginTop:14,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:16,padding:"16px 18px"}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
                   <span style={{width:12,height:12,borderRadius:4,background:selG.color,flexShrink:0}} />
-                  <div style={{fontSize:"1.05rem",fontWeight:900}}>{selG.name}</div>
+                  <div style={{fontSize:"1.05rem",fontWeight:800}}>{selG.name}</div>
                 </div>
                 <div style={{fontSize:".78rem",color:"var(--text2)",fontWeight:700,marginBottom:4}}>{teacherName(selG.teacherId) ? ("👤 "+teacherName(selG.teacherId)) : "No teacher"}</div>
                 <div style={{fontSize:".82rem",color:"var(--text2)",fontWeight:700,marginBottom:12}}>{schedStr||"No schedule set"}</div>
@@ -3002,7 +3007,7 @@ async function doUpdateCard(updates){
         {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} />}
         {view==="addCard" && biz && <PgAddCard biz={biz} onBack={()=>setView("dashboard")} onCreate={doAddCard} />}
         {view==="import" && biz && <PgImport biz={biz} onBack={()=>setView("dashboard")} onImport={doImportStudents} />}
-        {view==="reveal" && revealCard && <PgReveal card={revealCard} onDone={()=>{setRevealCard(null);setView("dashboard");}} />}
+        {view==="reveal" && revealCard && <PgReveal biz={biz} card={revealCard} onDone={()=>{setRevealCard(null);setView("dashboard");}} />}
         {view==="card" && biz && card && <PgCard biz={biz} card={card} onBack={()=>setView("dashboard")} onUpdate={doUpdateCard} onRemove={doRemoveCard} />}
         {view==="months" && biz && <PgManageMonths biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveMonths} />}
         {view==="levels" && biz && <PgManageLevels biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveLevels} />}
