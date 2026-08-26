@@ -3,19 +3,21 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="theme-color" content="#000000" />
+<meta name="theme-color" content="#05070C" />
 <title>Reset Password — PayStamp</title>
 <style>
-  :root{ --bg:#000; --bg2:#0a0f1f; --violet:#6366f1; --violet-glow:#818cf8;
-    --text:#fff; --text2:#6b7391; --red:#ef4444; --green:#10b981;
-    --border:rgba(99,102,241,.15); }
+  :root{ --bg:#05070C; --bg2:#0D0F1B;
+    /* Reached from the login screen, so it uses the app's default accent. */
+    --accent:#818cf8; --accent-ink:#08110B;
+    --text:#fff; --text2:rgba(255,255,255,.6); --red:#ef4444; --green:#10b981;
+    --border:rgba(255,255,255,.08); }
   *{box-sizing:border-box;margin:0;padding:0;}
   body{background:var(--bg);color:var(--text);min-height:100vh;
     font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
     display:flex;align-items:center;justify-content:center;padding:24px 16px;}
   .box{width:100%;max-width:400px;}
   .brand{font-size:1.5rem;font-weight:900;font-style:italic;letter-spacing:-.02em;
-    color:var(--violet-glow);text-align:center;margin-bottom:26px;}
+    color:var(--accent);text-align:center;margin-bottom:26px;}
   .card{background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:28px 24px;}
   h1{font-size:1.15rem;font-weight:800;margin-bottom:6px;}
   p{font-size:.85rem;color:var(--text2);line-height:1.55;margin-bottom:16px;}
@@ -23,15 +25,15 @@
     text-transform:uppercase;letter-spacing:.1em;margin:14px 0 6px;}
   input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:12px;
     padding:13px 14px;font-size:1rem;color:var(--text);outline:none;}
-  input:focus{border-color:var(--violet);}
-  .btn{width:100%;margin-top:20px;background:var(--violet);border:none;border-radius:12px;
-    padding:14px;font-size:.95rem;font-weight:800;color:#fff;cursor:pointer;}
+  input:focus{border-color:var(--accent);}
+  .btn{width:100%;margin-top:20px;background:var(--accent);border:none;border-radius:12px;
+    padding:14px;font-size:.95rem;font-weight:800;color:var(--accent-ink);cursor:pointer;}
   .btn:disabled{opacity:.5;cursor:default;}
   .err{margin-top:12px;font-size:.8rem;font-weight:700;color:var(--red);line-height:1.4;}
   .ok-icon{font-size:2.2rem;text-align:center;margin-bottom:10px;}
-  a{color:var(--violet-glow);font-weight:700;text-decoration:none;}
+  a{color:var(--accent);font-weight:700;text-decoration:none;}
   .muted{font-size:.75rem;color:var(--text2);text-align:center;margin-top:16px;line-height:1.5;}
-  .spin{width:26px;height:26px;border:3px solid var(--border);border-top-color:var(--violet);
+  .spin{width:26px;height:26px;border:3px solid var(--border);border-top-color:var(--accent);
     border-radius:50%;margin:8px auto 14px;animation:r .8s linear infinite;}
   @keyframes r{to{transform:rotate(360deg);}}
   [hidden]{display:none !important;}
