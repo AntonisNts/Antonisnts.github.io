@@ -2484,6 +2484,7 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
   const p = bizPal(biz);
   const ABBR = {Monday:"Mon",Tuesday:"Tue",Wednesday:"Wed",Thursday:"Thu",Friday:"Fri",Saturday:"Sat",Sunday:"Sun"};
   const groups = biz.groups || [];
+  const levels = biz.levels || [];
   const links = biz.regLinks || [];
   const requests = biz.regRequests || [];
   const pending  = requests.filter(r=>r.status==="pending");
@@ -2497,6 +2498,7 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
   const [showRejected, setShowRejected] = useState(false);
 
   const groupName = (id)=>{ const g=groups.find(x=>x.id===id); return g?g.name:null; };
+  const levelOf   = (id)=>{ const l=levels.find(x=>x.id===id); return l||null; };
   const schedOf = (id)=>{ const g=groups.find(x=>x.id===id); if(!g||!(g.schedule||[]).length) return ""; return g.schedule.map(s=>(ABBR[s.day]||s.day||"")+" "+(s.start_time||"")+(s.end_time?("–"+s.end_time):"")).join(", "); };
   // The link points at whichever site produced it, so a link made on staging
   // stays on staging instead of quietly sending families to production.
@@ -2518,7 +2520,7 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
 
   async function createLink(){ setBusy(true); const ok=await onCreateLink({ groupId:form.groupId||null, label:form.label }); setBusy(false); if(ok) setForm(null); }
   async function confirmDelete(){ setBusy(true); const ok=await onDeleteLink(del.id); setBusy(false); if(ok) setDel(null); }
-  async function confirmApprove(){ setBusy(true); await onApprove(decide.req, decide.groupId||null); setBusy(false); setDecide(null); }
+  async function confirmApprove(){ setBusy(true); await onApprove(decide.req, decide.groupId||null, decide.levelId||null); setBusy(false); setDecide(null); }
 
   const lbl = {fontSize:".68rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".1em",margin:"14px 0 6px"};
   const secTitle = {fontSize:".72rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".16em",marginBottom:12};
@@ -2598,7 +2600,7 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
                 </div>
               )}
               <div style={rowActions}>
-                <button style={rowBtnPrimary} onClick={()=>setDecide({ req:r, groupId:r.group_id||"" })}>Approve</button>
+                <button style={rowBtnPrimary} onClick={()=>setDecide({ req:r, groupId:r.group_id||"", levelId:"" })}>Approve</button>
                 <button style={rowBtn} onClick={()=>onReject(r.id)}>Reject</button>
                 {ph && <a style={{...rowBtn,textDecoration:"none",display:"inline-block"}} href={"https://wa.me/"+ph} target="_blank" rel="noopener noreferrer">WhatsApp</a>}
               </div>
@@ -2692,6 +2694,20 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
                 {decide.req.group_id && decide.groupId!==decide.req.group_id && (
                   <div style={{...meta,color:"var(--partial)"}}>They asked for {groupName(decide.req.group_id)}.</div>
                 )}
+              </>
+            )}
+            {levels.length>0 && (
+              <>
+                <div style={lbl}>Level</div>
+                <select className="inp" value={decide.levelId||""} onChange={e=>setDecide(d=>({...d,levelId:e.target.value}))}>
+                  <option value="">{"No level — default €"+(biz.fee||0)+"/mo"}</option>
+                  {levels.map(l=><option key={l.id} value={l.id}>{l.name+" — €"+l.fee+"/mo"}</option>)}
+                </select>
+                {/* The level IS the fee, so say the number rather than the word.
+                    A registration arrives with no level on it, so leaving this
+                    alone silently bills the business default — which is exactly
+                    the trap this picker exists to close. */}
+                <div style={meta}>{"They will be billed €"+(levelOf(decide.levelId) ? levelOf(decide.levelId).fee : (biz.fee||0))+" a month."}</div>
               </>
             )}
             <div style={{display:"flex",gap:8,marginTop:18}}>
@@ -3056,9 +3072,13 @@ function App() {
   // code and PIN here so they match what the rest of the app produces, let the
   // RPC insert the card and flip the request in one transaction, then land on
   // the very same PgReveal screen a hand-added student shows.
-  async function doApproveRegistration(req, groupId){
+  // levelId is an id from biz.levels, not a fee: the RPC looks the level up in
+  // the business's own list, so the browser can name one of the school's levels
+  // but can never state a price. Null means "no level" — the business default
+  // fee — which is what every student created before this had.
+  async function doApproveRegistration(req, groupId, levelId){
     const shareCode = genShareCode(), pin = genPin();
-    const { data, error } = await sb.rpc("approve_registration", { p_request_id:req.id, p_share_code:shareCode, p_pin:pin, p_group_id:groupId||null });
+    const { data, error } = await sb.rpc("approve_registration", { p_request_id:req.id, p_share_code:shareCode, p_pin:pin, p_group_id:groupId||null, p_level_id:levelId||null });
     if(error){ pop(error.message,"err"); return false; }
     if(!data || !data.ok){
       // already_approved / already_rejected: someone (or a second tap) got
@@ -3068,7 +3088,7 @@ function App() {
     }
     const c = data.card || {};
     await refresh();
-    setRevealCard({ id:c.id, name:c.name, shareCode:c.share_code, pin:c.pin, phone:req.phone||"", level:null,
+    setRevealCard({ id:c.id, name:c.name, shareCode:c.share_code, pin:c.pin, phone:req.phone||"", level:c.level||null,
       preferredChannel:"whatsapp", language:"EN", enrollmentStart:null, groupId:c.group_id||null, groupName:"",
       lessonSchedule:[], pausedMonths:[], feeHistory:[], payments:{}, history:[] });
     setView("reveal");
