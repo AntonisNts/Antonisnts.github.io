@@ -70,9 +70,18 @@ async function loadMyBusiness() {
   if (ce) throw ce;
   const { data: teacherRows } = await sb.from("teachers").select("id,name").eq("business_id", b.id).order("name");
   const { data: groupRows } = await sb.from("groups").select("id,name,schedule,teacher_id").eq("business_id", b.id).order("name");
+  // Self-registration. Loaded here rather than in the Registration screen so
+  // the pending count is available on the dashboard badge without opening it,
+  // and so every refresh() after an approve/reject brings both back in step.
+  // Errors are swallowed like teachers/groups above: a business that somehow
+  // can't read these should still get its students.
+  const { data: linkRows } = await sb.from("registration_links").select("id,group_id,token,label,is_active,created_at").eq("business_id", b.id).order("created_at",{ascending:false});
+  const { data: reqRows } = await sb.from("registration_requests").select("id,link_id,group_id,first_name,last_name,phone,email,date_of_birth,status,card_id,created_at,decided_at").eq("business_id", b.id).order("created_at",{ascending:false});
   const _biz = bizFromRow(b, cardRows);
   _biz.teachers = teacherRows || [];
   _biz.groups = groupRows || [];
+  _biz.regLinks = linkRows || [];
+  _biz.regRequests = reqRows || [];
   return _biz;
 }
 async function loadMyCards() {
@@ -501,7 +510,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
       <button className="btn" style={{marginTop:8}} onClick={doCreate} disabled={busy}>{busy?"…":"Create Business"}</button>
     </div>
   );
-}  function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRemoveCards, viewBy, setViewBy, expanded, setExpanded }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   const hasImg = !!biz.customCardImage;   const headerBg = hasImg ? "#000" : "linear-gradient(160deg,"+alphaHex(p.acc,.22)+" 0%,#0A0C16 100%)";    const filtered = allCards     .filter(c=>{       if (levelFilter==="all") return true;       if (levelFilter==="none") return !c.level;       return c.level && c.level.id===levelFilter;     })     .filter(c=>!search||(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.shareCode||"").toLowerCase().includes(search.toLowerCase()))     .sort((a,b)=>{       if (sort==="owed") {         const oA=getStudentMonthStatus(a,biz,year).owedTotal;         const oB=getStudentMonthStatus(b,biz,year).owedTotal;         return oB-oA;       }       if (sort==="progress") { return monthsPaid(b.payments||{},year,inactive.concat(b.pausedMonths||[]),b.enrollmentStart)-monthsPaid(a.payments||{},year,inactive.concat(a.pausedMonths||[]),a.enrollmentStart); }       return (a.name||"").localeCompare(b.name||"");     });
+}  function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   const hasImg = !!biz.customCardImage;   const headerBg = hasImg ? "#000" : "linear-gradient(160deg,"+alphaHex(p.acc,.22)+" 0%,#0A0C16 100%)";    const filtered = allCards     .filter(c=>{       if (levelFilter==="all") return true;       if (levelFilter==="none") return !c.level;       return c.level && c.level.id===levelFilter;     })     .filter(c=>!search||(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.shareCode||"").toLowerCase().includes(search.toLowerCase()))     .sort((a,b)=>{       if (sort==="owed") {         const oA=getStudentMonthStatus(a,biz,year).owedTotal;         const oB=getStudentMonthStatus(b,biz,year).owedTotal;         return oB-oA;       }       if (sort==="progress") { return monthsPaid(b.payments||{},year,inactive.concat(b.pausedMonths||[]),b.enrollmentStart)-monthsPaid(a.payments||{},year,inactive.concat(a.pausedMonths||[]),a.enrollmentStart); }       return (a.name||"").localeCompare(b.name||"");     });
 
   // Grouped dashboard sections (View by Group / Teacher). Students attach to a
   // real group by group_id (legacy free-text group_name matches by name so
@@ -581,7 +590,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
     if(res && res.ok){ exitSelect(); } else { setDelAsk(false); }
   }
 
-  return (     <div className="page" style={{"--accent":p.acc}}>       <div style={{margin:"16px 16px 14px",borderRadius:20,overflow:"hidden",position:"relative",background:headerBg,border:"1px solid rgba(255,255,255,.08)",boxShadow:"0 6px 24px rgba(0,0,0,.4)"}}>         {hasImg && <img src={biz.customCardImage} alt="" style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%",objectFit:"cover",opacity:0.4}} />}         {hasImg && <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"linear-gradient(180deg,rgba(0,0,0,.4) 0%,rgba(0,0,0,.7) 100%)"}} />}         <div style={{position:"relative",zIndex:2,padding:"18px 20px 14px",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>           <div>             <div style={{fontSize:".68rem",fontWeight:800,color:p.acc,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}}>{p.icon} {biz.type}</div>             <div style={{fontSize:"1.4rem",fontWeight:800,color:"#fff",marginBottom:3}}>{biz.name}</div>             <div style={{fontSize:".75rem",color:"rgba(255,255,255,.4)",fontWeight:600}}>{biz.bizCode}</div>           </div>           <div style={{display:"flex",gap:8}}><button onClick={()=>setSheet(true)} aria-label="Settings" style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontSize:".95rem",lineHeight:1,cursor:"pointer",padding:"6px 10px",borderRadius:20}}>⚙️</button>{showFamily && <button onClick={onFamily} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontFamily:"var(--f)",fontSize:".75rem",fontWeight:800,cursor:"pointer",padding:"6px 14px",borderRadius:20}}>Family</button>}<button onClick={onLogout} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontFamily:"var(--f)",fontSize:".75rem",fontWeight:800,cursor:"pointer",padding:"6px 14px",borderRadius:20}}>out</button></div>         </div>         <div className="hero-stats" style={{position:"relative",zIndex:2}}>           <div>             <div style={{fontSize:"var(--fs-hero)",fontWeight:800,color:"#fff"}}>{allCards.length}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>STUDENTS</div>           </div>           <div>             <div style={{fontSize:"var(--fs-hero)",fontWeight:800,color:p.acc}}>{paidNow+"/"+allCards.length}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>{"PAID "+MONTHS[nowIdx].toUpperCase()}</div>           </div>           <div>             <div style={{fontSize:"var(--fs-hero)",fontWeight:800,color:"var(--owed)"}}>{"€"+Math.round(totalOwed)}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>OWED</div>           </div>       <div>         <div style={{fontSize:"var(--fs-hero)",fontWeight:800,color:"var(--green)"}}>{"€"+Math.round(collected)}</div>         <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>{"COLLECTED "+MONTHS[nowIdx].toUpperCase()}</div>       </div>       <div>         <div style={{fontSize:"var(--fs-hero)",fontWeight:800,color:"#fff"}}>{groupCount}</div>         <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>GROUPS</div>       </div>         </div>       </div>                {sheet && (<div onClick={()=>setSheet(false)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:200,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"flex-end"}}><div onClick={e=>e.stopPropagation()} onTouchStart={e=>{touchStartY=e.touches[0].clientY;}} onTouchEnd={e=>{ if(e.changedTouches[0].clientY-touchStartY>60) setSheet(false); }} style={{width:"100%",maxWidth:430,margin:"0 auto",background:"var(--bg2)",borderTopLeftRadius:24,borderTopRightRadius:24,padding:"10px 0 24px",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,.5)"}}><div style={{width:40,height:5,borderRadius:99,background:"var(--text3)",margin:"0 auto 10px"}} /><div style={{padding:"4px 20px 10px",fontSize:".7rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".16em"}}>Settings</div>{[["📅","Months","Manage active/inactive months",onMonths],["🎓","Levels","Edit student levels & fees",onLevels],["👥","Groups","Weekly schedule by group",onGroups],["🗂️","Manage","Create groups & assign teachers",onManage],["🎨","Colour","Pick your accent colour",onTheme],["🖼️","Card","Choose card design",onCustomCard],["📤","Export","Download payment records",onExport],["🔔","Remind","Send payment reminders",onRemind],["📣","Announcements","Post news to parents & students",onAnnouncements]].map(([ic,lb,st,fn],i)=>(<div key={i} onClick={()=>{setSheet(false); fn&&fn();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>{ic}</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--text)"}}>{lb}</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--text2)",marginTop:1}}>{st}</div></div><div style={{color:"var(--text3)",fontSize:"1.2rem",fontWeight:700}}>›</div></div>))}{onNewYear && (<div style={{height:1,background:"var(--border)",margin:"8px 20px"}} />)}{onNewYear && (<div onClick={()=>{setSheet(false); onNewYear();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>🗓️</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--partial)"}}>{"Start New Year ("+(year+1)+")"}</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--partial)",opacity:.8,marginTop:1}}>Roll over to next year</div></div><div style={{color:"var(--partial)",fontSize:"1.2rem",fontWeight:700,opacity:.7}}>›</div></div>)}{onDeleteAccount && (<div style={{height:1,background:"var(--border)",margin:"8px 20px"}} />)}{onDeleteAccount && (<div onClick={()=>{setSheet(false); onDeleteAccount();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 16px",margin:"2px 14px 0",borderRadius:14,border:"1px solid rgba(239,68,68,.4)",background:"rgba(239,68,68,.08)",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>🗑</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--red)"}}>Delete Business Account</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--red)",opacity:.85,marginTop:1}}>Permanently erase business &amp; data</div></div><div style={{color:"var(--red)",fontSize:"1.2rem",fontWeight:700,opacity:.7}}>›</div></div>)}</div></div>)}<div className="section">         <div className="sec-row">           <div className="sec-title">Students ({allCards.length})</div>           <div style={{display:"flex",gap:8}}>{selectMode ? <button onClick={exitSelect} style={{background:"var(--bg2)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:14,padding:"11px 16px",fontFamily:"var(--f)",fontWeight:700,fontSize:".85rem",cursor:"pointer"}}>Cancel</button> : <>{allCards.length>0 && <button onClick={()=>setSelectMode(true)} style={{background:"var(--bg2)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:14,padding:"11px 16px",fontFamily:"var(--f)",fontWeight:700,fontSize:".85rem",cursor:"pointer"}}>Select</button>}{onImport && <button onClick={onImport} style={{background:"var(--bg2)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:14,padding:"11px 16px",fontFamily:"var(--f)",fontWeight:700,fontSize:".85rem",cursor:"pointer"}}>⇪ Import</button>}<button className="btn-new" onClick={onAdd}>+ New</button></>}</div>         </div>         {allCards.length > 0 && (
+  return (     <div className="page" style={{"--accent":p.acc}}>       <div style={{margin:"16px 16px 14px",borderRadius:20,overflow:"hidden",position:"relative",background:headerBg,border:"1px solid rgba(255,255,255,.08)",boxShadow:"0 6px 24px rgba(0,0,0,.4)"}}>         {hasImg && <img src={biz.customCardImage} alt="" style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%",objectFit:"cover",opacity:0.4}} />}         {hasImg && <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"linear-gradient(180deg,rgba(0,0,0,.4) 0%,rgba(0,0,0,.7) 100%)"}} />}         <div style={{position:"relative",zIndex:2,padding:"18px 20px 14px",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>           <div>             <div style={{fontSize:".68rem",fontWeight:800,color:p.acc,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}}>{p.icon} {biz.type}</div>             <div style={{fontSize:"1.4rem",fontWeight:800,color:"#fff",marginBottom:3}}>{biz.name}</div>             <div style={{fontSize:".75rem",color:"rgba(255,255,255,.4)",fontWeight:600}}>{biz.bizCode}</div>           </div>           <div style={{display:"flex",gap:8}}><button onClick={()=>setSheet(true)} aria-label={pendingRegs?("Settings — "+pendingRegs+" registration"+(pendingRegs>1?"s":"")+" waiting"):"Settings"} style={{position:"relative",background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontSize:".95rem",lineHeight:1,cursor:"pointer",padding:"6px 10px",borderRadius:20}}>⚙️{pendingRegs>0 && <span style={{position:"absolute",top:-4,right:-4,minWidth:18,height:18,padding:"0 5px",borderRadius:99,background:"var(--accent)",color:"var(--accent-ink)",fontFamily:"var(--f)",fontSize:".62rem",fontWeight:800,lineHeight:"18px",textAlign:"center"}}>{pendingRegs}</span>}</button>{showFamily && <button onClick={onFamily} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontFamily:"var(--f)",fontSize:".75rem",fontWeight:800,cursor:"pointer",padding:"6px 14px",borderRadius:20}}>Family</button>}<button onClick={onLogout} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontFamily:"var(--f)",fontSize:".75rem",fontWeight:800,cursor:"pointer",padding:"6px 14px",borderRadius:20}}>out</button></div>         </div>         <div className="hero-stats" style={{position:"relative",zIndex:2}}>           <div>             <div style={{fontSize:"var(--fs-hero)",fontWeight:800,color:"#fff"}}>{allCards.length}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>STUDENTS</div>           </div>           <div>             <div style={{fontSize:"var(--fs-hero)",fontWeight:800,color:p.acc}}>{paidNow+"/"+allCards.length}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>{"PAID "+MONTHS[nowIdx].toUpperCase()}</div>           </div>           <div>             <div style={{fontSize:"var(--fs-hero)",fontWeight:800,color:"var(--owed)"}}>{"€"+Math.round(totalOwed)}</div>             <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>OWED</div>           </div>       <div>         <div style={{fontSize:"var(--fs-hero)",fontWeight:800,color:"var(--green)"}}>{"€"+Math.round(collected)}</div>         <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>{"COLLECTED "+MONTHS[nowIdx].toUpperCase()}</div>       </div>       <div>         <div style={{fontSize:"var(--fs-hero)",fontWeight:800,color:"#fff"}}>{groupCount}</div>         <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:800,marginTop:2,letterSpacing:".06em"}}>GROUPS</div>       </div>         </div>       </div>                {sheet && (<div onClick={()=>setSheet(false)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:200,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"flex-end"}}><div onClick={e=>e.stopPropagation()} onTouchStart={e=>{touchStartY=e.touches[0].clientY;}} onTouchEnd={e=>{ if(e.changedTouches[0].clientY-touchStartY>60) setSheet(false); }} style={{width:"100%",maxWidth:430,margin:"0 auto",background:"var(--bg2)",borderTopLeftRadius:24,borderTopRightRadius:24,padding:"10px 0 24px",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,.5)"}}><div style={{width:40,height:5,borderRadius:99,background:"var(--text3)",margin:"0 auto 10px"}} /><div style={{padding:"4px 20px 10px",fontSize:".7rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".16em"}}>Settings</div>{[["📅","Months","Manage active/inactive months",onMonths],["🎓","Levels","Edit student levels & fees",onLevels],["👥","Groups","Weekly schedule by group",onGroups],["🗂️","Manage","Create groups & assign teachers",onManage],["🎨","Colour","Pick your accent colour",onTheme],["🖼️","Card","Choose card design",onCustomCard],["📤","Export","Download payment records",onExport],["🔔","Remind","Send payment reminders",onRemind],["📣","Announcements","Post news to parents & students",onAnnouncements],["📝","Registration","Public sign-up links & requests",onRegistrations,pendingRegs]].map(([ic,lb,st,fn,badge],i)=>(<div key={i} onClick={()=>{setSheet(false); fn&&fn();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>{ic}</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--text)"}}>{lb}</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--text2)",marginTop:1}}>{st}</div></div>{badge>0 && <div style={{minWidth:20,height:20,padding:"0 6px",borderRadius:99,background:"var(--accent)",color:"var(--accent-ink)",fontSize:".68rem",fontWeight:800,lineHeight:"20px",textAlign:"center"}}>{badge}</div>}<div style={{color:"var(--text3)",fontSize:"1.2rem",fontWeight:700}}>›</div></div>))}{onNewYear && (<div style={{height:1,background:"var(--border)",margin:"8px 20px"}} />)}{onNewYear && (<div onClick={()=>{setSheet(false); onNewYear();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>🗓️</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--partial)"}}>{"Start New Year ("+(year+1)+")"}</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--partial)",opacity:.8,marginTop:1}}>Roll over to next year</div></div><div style={{color:"var(--partial)",fontSize:"1.2rem",fontWeight:700,opacity:.7}}>›</div></div>)}{onDeleteAccount && (<div style={{height:1,background:"var(--border)",margin:"8px 20px"}} />)}{onDeleteAccount && (<div onClick={()=>{setSheet(false); onDeleteAccount();}} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 16px",margin:"2px 14px 0",borderRadius:14,border:"1px solid rgba(239,68,68,.4)",background:"rgba(239,68,68,.08)",cursor:"pointer"}}><div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>🗑</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:".92rem",fontWeight:800,color:"var(--red)"}}>Delete Business Account</div><div style={{fontSize:".72rem",fontWeight:600,color:"var(--red)",opacity:.85,marginTop:1}}>Permanently erase business &amp; data</div></div><div style={{color:"var(--red)",fontSize:"1.2rem",fontWeight:700,opacity:.7}}>›</div></div>)}</div></div>)}<div className="section">         <div className="sec-row">           <div className="sec-title">Students ({allCards.length})</div>           <div style={{display:"flex",gap:8}}>{selectMode ? <button onClick={exitSelect} style={{background:"var(--bg2)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:14,padding:"11px 16px",fontFamily:"var(--f)",fontWeight:700,fontSize:".85rem",cursor:"pointer"}}>Cancel</button> : <>{allCards.length>0 && <button onClick={()=>setSelectMode(true)} style={{background:"var(--bg2)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:14,padding:"11px 16px",fontFamily:"var(--f)",fontWeight:700,fontSize:".85rem",cursor:"pointer"}}>Select</button>}{onImport && <button onClick={onImport} style={{background:"var(--bg2)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:14,padding:"11px 16px",fontFamily:"var(--f)",fontWeight:700,fontSize:".85rem",cursor:"pointer"}}>⇪ Import</button>}<button className="btn-new" onClick={onAdd}>+ New</button></>}</div>         </div>         {allCards.length > 0 && (
           <>
             <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:10}}>
               <div style={{position:"relative",flex:1,minWidth:0}}>
@@ -2468,6 +2477,255 @@ function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, on
     </div>
   );
 }
+// Public self-registration, owner side. One screen with two halves: the
+// requests waiting on a decision (the thing that needs doing) sit above the
+// links that produce them (set up once, touched rarely).
+function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteLink, onApprove, onReject, onUnreject }) {
+  const p = bizPal(biz);
+  const ABBR = {Monday:"Mon",Tuesday:"Tue",Wednesday:"Wed",Thursday:"Thu",Friday:"Fri",Saturday:"Sat",Sunday:"Sun"};
+  const groups = biz.groups || [];
+  const links = biz.regLinks || [];
+  const requests = biz.regRequests || [];
+  const pending  = requests.filter(r=>r.status==="pending");
+  const rejected = requests.filter(r=>r.status==="rejected");
+
+  const [form, setForm] = useState(null);        // {groupId,label} while creating a link
+  const [busy, setBusy] = useState(false);
+  const [del, setDel] = useState(null);          // link awaiting delete confirmation
+  const [decide, setDecide] = useState(null);    // {req, groupId} approval sheet
+  const [copied, setCopied] = useState(null);    // link id whose URL was just copied
+  const [showRejected, setShowRejected] = useState(false);
+
+  const groupName = (id)=>{ const g=groups.find(x=>x.id===id); return g?g.name:null; };
+  const schedOf = (id)=>{ const g=groups.find(x=>x.id===id); if(!g||!(g.schedule||[]).length) return ""; return g.schedule.map(s=>(ABBR[s.day]||s.day||"")+" "+(s.start_time||"")+(s.end_time?("–"+s.end_time):"")).join(", "); };
+  // The link points at whichever site produced it, so a link made on staging
+  // stays on staging instead of quietly sending families to production.
+  const urlOf = (t)=> location.origin + "/join/?r=" + t;
+  // 'YYYY-MM-DD' formatted by hand: new Date("2015-04-02") is UTC midnight, and
+  // toLocaleDateString would shift it a day west of Greenwich.
+  const fmtDob = (d)=>{ if(!d) return ""; const b=String(d).slice(0,10).split("-"); return b.length===3 ? (b[2]+"/"+b[1]+"/"+b[0]) : String(d); };
+  const digitsOf = (ph)=> (ph||"").replace(/\D/g,"");
+
+  function copyLink(text, id){
+    const done=()=>{ setCopied(id); setTimeout(()=>setCopied(c=>c===id?null:c), 1800); };
+    const manual=()=>{ try{ const ta=document.createElement("textarea"); ta.value=text; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); done(); }catch(e){} };
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, manual);
+    else manual();
+  }
+  function shareLink(url, label){
+    if(navigator.share) navigator.share({ title:biz.name+" — registration", text:"Register for "+biz.name+(label?(" — "+label):""), url }).catch(()=>{});
+  }
+
+  async function createLink(){ setBusy(true); const ok=await onCreateLink({ groupId:form.groupId||null, label:form.label }); setBusy(false); if(ok) setForm(null); }
+  async function confirmDelete(){ setBusy(true); const ok=await onDeleteLink(del.id); setBusy(false); if(ok) setDel(null); }
+  async function confirmApprove(){ setBusy(true); await onApprove(decide.req, decide.groupId||null); setBusy(false); setDecide(null); }
+
+  const lbl = {fontSize:".68rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".1em",margin:"14px 0 6px"};
+  const secTitle = {fontSize:".72rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".16em",marginBottom:12};
+  // Same content-sized row buttons PgManage uses — .btn-ghost/.btn-add are
+  // full-width form buttons and would stretch across the row.
+  const rowActions = {display:"flex",gap:8,marginTop:12,flexWrap:"wrap"};
+  const rowBtn = {flex:"0 0 auto",width:"auto",padding:"9px 16px",borderRadius:10,border:"1px solid var(--border)",background:"var(--bg3)",color:"var(--text)",fontFamily:"var(--f)",fontWeight:700,fontSize:".8rem",cursor:"pointer",margin:0};
+  const rowBtnDanger = {...rowBtn,background:"transparent",color:"var(--red)",fontWeight:800};
+  const rowBtnPrimary = {...rowBtn,background:"var(--accent)",color:"var(--accent-ink)",border:"none",fontWeight:800};
+  const rowCard = {padding:"13px 15px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,marginBottom:8};
+  const meta = {fontSize:".72rem",color:"var(--text2)",fontWeight:600,marginTop:3,lineHeight:1.5,overflowWrap:"anywhere"};
+  const emptyNote = {fontSize:".82rem",color:"var(--text3)",fontWeight:600,lineHeight:1.6};
+  const linkA = {color:"var(--accent)",fontWeight:700,textDecoration:"none"};
+
+  // ---- New link form ----
+  if (form) {
+    return (
+      <div className="page" style={{"--accent":p.acc}}>
+        <div className="topbar">
+          <button className="tb-back" onClick={()=>setForm(null)}>←</button>
+          <h2>New Link</h2>
+          <div style={{width:24}} />
+        </div>
+        <div className="section">
+          <div style={lbl}>Who is this link for?</div>
+          <select className="inp" value={form.groupId||""} onChange={e=>setForm(f=>({...f,groupId:e.target.value}))}>
+            <option value="">Any class — the family chooses</option>
+            {groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
+          </select>
+          <div style={{...meta,marginTop:8}}>
+            {form.groupId
+              ? "Everyone using this link is registered for that one class."
+              : (groups.length ? "The form shows your classes and their times so the family can pick one." : "You have no classes yet, so the form will just take the student's details.")}
+          </div>
+          <div style={lbl}>Label <span style={{textTransform:"none",letterSpacing:0,fontWeight:600,color:"var(--text3)"}}>— optional, only you see it</span></div>
+          <input className="inp" placeholder="e.g. Autumn flyer" value={form.label} onChange={e=>setForm(f=>({...f,label:e.target.value}))} />
+          <div style={{...meta,marginTop:8}}>Handy when you have several links out and want to know which one people used.</div>
+          <button className="btn" style={{marginTop:20}} onClick={createLink} disabled={busy}>{busy?"…":"Create Link"}</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page" style={{"--accent":p.acc}}>
+      <div className="topbar">
+        <button className="tb-back" onClick={onBack}>←</button>
+        <h2>Registration</h2>
+        <div style={{width:24}} />
+      </div>
+
+      {/* ---- Requests ---- */}
+      <div className="section">
+        <div style={secTitle}>{pending.length ? ("Pending · "+pending.length) : "Pending"}</div>
+        {pending.length===0 && (
+          <div style={emptyNote}>
+            Nothing waiting. Registrations sent through your links land here, and
+            no student is created until you approve one.
+          </div>
+        )}
+        {pending.map(r=>{
+          const asked = groupName(r.group_id);
+          const ph = digitsOf(r.phone);
+          return (
+            <div key={r.id} style={rowCard}>
+              <div style={{fontWeight:800,fontSize:".95rem",overflowWrap:"anywhere"}}>{r.first_name+" "+r.last_name}</div>
+              <div style={meta}>
+                {relTime(r.created_at)}
+                {asked ? (" · "+asked) : (groups.length ? " · no class chosen" : "")}
+                {r.date_of_birth ? (" · born "+fmtDob(r.date_of_birth)) : ""}
+              </div>
+              {(r.phone || r.email) && (
+                <div style={meta}>
+                  {r.phone && <a style={linkA} href={"tel:"+r.phone}>{r.phone}</a>}
+                  {r.phone && r.email ? " · " : ""}
+                  {r.email && <a style={linkA} href={"mailto:"+r.email}>{r.email}</a>}
+                </div>
+              )}
+              <div style={rowActions}>
+                <button style={rowBtnPrimary} onClick={()=>setDecide({ req:r, groupId:r.group_id||"" })}>Approve</button>
+                <button style={rowBtn} onClick={()=>onReject(r.id)}>Reject</button>
+                {ph && <a style={{...rowBtn,textDecoration:"none",display:"inline-block"}} href={"https://wa.me/"+ph} target="_blank" rel="noopener noreferrer">WhatsApp</a>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* .section carries no vertical margin — spacing normally comes from its
+          content, and collapsed this one has none, so without the explicit
+          margin its heading sits directly on top of "Your links". */}
+      {rejected.length>0 && (
+        <div className="section" style={{marginBottom:22}}>
+          <div onClick={()=>setShowRejected(v=>!v)} style={{...secTitle,marginBottom:showRejected?12:0,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
+            <span>Rejected · {rejected.length}</span>
+            <span style={{color:"var(--text3)",letterSpacing:0}}>{showRejected?"▲":"▼"}</span>
+          </div>
+          {showRejected && rejected.map(r=>(
+            <div key={r.id} style={{...rowCard,opacity:.65}}>
+              <div style={{fontWeight:700,fontSize:".9rem",overflowWrap:"anywhere"}}>{r.first_name+" "+r.last_name}</div>
+              <div style={meta}>Rejected {relTime(r.decided_at||r.created_at).toLowerCase()}</div>
+              <div style={rowActions}>
+                <button style={rowBtn} onClick={()=>onUnreject(r.id)}>Undo</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ---- Links ---- */}
+      <div className="section">
+        <div style={secTitle}>Your links</div>
+        {links.length===0 && (
+          <div style={emptyNote}>
+            A registration link is a web address you can put on a flyer, a
+            WhatsApp group or your social media. Anyone who opens it fills in
+            the student's details — no login, no app to install — and it arrives
+            here for you to approve.
+          </div>
+        )}
+        {links.map(l=>{
+          const url = urlOf(l.token);
+          const gn = groupName(l.group_id);
+          const sched = schedOf(l.group_id);
+          const used = requests.filter(r=>r.link_id===l.id).length;
+          // An unlabelled class link is already titled by its class, so naming
+          // the class again underneath just reads as a stutter.
+          const where = gn ? [l.label ? gn : null, sched].filter(Boolean).join(" · ") : "Family picks the class";
+          const sub = [where, used>0 ? (used+" registration"+(used>1?"s":"")) : null].filter(Boolean).join(" · ");
+          return (
+            <div key={l.id} style={{...rowCard,opacity:l.is_active?1:.6}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                <div style={{fontWeight:800,fontSize:".95rem",overflowWrap:"anywhere"}}>{l.label || gn || "Any class"}</div>
+                {!l.is_active && <span style={{fontSize:".62rem",fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",color:"var(--text2)",background:"var(--bg3)",borderRadius:99,padding:"3px 9px"}}>Off</span>}
+              </div>
+              {sub && <div style={meta}>{sub}</div>}
+              <div style={{...meta,color:"var(--text3)",fontFamily:"monospace",fontSize:".68rem"}}>{url}</div>
+              <div style={rowActions}>
+                <button style={rowBtnPrimary} onClick={()=>copyLink(url,l.id)}>{copied===l.id?"Copied ✓":"Copy link"}</button>
+                {navigator.share && <button style={rowBtn} onClick={()=>shareLink(url,l.label)}>Share</button>}
+                <button style={rowBtn} onClick={()=>onSetLinkActive(l.id, !l.is_active)}>{l.is_active?"Switch off":"Switch on"}</button>
+                <button style={rowBtnDanger} onClick={()=>setDel(l)}>Delete</button>
+              </div>
+            </div>
+          );
+        })}
+        <button className="btn" style={{marginTop:8}} onClick={()=>setForm({groupId:"",label:""})}>+ New Link</button>
+        {links.some(l=>l.is_active) && (
+          <div style={{...meta,marginTop:12}}>
+            Switching a link off stops new registrations without deleting the
+            ones it already brought in.
+          </div>
+        )}
+      </div>
+
+      {/* ---- Approve ---- */}
+      {decide && (
+        <div onClick={()=>!busy&&setDecide(null)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:300,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:360,background:"var(--elev)",border:"1px solid var(--border)",borderRadius:18,padding:"22px 20px"}}>
+            <div style={{fontSize:"1.05rem",fontWeight:800,marginBottom:8}}>Add {decide.req.first_name+" "+decide.req.last_name}?</div>
+            <div style={{fontSize:".85rem",color:"var(--text2)",fontWeight:600,lineHeight:1.55}}>
+              This creates the student and gives you a code and PIN to pass on.
+            </div>
+            {groups.length>0 && (
+              <>
+                <div style={lbl}>Class</div>
+                <select className="inp" value={decide.groupId||""} onChange={e=>setDecide(d=>({...d,groupId:e.target.value}))}>
+                  <option value="">— No class —</option>
+                  {groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+                {decide.req.group_id && decide.groupId!==decide.req.group_id && (
+                  <div style={{...meta,color:"var(--partial)"}}>They asked for {groupName(decide.req.group_id)}.</div>
+                )}
+              </>
+            )}
+            <div style={{display:"flex",gap:8,marginTop:18}}>
+              <button className="btn-ghost" style={{flex:1,padding:"12px",marginTop:0}} onClick={()=>setDecide(null)} disabled={busy}>Cancel</button>
+              <button style={{flex:1,padding:"12px",background:"var(--accent)",border:"none",borderRadius:12,color:"var(--accent-ink)",fontFamily:"var(--f)",fontWeight:800,cursor:"pointer"}} onClick={confirmApprove} disabled={busy}>{busy?"…":"Add Student"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Delete a link ---- */}
+      {del && (
+        <div onClick={()=>!busy&&setDel(null)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:300,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:360,background:"var(--elev)",border:"1px solid var(--border)",borderRadius:18,padding:"22px 20px"}}>
+            <div style={{fontSize:"1.05rem",fontWeight:800,marginBottom:8}}>Delete this link?</div>
+            <div style={{fontSize:".85rem",color:"var(--text2)",fontWeight:600,lineHeight:1.5}}>
+              Anyone who still has the address gets an error. Registrations it
+              already brought in are kept.
+            </div>
+            <div style={{fontSize:".82rem",color:"var(--text2)",fontWeight:700,lineHeight:1.5,marginTop:8}}>
+              To stop new sign-ups but keep the address working later, switch it
+              off instead.
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:16}}>
+              <button className="btn-ghost" style={{flex:1,padding:"12px",marginTop:0}} onClick={()=>setDel(null)} disabled={busy}>Cancel</button>
+              <button style={{flex:1,padding:"12px",background:"var(--red)",border:"none",borderRadius:12,color:"#fff",fontFamily:"var(--f)",fontWeight:800,cursor:"pointer"}} onClick={confirmDelete} disabled={busy}>{busy?"…":"Delete"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PgGroups({ biz, onBack }) {
   const p = bizPal(biz);
   const [sel, setSel] = useState(null);
@@ -2775,6 +3033,60 @@ function App() {
   async function doSaveGroup(g){ const name=(g.name||"").trim(); if(!name){ pop("Enter a group name","err"); return false; } const row={ name, schedule:(g.schedule||[]).filter(r=>r.day&&r.start_time), teacher_id:g.teacher_id||null }; let error; if(g.id){ ({error}=await sb.from("groups").update(row).eq("id",g.id)); } else { ({error}=await sb.from("groups").insert({business_id:bizId,name:row.name,schedule:row.schedule,teacher_id:row.teacher_id})); } if(error){ pop(/duplicate|unique/i.test(error.message)?"A group with that name already exists.":error.message,"err"); return false; } await refresh(); return true; }
   async function doDeleteGroup(id){ const { error }=await sb.from("groups").delete().eq("id",id); if(error){ pop(error.message,"err"); return false; } await refresh(); return true; }
 
+  // --- self-registration --------------------------------------------------
+  // The token is generated by the column default in the database, not here, so
+  // it is never a value the browser chose. insert().select() returns the row so
+  // the new link can be shown immediately.
+  async function doCreateRegLink({ groupId, label }){
+    const { error } = await sb.from("registration_links").insert({ business_id:bizId, group_id:groupId||null, label:(label||"").trim()||null }).select("id").single();
+    if(error){ pop(error.message,"err"); return false; }
+    await refresh(); pop("Link created"); return true;
+  }
+  async function doSetRegLinkActive(id, active){
+    const { error } = await sb.from("registration_links").update({ is_active:!!active }).eq("id",id);
+    if(error){ pop(error.message,"err"); return false; }
+    await refresh(); pop(active?"Link is live again":"Link switched off"); return true;
+  }
+  async function doDeleteRegLink(id){
+    const { error } = await sb.from("registration_links").delete().eq("id",id);
+    if(error){ pop(error.message,"err"); return false; }
+    await refresh(); pop("Link deleted"); return true;
+  }
+  // Approval is the same create-and-reveal loop doAddCard runs: generate the
+  // code and PIN here so they match what the rest of the app produces, let the
+  // RPC insert the card and flip the request in one transaction, then land on
+  // the very same PgReveal screen a hand-added student shows.
+  async function doApproveRegistration(req, groupId){
+    const shareCode = genShareCode(), pin = genPin();
+    const { data, error } = await sb.rpc("approve_registration", { p_request_id:req.id, p_share_code:shareCode, p_pin:pin, p_group_id:groupId||null });
+    if(error){ pop(error.message,"err"); return false; }
+    if(!data || !data.ok){
+      // already_approved / already_rejected: someone (or a second tap) got
+      // there first. Refresh so the list stops offering a stale action.
+      pop(data && /^already_/.test(data.error||"") ? "That request was already handled." : "Could not approve this request.","err");
+      await refresh(); return false;
+    }
+    const c = data.card || {};
+    await refresh();
+    setRevealCard({ id:c.id, name:c.name, shareCode:c.share_code, pin:c.pin, phone:req.phone||"", level:null,
+      preferredChannel:"whatsapp", language:"EN", enrollmentStart:null, groupId:c.group_id||null, groupName:"",
+      lessonSchedule:[], pausedMonths:[], feeHistory:[], payments:{}, history:[] });
+    setView("reveal");
+    return true;
+  }
+  async function doRejectRegistration(id){
+    const { error } = await sb.from("registration_requests").update({ status:"rejected", decided_at:new Date().toISOString() }).eq("id",id);
+    if(error){ pop(error.message,"err"); return false; }
+    await refresh(); return true;
+  }
+  // Undo a rejection. decided_at goes back to null so a restored request is
+  // indistinguishable from one that was never touched.
+  async function doUnrejectRegistration(id){
+    const { error } = await sb.from("registration_requests").update({ status:"pending", decided_at:null }).eq("id",id);
+    if(error){ pop(error.message,"err"); return false; }
+    await refresh(); return true;
+  }
+
   async function doLogout(){ await sb.auth.signOut(); setBizId(null); setDb({businesses:{}}); setMyCards([]); setChildren([]); setDashFilter("all"); setDashSort("name"); setApproval(null); setMode("teacher"); setView("landing"); }
 
   // GDPR right-to-erasure. Both RPCs are SECURITY DEFINER and also delete the
@@ -3004,7 +3316,7 @@ async function doUpdateCard(updates){
         {view==="register" && <PgRegister onBack={()=>setView("login")} onCreated={onRegistered} />}
         {view==="student" && <PgStudent onBack={()=>setView("landing")} />}
         {view==="parentAuth" && <PgParentAuth onBack={()=>setView("landing")} />}
-        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} />}
+        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} />}
         {view==="addCard" && biz && <PgAddCard biz={biz} onBack={()=>setView("dashboard")} onCreate={doAddCard} />}
         {view==="import" && biz && <PgImport biz={biz} onBack={()=>setView("dashboard")} onImport={doImportStudents} />}
         {view==="reveal" && revealCard && <PgReveal biz={biz} card={revealCard} onDone={()=>{setRevealCard(null);setView("dashboard");}} />}
@@ -3018,6 +3330,7 @@ async function doUpdateCard(updates){
         {view==="announcements" && biz && <PgAnnouncements biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="groups" && biz && <PgGroups biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="manage" && biz && <PgManage biz={biz} onBack={()=>setView("dashboard")} onSaveTeacher={doSaveTeacher} onDeleteTeacher={doDeleteTeacher} onSaveGroup={doSaveGroup} onDeleteGroup={doDeleteGroup} />}
+        {view==="registrations" && biz && <PgRegistrations biz={biz} onBack={()=>setView("dashboard")} onCreateLink={doCreateRegLink} onSetLinkActive={doSetRegLinkActive} onDeleteLink={doDeleteRegLink} onApprove={doApproveRegistration} onReject={doRejectRegistration} onUnreject={doUnrejectRegistration} />}
         </>}
         {toast && <div className={"toast t-"+toast.type}>{toast.msg}</div>}
       </div>

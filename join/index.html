@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#05070C" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Register — PayStamp</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,800;1,900&display=swap');
+
+  /* Same tokens as the app. --accent is overwritten from the school's chosen
+     colour once the link resolves, exactly the way a screen inside the app
+     publishes it; until then the page shows the app's default violet. */
+  :root{
+    --bg:#05070C; --bg2:#0D0F1B; --bg3:rgba(255,255,255,.06);
+    --text:#fff; --text2:rgba(255,255,255,.6); --text3:rgba(255,255,255,.4);
+    --border:rgba(255,255,255,.08);
+    --surface:linear-gradient(160deg,#14172A 0%,#0A0C16 100%);
+    --red:#ef4444; --green:#10b981;
+    --accent:#818cf8; --accent-ink:#08110B;
+    --grad1:#6366f1; --grad2:#312e81;
+    --f:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:var(--f);min-height:100vh;
+    -webkit-font-smoothing:antialiased;}
+
+  /* One accent-tinted wash behind the header, so the school's colour is
+     present on the page rather than just trimming a few icons. */
+  .page{max-width:430px;margin:0 auto;min-height:100vh;padding:36px 20px 40px;
+    position:relative;overflow:hidden;}
+  .page::before{content:"";position:absolute;top:-180px;left:50%;
+    transform:translateX(-50%);width:520px;height:420px;pointer-events:none;
+    background:radial-gradient(ellipse at center,var(--accent),transparent 70%);
+    opacity:.18;}
+  .page > *{position:relative;z-index:1;}
+
+  /* ---------------------------------------------------------------- header */
+  .head{text-align:center;margin-bottom:26px;}
+  .tile{width:64px;height:64px;margin:0 auto 16px;border-radius:20px;
+    display:flex;align-items:center;justify-content:center;font-size:1.9rem;
+    background:linear-gradient(150deg,var(--grad1),var(--grad2));
+    box-shadow:0 10px 30px rgba(0,0,0,.5);}
+  .head h1{font-size:1.55rem;font-weight:800;letter-spacing:-.02em;line-height:1.2;}
+  .head .sub{margin-top:8px;font-size:.9rem;font-weight:500;color:var(--text2);line-height:1.5;}
+
+  /* ------------------------------------------------------------------ card */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:20px;
+    padding:22px 20px;}
+  .card + .card{margin-top:14px;}
+  h2{font-size:1.05rem;font-weight:800;letter-spacing:-.01em;}
+  .lede{margin-top:8px;font-size:.85rem;font-weight:500;color:var(--text2);line-height:1.6;}
+
+  /* ----------------------------------------------------------------- form */
+  /* Field captions only. The :not() matters: the class chooser below is built
+     out of <label> elements too, and without it every class the school named
+     would be shouted back in caps with a field caption's margins. */
+  label:not(.grp){display:block;font-size:.64rem;font-weight:800;color:var(--text2);
+    text-transform:uppercase;letter-spacing:.1em;margin:18px 0 7px;}
+  label .opt{text-transform:none;letter-spacing:0;font-weight:600;color:var(--text3);}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .row label{margin-top:18px;}
+  input.inp{width:100%;background:var(--bg2);border:1px solid var(--border);
+    border-radius:12px;color:var(--text);font-family:var(--f);font-size:1rem;
+    font-weight:600;padding:15px 16px;outline:none;transition:border-color .18s;}
+  input.inp:focus{border-color:var(--accent);}
+  input.inp::placeholder{color:var(--text3);font-weight:500;}
+  /* Keep the native date control legible on a dark background. */
+  input[type=date]{-webkit-appearance:none;appearance:none;min-height:52px;}
+  input[type=date]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5;cursor:pointer;}
+
+  /* Group choices as tappable rows rather than a dropdown: the schedule is the
+     thing that tells a parent which class they actually want. */
+  .groups{display:flex;flex-direction:column;gap:8px;}
+  .grp{display:block;background:var(--bg2);border:1px solid var(--border);
+    border-radius:14px;padding:13px 15px;cursor:pointer;transition:border-color .18s;
+    text-transform:none;letter-spacing:normal;margin:0;}
+  .grp input{position:absolute;opacity:0;pointer-events:none;}
+  .grp .nm{font-size:.92rem;font-weight:700;}
+  .grp .sc{margin-top:3px;font-size:.75rem;font-weight:600;color:var(--text2);}
+  .grp.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;}
+  .grp.on .nm{color:var(--accent);}
+
+  /* The honeypot. Off-screen rather than display:none — a bot reading the DOM
+     fills it in, a person never sees or tabs to it. */
+  .hp{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;
+    opacity:0;pointer-events:none;}
+
+  .btn{width:100%;margin-top:24px;background:var(--accent);color:var(--accent-ink);
+    border:none;border-radius:12px;padding:17px;font-family:var(--f);
+    font-size:1rem;font-weight:800;cursor:pointer;transition:opacity .18s;}
+  .btn:disabled{opacity:.45;cursor:default;}
+  .btn.ghost{background:rgba(255,255,255,.06);color:var(--text);margin-top:12px;}
+
+  .err{margin-top:14px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);
+    border-radius:12px;padding:12px 14px;font-size:.82rem;font-weight:600;
+    color:#fca5a5;line-height:1.5;}
+  .fine{margin-top:16px;font-size:.72rem;font-weight:500;color:var(--text3);line-height:1.55;}
+
+  /* --------------------------------------------------------------- states */
+  .spin{width:28px;height:28px;border:3px solid var(--border);
+    border-top-color:var(--accent);border-radius:50%;margin:6px auto 16px;
+    animation:r .8s linear infinite;}
+  @keyframes r{to{transform:rotate(360deg);}}
+  .centre{text-align:center;}
+  .tick{width:60px;height:60px;margin:0 auto 16px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;font-size:1.7rem;
+    background:rgba(16,185,129,.14);border:1px solid rgba(16,185,129,.35);}
+  .next{margin-top:18px;text-align:left;border-top:1px solid var(--border);padding-top:16px;}
+  .next .step{display:flex;gap:11px;align-items:flex-start;font-size:.83rem;
+    font-weight:500;color:var(--text2);line-height:1.5;}
+  .next .step + .step{margin-top:11px;}
+  .next .n{flex:none;width:21px;height:21px;border-radius:50%;background:var(--bg3);
+    color:var(--text);font-size:.68rem;font-weight:800;display:flex;
+    align-items:center;justify-content:center;margin-top:1px;}
+
+  .foot{margin-top:26px;text-align:center;font-size:.7rem;font-weight:600;
+    color:var(--text3);letter-spacing:.02em;}
+  .foot b{font-weight:800;font-style:italic;color:var(--text2);}
+
+  [hidden]{display:none !important;}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+<div class="page">
+
+  <div class="head" id="head" hidden>
+    <div class="tile" id="tile">⭐</div>
+    <h1 id="bizname"></h1>
+    <div class="sub" id="bizsub"></div>
+  </div>
+
+  <!-- loading -->
+  <div class="card centre" id="s-loading">
+    <div class="spin"></div>
+    <div class="lede" id="loadmsg" style="margin-top:0;">Opening the registration form…</div>
+  </div>
+
+  <!-- unusable link -->
+  <div class="card" id="s-dead" hidden>
+    <h2>This link isn't working</h2>
+    <p class="lede">It may have been closed by the school, or the address may be
+       incomplete — links are long and easily cut short when copied.</p>
+    <p class="lede">Ask the school for a fresh registration link.</p>
+  </div>
+
+  <!-- the form -->
+  <form class="card" id="s-form" hidden autocomplete="on" novalidate>
+    <h2>Student details</h2>
+    <p class="lede">The school reviews every registration before a place is
+       confirmed, so nothing is booked yet.</p>
+
+    <div class="row">
+      <div>
+        <label for="first">First name</label>
+        <input class="inp" id="first" name="given-name" autocomplete="given-name"
+               autocapitalize="words" placeholder="Andreas" />
+      </div>
+      <div>
+        <label for="last">Last name</label>
+        <input class="inp" id="last" name="family-name" autocomplete="family-name"
+               autocapitalize="words" placeholder="Christou" />
+      </div>
+    </div>
+
+    <label for="dob">Date of birth <span class="opt">— optional</span></label>
+    <input class="inp" id="dob" type="date" />
+
+    <div id="groupwrap" hidden>
+      <label>Class</label>
+      <div class="groups" id="groups"></div>
+    </div>
+
+    <label for="phone">Phone <span class="opt">— optional</span></label>
+    <input class="inp" id="phone" type="tel" inputmode="tel" autocomplete="tel"
+           placeholder="99 123456" />
+
+    <label for="email">Email <span class="opt">— optional</span></label>
+    <input class="inp" id="email" type="email" inputmode="email" autocomplete="email"
+           placeholder="you@example.com" />
+
+    <!-- honeypot -->
+    <div class="hp" aria-hidden="true">
+      <label for="website">Website</label>
+      <input id="website" name="website" type="text" tabindex="-1" autocomplete="off" />
+    </div>
+
+    <div class="err" id="err" hidden></div>
+    <button class="btn" id="send" type="submit">Send registration</button>
+    <p class="fine" id="fine"></p>
+  </form>
+
+  <!-- sent -->
+  <div class="card centre" id="s-done" hidden>
+    <div class="tick">✅</div>
+    <h2 id="donetitle">Registration sent</h2>
+    <p class="lede" id="donesub"></p>
+    <div class="next">
+      <div class="step"><div class="n">1</div><div>The school reviews the details you sent.</div></div>
+      <div class="step"><div class="n">2</div><div id="step2">They get in touch to confirm the place.</div></div>
+      <div class="step"><div class="n">3</div><div>Once confirmed, you get a personal code to follow payments in PayStamp.</div></div>
+    </div>
+    <button class="btn ghost" id="again" type="button">Register another student</button>
+  </div>
+
+  <div class="foot">Registrations by <b>PayStamp</b></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+
+  // Only ever one panel visible. The header is separate: it appears as soon as
+  // the school is known and stays put across form -> sent.
+  function show(id) {
+    ["s-loading", "s-dead", "s-form", "s-done"].forEach(function (x) {
+      $(x).hidden = (x !== id);
+    });
+  }
+
+  // ---------------------------------------------------------------- colour
+  // Same resolution order as the app's bizPal(): the owner's chosen theme wins,
+  // otherwise the category palette. Kept as a copy on purpose — this page is a
+  // standalone file with no build step, and a wrong colour here is cosmetic,
+  // whereas importing the app bundle would drag its whole auth flow in.
+  var THEMES = {
+    violet:{acc:"#a5b4fc",bg1:"#6366f1",bg2:"#312e81"},
+    purple:{acc:"#c4b5fd",bg1:"#8b5cf6",bg2:"#4c1d95"},
+    sky:   {acc:"#38bdf8",bg1:"#0ea5e9",bg2:"#0c4a6e"},
+    cyan:  {acc:"#67e8f9",bg1:"#0891b2",bg2:"#164e63"},
+    mint:  {acc:"#6ee7b7",bg1:"#10b981",bg2:"#064e3b"},
+    green: {acc:"#86efac",bg1:"#16a34a",bg2:"#14532d"},
+    gold:  {acc:"#fde047",bg1:"#ca8a04",bg2:"#713f12"},
+    amber: {acc:"#fdba74",bg1:"#f97316",bg2:"#7c2d12"},
+    pink:  {acc:"#f9a8d4",bg1:"#ec4899",bg2:"#831843"},
+    slate: {acc:"#cbd5e1",bg1:"#475569",bg2:"#0f172a"}
+  };
+  var PAL = {
+    Swimming:{bg1:"#0ea5e9",bg2:"#0c4a6e",acc:"#38bdf8",icon:"🏊"},
+    Karate:{bg1:"#dc2626",bg2:"#7f1d1d",acc:"#f87171",icon:"🥋"},
+    Taekwondo:{bg1:"#dc2626",bg2:"#7f1d1d",acc:"#f87171",icon:"🥋"},
+    Dance:{bg1:"#a855f7",bg2:"#581c87",acc:"#d8b4fe",icon:"💃"},
+    Ballet:{bg1:"#ec4899",bg2:"#831843",acc:"#f9a8d4",icon:"🩰"},
+    Music:{bg1:"#10b981",bg2:"#064e3b",acc:"#6ee7b7",icon:"🎵"},
+    Football:{bg1:"#16a34a",bg2:"#14532d",acc:"#86efac",icon:"⚽"},
+    English:{bg1:"#6366f1",bg2:"#312e81",acc:"#a5b4fc",icon:"📚"},
+    Greek:{bg1:"#6366f1",bg2:"#312e81",acc:"#a5b4fc",icon:"📖"},
+    Mathematics:{bg1:"#8b5cf6",bg2:"#4c1d95",acc:"#c4b5fd",icon:"📐"},
+    Gymnastics:{bg1:"#d946ef",bg2:"#701a75",acc:"#f0abfc",icon:"🤸"},
+    Art:{bg1:"#f97316",bg2:"#7c2d12",acc:"#fdba74",icon:"🎨"},
+    Chess:{bg1:"#ca8a04",bg2:"#713f12",acc:"#fde047",icon:"♟"},
+    Computer:{bg1:"#0891b2",bg2:"#164e63",acc:"#67e8f9",icon:"💻"},
+    Other:{bg1:"#6366f1",bg2:"#312e81",acc:"#a5b4fc",icon:"⭐"}
+  };
+  function paint(biz) {
+    var base = PAL[biz.type] || PAL.Other;
+    var t = biz.accent ? THEMES[biz.accent] : null;
+    var r = document.documentElement.style;
+    r.setProperty("--accent", (t || base).acc);
+    r.setProperty("--grad1",  (t || base).bg1);
+    r.setProperty("--grad2",  (t || base).bg2);
+    // The icon always follows the CATEGORY, never the theme — the theme
+    // colours the page, it does not change what the school teaches.
+    $("tile").textContent = base.icon;
+  }
+
+  var DAY = {Monday:"Mon",Tuesday:"Tue",Wednesday:"Wed",Thursday:"Thu",
+             Friday:"Fri",Saturday:"Sat",Sunday:"Sun"};
+  function schedText(sched) {
+    if (!sched || !sched.length) return "";
+    return sched.map(function (x) {
+      return (DAY[x.day] || x.day || "") + " " + (x.start_time || "") +
+             (x.end_time ? ("–" + x.end_time) : "");
+    }).join(", ").trim();
+  }
+
+  // ------------------------------------------------------------ the token
+  // Query string, not a path segment: GitHub Pages serves static files with no
+  // SPA fallback, so /join/?r=TOKEN resolves to this file and /join/TOKEN 404s.
+  var token = new URLSearchParams(location.search).get("r") || "";
+  if (!token) { show("s-dead"); return; }
+
+  if (!window.supabase || !window.supabase.createClient) {
+    $("loadmsg").textContent = "Can't reach the server. Check your connection and refresh this page.";
+    document.querySelector("#s-loading .spin").hidden = true;
+    return;
+  }
+
+  var sb = window.supabase.createClient(
+    "https://oqckztpsglcsrtyyvqrl.supabase.co",
+    "sb_publishable_AtGkcGeO4hAhtCZGmIBHyA_JZdRJBeI"
+  );
+
+  var form = null;       // whatever get_registration_form returned
+  var chosenGroup = null;
+
+  // -------------------------------------------------------------- 1. open
+  sb.rpc("get_registration_form", { p_token: token }).then(function (r) {
+    // The function returns null for an unknown token, a switched-off link and a
+    // school still awaiting approval alike, so there is nothing to tell apart
+    // here — which is the point.
+    if (r.error || !r.data) { show("s-dead"); return; }
+    form = r.data;
+    var biz = form.business || {};
+    paint(biz);
+    $("bizname").textContent = biz.name || "Registration";
+    $("bizsub").textContent = form.group
+      ? ("Registration — " + form.group.name)
+      : "Student registration";
+    $("head").hidden = false;
+    document.title = (biz.name ? biz.name + " — " : "") + "Register";
+
+    // A link tied to one class has nothing to choose; an open link with no
+    // classes yet has nothing to choose either. Only offer the list when it
+    // would actually change something.
+    var list = form.group ? [] : (form.groups || []);
+    if (list.length) {
+      var box = $("groups");
+      list.forEach(function (g, i) {
+        var lab = document.createElement("label");
+        lab.className = "grp";
+        var input = document.createElement("input");
+        input.type = "radio"; input.name = "grp"; input.value = g.id;
+        var nm = document.createElement("div");
+        nm.className = "nm"; nm.textContent = g.name;
+        lab.appendChild(input); lab.appendChild(nm);
+        var s = schedText(g.schedule);
+        if (s) { var sc = document.createElement("div"); sc.className = "sc"; sc.textContent = s; lab.appendChild(sc); }
+        input.addEventListener("change", function () {
+          chosenGroup = g.id;
+          [].forEach.call(box.children, function (c) { c.classList.remove("on"); });
+          lab.classList.add("on");
+        });
+        box.appendChild(lab);
+        if (i === 0) { input.checked = true; chosenGroup = g.id; lab.classList.add("on"); }
+      });
+      $("groupwrap").hidden = false;
+    }
+
+    if (form.group) {
+      var gs = schedText(form.group.schedule);
+      $("fine").textContent = gs
+        ? ("You are registering for " + form.group.name + " — " + gs + ".")
+        : ("You are registering for " + form.group.name + ".");
+      $("step2").textContent = "They get in touch to confirm the place in " + form.group.name + ".";
+    }
+
+    // A date of birth in the future is a typo, not a student.
+    $("dob").max = new Date().toISOString().slice(0, 10);
+
+    show("s-form");
+    $("first").focus();
+  }, function () { show("s-dead"); });
+
+  // ------------------------------------------------------------ 2. submit
+  function fail(msg) { var e = $("err"); e.textContent = msg; e.hidden = false; }
+
+  function submit(ev) {
+    if (ev) ev.preventDefault();
+    $("err").hidden = true;
+    var first = $("first").value.trim(), last = $("last").value.trim();
+    if (!first || !last) { fail("Please enter the student's first and last name."); ($("first").value.trim() ? $("last") : $("first")).focus(); return; }
+
+    var btn = $("send");
+    btn.disabled = true; btn.textContent = "Sending…";
+
+    sb.rpc("submit_registration", {
+      p_token:      token,
+      p_first_name: first,
+      p_last_name:  last,
+      p_phone:      $("phone").value.trim() || null,
+      p_email:      $("email").value.trim() || null,
+      p_dob:        $("dob").value || null,
+      p_group_id:   form.group ? null : chosenGroup,   // a class link decides for itself
+      p_hp:         $("website").value || null
+    }).then(function (r) {
+      btn.disabled = false; btn.textContent = "Send registration";
+      if (r.error) { fail("Something went wrong sending this. Please try again in a moment."); return; }
+      var d = r.data || {};
+      if (!d.ok) {
+        if (d.error === "rate_limited") {
+          fail("That's a lot of registrations from here in a short time. Please wait an hour and try again, or contact the school directly.");
+        } else if (d.error === "invalid_link") {
+          show("s-dead");
+        } else if (d.error === "name_required") {
+          fail("Please enter the student's first and last name.");
+        } else {
+          fail("Something went wrong sending this. Please try again in a moment.");
+        }
+        return;
+      }
+      $("donesub").textContent = first + " " + last + " has been sent to " +
+        ((form.business && form.business.name) || "the school") + ".";
+      show("s-done");
+      window.scrollTo(0, 0);
+    }, function () {
+      btn.disabled = false; btn.textContent = "Send registration";
+      fail("Couldn't reach the school. Check your connection and try again.");
+    });
+  }
+  $("s-form").addEventListener("submit", submit);
+
+  // Siblings are common enough to be worth one tap. Clears the person, keeps
+  // the class — a second child usually joins the same school, often the same
+  // class, and the details that identify the family are the ones worth keeping.
+  $("again").addEventListener("click", function () {
+    ["first", "last", "dob"].forEach(function (id) { $(id).value = ""; });
+    $("err").hidden = true;
+    show("s-form");
+    $("first").focus();
+    window.scrollTo(0, 0);
+  });
+})();
+</script>
+</body>
+</html>
