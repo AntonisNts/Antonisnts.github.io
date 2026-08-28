@@ -1592,15 +1592,20 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
     const mine = annAll.filter(a=>names.indexOf(a.business_name)>=0);
     if (mine.length===0) return null;
     const unread = mine.filter(a=>!readSet[a.id]).length;
-    const open = !!notesOpen[blockId];
+    // Open when there is something unread, closed once it has all been seen —
+    // and whatever the parent last chose wins over both.
+    const open = (blockId in notesOpen) ? notesOpen[blockId] : unread > 0;
     const showAll = !!annShowAll[blockId];
     const shown = showAll ? mine : mine.slice(0, ANN_CAP);
     const hidden = mine.length - shown.length;
     const multi = names.length > 1;
     return (
-      <div style={{marginBottom:12}}>
-        <div onClick={()=>setNotesOpen(s=>({...s,[blockId]:!s[blockId]}))}
-             style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px",cursor:"pointer"}}>
+      // One box, with the heading inside it and the notes as divided rows —
+      // rather than a bare heading over a stack of separately bordered cards,
+      // which read as loose fragments sitting between the student cards.
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"4px 16px 6px",marginBottom:12}}>
+        <div onClick={()=>setNotesOpen(s=>({...s,[blockId]:!open}))}
+             style={{display:"flex",alignItems:"center",gap:8,padding:"12px 0",cursor:"pointer"}}>
           <span style={{...eyebrow,color:"var(--text2)",letterSpacing:".16em"}}>From the school</span>
           {unread>0 && <span style={{fontSize:".62rem",fontWeight:800,color:"var(--accent-ink)",background:"var(--accent)",borderRadius:99,padding:"1px 7px"}}>{unread+" new"}</span>}
           <span style={{marginLeft:"auto",color:"var(--text2)",fontSize:".8rem"}}>{open?"▾":"▸"}</span>
@@ -1612,25 +1617,30 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
           // when this block spans more than one school in the first place.
           const showSchool = multi && (idx===0 || shown[idx-1].business_name!==a.business_name);
           return (
-            <div key={a.id} onClick={()=>openAnnItem(a)} style={{background:isUnread?"var(--bg2)":"var(--bg)",border:"1px solid "+(isUnread?"rgba(255,255,255,.16)":"var(--border)"),borderRadius:14,padding:"11px 14px",marginBottom:8,cursor:"pointer"}}>
+            <div key={a.id} onClick={()=>openAnnItem(a)}
+                 style={{borderTop:"1px solid var(--border)",padding:"12px 0",cursor:"pointer"}}>
               {showSchool && (
-                <div style={{...eyebrow,fontSize:".62rem",color:annAccent(a.business_name),opacity:isUnread?1:.6,marginBottom:5}}>{a.business_name}</div>
+                <div style={{...eyebrow,fontSize:".62rem",color:annAccent(a.business_name),opacity:isUnread?1:.6,marginBottom:7}}>{a.business_name}</div>
               )}
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <span style={{flexShrink:0,fontSize:".54rem",fontWeight:800,letterSpacing:".1em",color:a.is_pinned?"var(--accent-ink)":"var(--accent)",background:a.is_pinned?"var(--accent)":"rgba(255,255,255,.06)",borderRadius:99,padding:"2px 7px"}}>{a.is_pinned?"PINNED":"NOTE"}</span>
-                <div style={{flex:1,minWidth:0,fontSize:".86rem",fontWeight:isUnread?800:600,color:isUnread?"#fff":"var(--text2)",whiteSpace:isOpen?"normal":"nowrap",overflow:"hidden",textOverflow:"ellipsis",overflowWrap:"anywhere"}}>
-                  {a.title}<span style={{color:"var(--text3)",fontWeight:600}}>{" · "+relTime(a.created_at)}</span>
+              <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+                <span style={{flexShrink:0,marginTop:1,fontSize:".54rem",fontWeight:800,letterSpacing:".1em",color:a.is_pinned?"var(--accent-ink)":"var(--accent)",background:a.is_pinned?"var(--accent)":"transparent",border:"1px solid "+(a.is_pinned?"var(--accent)":"rgba(129,140,248,.45)"),borderRadius:8,padding:"3px 7px"}}>{a.is_pinned?"PINNED":"NOTE"}</span>
+                <div style={{flex:1,minWidth:0}}>
+                  {/* The timestamp sits under the title rather than after it.
+                      Inline, a long title pushed the date past the ellipsis and
+                      the note lost the one piece of context it needed most. */}
+                  <div style={{fontSize:".88rem",fontWeight:isUnread?800:600,color:isUnread?"#fff":"var(--text2)",lineHeight:1.35,overflowWrap:"anywhere"}}>{a.title}</div>
+                  <div style={{fontSize:".72rem",fontWeight:600,color:"var(--text3)",marginTop:3}}>{relTime(a.created_at)}</div>
                 </div>
-                {isUnread && <span style={{width:9,height:9,borderRadius:99,flexShrink:0,background:"var(--accent)",boxShadow:"0 0 8px rgba(129,140,248,.6)"}} />}
-                <span style={{flexShrink:0,color:"var(--text3)",fontSize:".8rem",lineHeight:1,display:"inline-block",transform:isOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s ease-out"}}>⌄</span>
+                {isUnread && <span style={{width:9,height:9,borderRadius:99,flexShrink:0,marginTop:5,background:"var(--accent)",boxShadow:"0 0 8px rgba(129,140,248,.6)"}} />}
+                <span style={{flexShrink:0,color:"var(--text3)",fontSize:".8rem",lineHeight:1,marginTop:4,display:"inline-block",transform:isOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s ease-out"}}>⌄</span>
               </div>
               {isOpen && a.body && <div style={{fontSize:".82rem",color:"var(--text2)",lineHeight:1.5,whiteSpace:"pre-wrap",marginTop:9,overflowWrap:"anywhere"}}>{a.body}</div>}
-              {isOpen && a.image_url && <img src={a.image_url} alt="" style={{display:"block",width:"100%",height:"auto",maxHeight:340,objectFit:"contain",borderRadius:12,marginTop:8,background:"var(--bg)"}} />}
+              {isOpen && a.image_url && <img src={a.image_url} alt="" style={{display:"block",width:"100%",height:"auto",maxHeight:340,objectFit:"contain",borderRadius:12,marginTop:9,background:"var(--bg)"}} />}
             </div>
           );
         })}
         {open && (hidden>0 || showAll) && (
-          <button onClick={()=>setAnnShowAll(s=>({...s,[blockId]:!s[blockId]}))} style={{background:"none",border:"none",padding:"2px 4px 0",fontFamily:"var(--f)",fontSize:".76rem",fontWeight:800,color:"var(--accent)",cursor:"pointer"}}>
+          <button onClick={()=>setAnnShowAll(s=>({...s,[blockId]:!s[blockId]}))} style={{width:"100%",textAlign:"left",background:"none",borderTop:"1px solid var(--border)",borderLeft:"none",borderRight:"none",borderBottom:"none",padding:"11px 0 5px",fontFamily:"var(--f)",fontSize:".76rem",fontWeight:800,color:"var(--accent)",cursor:"pointer"}}>
             {showAll ? "Show less" : ("Show all ("+mine.length+")")}
           </button>
         )}
