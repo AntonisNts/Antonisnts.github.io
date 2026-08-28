@@ -1207,7 +1207,17 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
               <div key={a.id} style={{padding:"10px 0",borderTop:"1px solid var(--border)"}}>
                 {a.is_pinned && <span style={{fontSize:".6rem",fontWeight:800,color:"var(--accent)",background:"rgba(255,255,255,.06)",borderRadius:99,padding:"2px 7px"}}>📌 PINNED</span>}
                 <div style={{fontSize:".95rem",fontWeight:800,marginTop:a.is_pinned?4:0}}>{a.title}</div>
-                <div style={{fontSize:".68rem",color:"var(--text3)",fontWeight:600,marginTop:2}}>{a.created_at ? ("Posted "+new Date(a.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})) : ""}</div>
+                <div style={{fontSize:".68rem",color:"var(--text3)",fontWeight:600,marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                  <span>{a.created_at ? ("Posted "+new Date(a.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})) : ""}</span>
+                  {/* A note only this student can see should say so, otherwise
+                      it reads like something the whole school was told. */}
+                  {a.target_kind==="group" && a.target_name && (
+                    <span style={{fontSize:".6rem",fontWeight:800,letterSpacing:".06em",textTransform:"uppercase",color:"var(--accent)",border:"1px solid var(--border)",borderRadius:6,padding:"1px 6px"}}>{a.target_name}</span>
+                  )}
+                  {a.target_kind==="student" && (
+                    <span style={{fontSize:".6rem",fontWeight:800,letterSpacing:".06em",textTransform:"uppercase",color:"var(--accent)",border:"1px solid rgba(129,140,248,.45)",borderRadius:6,padding:"1px 6px"}}>Just for you</span>
+                  )}
+                </div>
                 {a.body && <div style={{fontSize:".82rem",color:"var(--text2)",marginTop:3,whiteSpace:"pre-wrap",lineHeight:1.5}}>{a.body}</div>}
                 {a.image_url && <img src={a.image_url} alt="" style={{display:"block",width:"100%",height:"auto",maxHeight:340,objectFit:"contain",borderRadius:12,marginTop:8,background:"var(--bg)"}} />}
               </div>
@@ -1588,8 +1598,22 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   // everything. `names` is the set of schools that child actually attends, so a
   // parent with kids at two schools never sees one school's notes under the
   // other's child.
-  function renderNotes(blockId, names) {
-    const mine = annAll.filter(a=>names.indexOf(a.business_name)>=0);
+  function renderNotes(blockId, secRows) {
+    // Targeting makes the per-child grouping exact rather than approximate.
+    // Matching on the school alone would put "Sharks moves to Thursday" under a
+    // sibling who is in Dolphins — the very confusion the targeting removes.
+    const names = [], gids = [], cids = [];
+    secRows.forEach(r=>{
+      if (names.indexOf(r.biz.name)<0) names.push(r.biz.name);
+      if (r.card.groupId && gids.indexOf(r.card.groupId)<0) gids.push(r.card.groupId);
+      cids.push(r.it.cardId);
+    });
+    const mine = annAll.filter(a=>{
+      if (names.indexOf(a.business_name)<0) return false;
+      if (a.card_id)  return cids.indexOf(a.card_id)>=0;
+      if (a.group_id) return gids.indexOf(a.group_id)>=0;
+      return true;                                   // the whole school
+    });
     if (mine.length===0) return null;
     const unread = mine.filter(a=>!readSet[a.id]).length;
     // Open when there is something unread, closed once it has all been seen —
@@ -1629,7 +1653,18 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
                       Inline, a long title pushed the date past the ellipsis and
                       the note lost the one piece of context it needed most. */}
                   <div style={{fontSize:".88rem",fontWeight:isUnread?800:600,color:isUnread?"#fff":"var(--text2)",lineHeight:1.35,overflowWrap:"anywhere"}}>{a.title}</div>
-                  <div style={{fontSize:".72rem",fontWeight:600,color:"var(--text3)",marginTop:3}}>{relTime(a.created_at)}</div>
+                  <div style={{fontSize:".72rem",fontWeight:600,color:"var(--text3)",marginTop:3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                    <span>{relTime(a.created_at)}</span>
+                    {/* Whether a note is for the school, the class or this one
+                        child changes how a parent should read it, so it is
+                        said rather than left to be inferred from the wording. */}
+                    {a.target_kind==="group" && a.target_name && (
+                      <span style={{fontSize:".6rem",fontWeight:800,letterSpacing:".06em",textTransform:"uppercase",color:annAccent(a.business_name),border:"1px solid var(--border)",borderRadius:6,padding:"1px 6px"}}>{a.target_name}</span>
+                    )}
+                    {a.target_kind==="student" && (
+                      <span style={{fontSize:".6rem",fontWeight:800,letterSpacing:".06em",textTransform:"uppercase",color:"var(--accent)",border:"1px solid rgba(129,140,248,.45)",borderRadius:6,padding:"1px 6px"}}>Just for them</span>
+                    )}
+                  </div>
                 </div>
                 {isUnread && <span style={{width:9,height:9,borderRadius:99,flexShrink:0,marginTop:5,background:"var(--accent)",boxShadow:"0 0 8px rgba(129,140,248,.6)"}} />}
                 <span style={{flexShrink:0,color:"var(--text3)",fontSize:".8rem",lineHeight:1,marginTop:4,display:"inline-block",transform:isOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s ease-out"}}>⌄</span>
@@ -1656,8 +1691,6 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   function renderSection(id, title, secRows) {
     const open = openGroups[id] !== false;
     const secDue = secRows.reduce((a,r)=>a+r.due, 0);
-    const names = [];
-    secRows.forEach(r=>{ if(names.indexOf(r.biz.name)<0) names.push(r.biz.name); });
     return (
       <div key={id} style={{marginBottom:6}}>
         <div onClick={()=>setOpenGroups(s=>({...s,[id]: open?false:true}))} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 4px",cursor:"pointer"}}>
@@ -1670,14 +1703,13 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
         </div>
         {open && <>
           {secRows.map(renderRow)}
-          {renderNotes("notes-"+id, names)}
+          {renderNotes("notes-"+id, secRows)}
         </>}
       </div>
     );
   }
 
   const unassigned = rows.filter(r=>!r.childId || !childIds.includes(r.childId));
-  const allNames = []; rows.forEach(r=>{ if(allNames.indexOf(r.biz.name)<0) allNames.push(r.biz.name); });
 
   return (
     <div className="page">
@@ -1774,7 +1806,7 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
           : !grouped
             ? <>
                 {rows.map(renderRow)}
-                {renderNotes("notes-all", allNames)}
+                {renderNotes("notes-all", rows)}
               </>
             : <>
                 {kids.map(k=>{ const sec=rows.filter(r=>r.childId===k.id); return sec.length>0 ? renderSection(k.id, k.name, sec) : null; })}
@@ -1862,6 +1894,10 @@ function PgAnnouncements({ biz, onBack }) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [pinned, setPinned] = useState(false);
+  // Audience as one string — "all", "g:<id>" or "c:<id>". Two selects, or
+  // two ids kept in step by hand, both make "exactly one target" something
+  // the UI has to remember; one value makes it impossible to get wrong.
+  const [aud, setAud] = useState("all");
   const [expires, setExpires] = useState("");
   const [imgPreview, setImgPreview] = useState("");
   const [imgFile, setImgFile] = useState(null);
@@ -1873,8 +1909,8 @@ function PgAnnouncements({ biz, onBack }) {
   async function refresh(){ try { setList(await loadAnnouncements(biz.id)); } catch(e){ setMsg(e.message||"Load failed"); setList([]); } }
   useEffect(()=>{ refresh(); },[]);
 
-  function openNew(){ setEditing({}); setTitle(""); setBody(""); setPinned(false); setExpires(""); setImgPreview(""); setImgFile(null); setRemoveImg(false); setMsg(""); }
-  function openEdit(a){ setEditing(a); setTitle(a.title||""); setBody(a.body||""); setPinned(!!a.is_pinned); setExpires(a.expires_at?a.expires_at.slice(0,10):""); setImgPreview(a.image_url||""); setImgFile(null); setRemoveImg(false); setMsg(""); }
+  function openNew(){ setEditing({}); setTitle(""); setBody(""); setPinned(false); setAud("all"); setExpires(""); setImgPreview(""); setImgFile(null); setRemoveImg(false); setMsg(""); }
+  function openEdit(a){ setEditing(a); setTitle(a.title||""); setBody(a.body||""); setPinned(!!a.is_pinned); setAud(a.card_id?("c:"+a.card_id):(a.group_id?("g:"+a.group_id):"all")); setExpires(a.expires_at?a.expires_at.slice(0,10):""); setImgPreview(a.image_url||""); setImgFile(null); setRemoveImg(false); setMsg(""); }
   function pickImage(e){ const f = e.target.files && e.target.files[0]; if (!f) return; setImgFile(f); setRemoveImg(false); setImgPreview(URL.createObjectURL(f)); }
   function pathOf(u){ try { return u.split("/announcement-images/")[1]||null; } catch(e){ return null; } }
 
@@ -1892,7 +1928,9 @@ function PgAnnouncements({ biz, onBack }) {
         if (ue) throw ue;
         imageUrl = sb.storage.from("announcement-images").getPublicUrl(path).data.publicUrl;
       }
-      const row = { business_id: biz.id, title: title.trim(), body: body.trim()||null, image_url: imageUrl, is_pinned: pinned, expires_at: expires ? new Date(expires+"T23:59:59").toISOString() : null };
+      const row = { business_id: biz.id, title: title.trim(), body: body.trim()||null, image_url: imageUrl, is_pinned: pinned, expires_at: expires ? new Date(expires+"T23:59:59").toISOString() : null,
+        group_id: aud.indexOf("g:")===0 ? aud.slice(2) : null,
+        card_id:  aud.indexOf("c:")===0 ? aud.slice(2) : null };
       if (pinned) { await sb.from("announcements").update({is_pinned:false}).eq("business_id", biz.id).neq("id", editing.id||"00000000-0000-0000-0000-000000000000"); }
       if (editing.id) { const { error } = await sb.from("announcements").update(row).eq("id", editing.id); if (error) throw error; }
       else { const { error } = await sb.from("announcements").insert(row); if (error) throw error; }
@@ -1921,6 +1959,25 @@ function PgAnnouncements({ biz, onBack }) {
             <div className="ws-t">{editing.id ? "Edit announcement" : "New announcement"}</div>
             <div className="ws-lbl">Title</div>
             <input className="ws-inp" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Pool closed next Monday" maxLength={120} />
+            <div className="ws-lbl" style={{marginTop:12}}>Who sees this?</div>
+            <select className="ws-inp" value={aud} onChange={e=>setAud(e.target.value)}>
+              <option value="all">Everyone at the school</option>
+              {(biz.groups||[]).length>0 && <optgroup label="One class">
+                {(biz.groups||[]).map(g=><option key={g.id} value={"g:"+g.id}>{g.name}</option>)}
+              </optgroup>}
+              <optgroup label="One student">
+                {Object.values(biz.cards||{}).slice().sort((a,b)=>(a.name||"").localeCompare(b.name||""))
+                  .map(c=><option key={c.id} value={"c:"+c.id}>{c.name}</option>)}
+              </optgroup>
+            </select>
+            {/* Say who it reaches in words as well as in a dropdown value —
+                the difference between the whole school and one family is the
+                kind of thing worth being sure about before tapping Post. */}
+            <div style={{fontSize:".72rem",color:"var(--text2)",fontWeight:600,marginTop:6,lineHeight:1.5}}>
+              {aud==="all" ? "Every family and student at the school."
+               : aud.indexOf("g:")===0 ? ("Only families and students in " + (((biz.groups||[]).find(g=>g.id===aud.slice(2))||{}).name || "that class") + ".")
+               : ("Only " + (((biz.cards||{})[aud.slice(2)]||{}).name || "that student") + " and their family.")}
+            </div>
             <div className="ws-lbl" style={{marginTop:12}}>Message (optional)</div>
             <textarea className="ws-inp" value={body} onChange={e=>setBody(e.target.value)} placeholder="Short details…" rows={4} style={{resize:"vertical",minHeight:90}} maxLength={1000} />
             <div className="ws-lbl" style={{marginTop:12}}>Photo (optional)</div>
@@ -1958,6 +2015,12 @@ function PgAnnouncements({ biz, onBack }) {
                 {a.is_pinned && <span style={{fontSize:".6rem",fontWeight:800,color:"var(--accent)",background:"rgba(255,255,255,.06)",borderRadius:99,padding:"2px 7px"}}>📌 PINNED</span>}
                 {!a.is_active && <span style={{fontSize:".6rem",fontWeight:800,color:"var(--text2)",background:"var(--bg3)",borderRadius:6,padding:"2px 7px"}}>HIDDEN</span>}
                 {expired && <span style={{fontSize:".6rem",fontWeight:800,color:"var(--partial)",background:"rgba(251,191,36,.12)",borderRadius:6,padding:"2px 7px"}}>EXPIRED</span>}
+                {(a.group_id || a.card_id) && (
+                  <span style={{fontSize:".6rem",fontWeight:800,letterSpacing:".06em",color:"var(--accent)",border:"1px solid rgba(129,140,248,.45)",borderRadius:6,padding:"2px 7px"}}>
+                    {a.card_id ? ("👤 " + ((((biz.cards||{})[a.card_id])||{}).name || "One student"))
+                               : ("👥 " + ((((biz.groups||[]).find(g=>g.id===a.group_id))||{}).name || "One class"))}
+                  </span>
+                )}
               </div>
               <div style={{fontSize:"1rem",fontWeight:800}}>{a.title}</div>
               <div style={{fontSize:".68rem",color:"var(--text3)",fontWeight:600,marginTop:2}}>{a.created_at ? ("Posted "+new Date(a.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})) : ""}</div>
