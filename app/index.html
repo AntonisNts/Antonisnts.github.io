@@ -1515,10 +1515,17 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   const owing = rows.filter(r=>r.due>0);
   const totalDue = owing.reduce((a,r)=>a+r.due, 0);
   const childName = (id)=>{ const k=kids.find(x=>x.id===id); return k?k.name:null; };
-  // The combined summary only earns its space when there is more than one
-  // thing to combine. With a single card owing, the row already says it and a
-  // total above would be the same number twice.
-  const showDueSummary = owing.length > 1;
+  // The summary appears whenever anything is owed at all, not only when there
+  // are several to combine. Hiding it for a single owing card meant the
+  // top-of-screen answer to "what do I owe" disappeared the moment one child
+  // paid up — and Copy summary went with it, leaving the parent who still owes
+  // one school no way to send it. With one card it names who and where instead
+  // of repeating a bare number.
+  const showDueSummary = totalDue > 0;
+  const single = owing.length === 1 ? owing[0] : null;
+  const dueSubtitle = single
+    ? ((childName(single.childId) || single.card.name) + " · " + single.biz.name)
+    : ("across " + owing.length + " cards");
 
   const summaryText = owing.map(r=>r.biz.name+" — "+r.card.name+": €"+r.due).join("\n")
     + "\nTotal: €" + totalDue;
@@ -1678,15 +1685,19 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
             <div style={{...eyebrow,color:"var(--owed)"}}>Due now</div>
             <div style={{display:"flex",alignItems:"baseline",gap:10,marginTop:4,flexWrap:"wrap"}}>
               <div style={{fontSize:"2rem",fontWeight:800,color:"var(--owed)",lineHeight:1.1}}>{"€"+totalDue}</div>
-              <div style={{fontSize:".78rem",fontWeight:600,color:"var(--text2)"}}>
-                {"across "+owing.length+(grouped?" cards":" cards")}
+              <div style={{fontSize:".78rem",fontWeight:600,color:"var(--text2)",minWidth:0,overflowWrap:"anywhere"}}>
+                {dueSubtitle}
               </div>
             </div>
-            <div onClick={()=>setDueOpen(v=>!v)} style={{marginTop:10,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
-              <span style={{fontSize:".76rem",fontWeight:800,color:"var(--text2)"}}>{dueOpen?"Hide breakdown":"See breakdown"}</span>
-              <span style={{color:"var(--text3)",fontSize:".8rem"}}>{dueOpen?"▾":"▸"}</span>
-            </div>
-            {dueOpen && (
+            {/* Nothing to break down when there is one card owing — the line
+                above already names the child and the school. */}
+            {!single && (
+              <div onClick={()=>setDueOpen(v=>!v)} style={{marginTop:10,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontSize:".76rem",fontWeight:800,color:"var(--text2)"}}>{dueOpen?"Hide breakdown":"See breakdown"}</span>
+                <span style={{color:"var(--text3)",fontSize:".8rem"}}>{dueOpen?"▾":"▸"}</span>
+              </div>
+            )}
+            {dueOpen && !single && (
               <div style={{marginTop:10,borderTop:"1px solid var(--border)",paddingTop:10}}>
                 {owing.map(r=>(
                   <div key={r.it.cardId} style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:7}}>
