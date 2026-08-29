@@ -204,7 +204,106 @@ function cardFee(card, biz) { return (card.level&&card.level.fee) ? card.level.f
   /* Scoped to the pre-auth pages: in the app --accent is the school's own
      colour, so a fixed gradient would be wrong there. */
   .login-page .btn{background:var(--accent);
-    box-shadow:0 0 0 1px rgba(129,140,248,.45),0 4px 14px rgba(129,140,248,.55),0 12px 40px rgba(129,140,248,.32);} .login-page h1{font-size:2rem;font-weight:800;font-style:italic;margin-bottom:10px;letter-spacing:-.02em;} .login-page p{font-size:.95rem;color:var(--text2);font-weight:500;margin-bottom:36px;line-height:1.6;} .ig{margin-bottom:16px;} .ig label{display:block;font-size:.66rem;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.16em;margin-bottom:8px;} .inp{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:12px;color:var(--text);font-family:var(--f);font-size:1rem;font-weight:600;padding:18px 20px;outline:none;transition:border-color .2s;} .inp:focus{border-color:var(--accent);} .inp::placeholder{color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.1em;font-size:.85rem;} select.inp{appearance:none;cursor:pointer;} .btn{width:100%;background:var(--accent);color:var(--accent-ink);border:none;border-radius:12px;padding:18px;font-family:var(--f);font-weight:800;font-size:1rem;cursor:pointer;margin-top:8px;box-shadow:0 8px 32px rgba(0,0,0,.5);} .btn:hover{filter:brightness(1.08);} .btn:disabled{opacity:.3;cursor:not-allowed;box-shadow:none;} .btn-ghost{width:100%;background:rgba(255,255,255,.06);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:18px;font-family:var(--f);font-weight:600;font-size:.95rem;cursor:pointer;margin-top:10px;} .err{color:var(--red);font-size:.82rem;font-weight:600;text-align:center;margin-top:8px;} .divider{display:flex;align-items:center;gap:12px;margin:22px 0;color:var(--text3);font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;} .divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border);} .reg-page{padding:24px 28px 60px;} .reg-page h2{font-size:1.6rem;font-weight:800;font-style:italic;margin-bottom:6px;letter-spacing:-.02em;} .reg-page p{font-size:.9rem;color:var(--text2);margin-bottom:28px;font-weight:500;line-height:1.6;} .reveal-box{background:var(--surface);border:1px solid var(--accent);border-radius:20px;padding:28px;text-align:center;margin:16px 0;box-shadow:0 8px 32px rgba(0,0,0,.5);} .rv-lbl{font-size:.66rem;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.16em;margin-bottom:12px;} .rv-val{font-size:1.8rem;font-weight:800;color:var(--accent);letter-spacing:.02em;} .rv-sep{height:1px;background:var(--border);margin:18px 0;} .rv-pin{font-size:2.2rem;font-weight:800;color:var(--accent);letter-spacing:.2em;} .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:14px 24px;border-radius:14px;font-weight:600;font-size:.85rem;z-index:999;white-space:nowrap;animation:tin .22s ease;font-family:var(--f);} .t-ok{background:var(--green);color:#fff;} .t-err{background:var(--red);color:#fff;} .t-info{background:var(--elev);color:var(--text);border:1px solid var(--border);} @keyframes tin{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}} .empty{text-align:center;color:var(--text3);padding:48px 0;font-weight:600;font-size:.9rem;} .info-box{background:var(--bg);border-radius:14px;padding:16px 18px;font-size:.84rem;color:var(--text2);line-height:1.7;font-weight:500;border:1px solid var(--border);} .mth-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:16px 0;} .mth-btn{border-radius:12px;padding:14px 6px;text-align:center;border:1px solid var(--border);cursor:pointer;font-family:var(--f);font-weight:700;background:var(--bg2);color:var(--text);transition:all .15s;} .mth-btn:hover{border-color:var(--accent);} .mth-btn.off{background:var(--bg);color:var(--text3);border-color:transparent;} .mth-btn-lbl{font-size:.6rem;margin-bottom:4px;letter-spacing:.14em;text-transform:uppercase;} .mth-btn-char{font-size:.9rem;font-weight:800;} .hero-stats{display:grid;grid-template-columns:repeat(6,1fr);border-top:1px solid rgba(255,255,255,.1);} .hero-stats>div{grid-column:span 2;padding:12px 8px;text-align:center;border-right:1px solid rgba(255,255,255,.1);border-bottom:1px solid rgba(255,255,255,.1);} .hero-stats>div:nth-child(4),.hero-stats>div:nth-child(5){grid-column:span 3;} .hero-stats>div:nth-child(3),.hero-stats>div:nth-child(5){border-right:none;} .hero-stats>div:nth-child(4),.hero-stats>div:nth-child(5){border-bottom:none;} @media (min-width:768px){.hero-stats{grid-template-columns:repeat(5,1fr);} .hero-stats>div,.hero-stats>div:nth-child(4),.hero-stats>div:nth-child(5){grid-column:span 1;border-bottom:none;} .hero-stats>div:nth-child(3){border-right:1px solid rgba(255,255,255,.1);} .hero-stats>div:nth-child(5){border-right:none;}} 
+    box-shadow:0 0 0 1px rgba(129,140,248,.45),0 4px 14px rgba(129,140,248,.55),0 12px 40px rgba(129,140,248,.32);} .login-page h1{font-size:2rem;font-weight:800;font-style:italic;margin-bottom:10px;letter-spacing:-.02em;} .login-page p{font-size:.95rem;color:var(--text2);font-weight:500;margin-bottom:36px;line-height:1.6;} .ig{margin-bottom:16px;} .ig label{display:block;font-size:.66rem;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.16em;margin-bottom:8px;} .inp{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:12px;color:var(--text);font-family:var(--f);font-size:1rem;font-weight:600;padding:18px 20px;outline:none;transition:border-color .2s;} .inp:focus{border-color:var(--accent);} .inp::placeholder{color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.1em;font-size:.85rem;} select.inp{appearance:none;cursor:pointer;} .btn{width:100%;background:var(--accent);color:var(--accent-ink);border:none;border-radius:12px;padding:18px;font-family:var(--f);font-weight:800;font-size:1rem;cursor:pointer;margin-top:8px;box-shadow:0 8px 32px rgba(0,0,0,.5);} .btn:hover{filter:brightness(1.08);} .btn:disabled{opacity:.3;cursor:not-allowed;box-shadow:none;} .btn-ghost{width:100%;background:rgba(255,255,255,.06);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:18px;font-family:var(--f);font-weight:600;font-size:.95rem;cursor:pointer;margin-top:10px;} .err{color:var(--red);font-size:.82rem;font-weight:600;text-align:center;margin-top:8px;} .divider{display:flex;align-items:center;gap:12px;margin:22px 0;color:var(--text3);font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;} .divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border);} .reg-page{padding:24px 28px 60px;} .reg-page h2{font-size:1.6rem;font-weight:800;font-style:italic;margin-bottom:6px;letter-spacing:-.02em;} .reg-page p{font-size:.9rem;color:var(--text2);margin-bottom:28px;font-weight:500;line-height:1.6;} .reveal-box{background:var(--surface);border:1px solid var(--accent);border-radius:20px;padding:28px;text-align:center;margin:16px 0;box-shadow:0 8px 32px rgba(0,0,0,.5);} .rv-lbl{font-size:.66rem;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.16em;margin-bottom:12px;} .rv-val{font-size:1.8rem;font-weight:800;color:var(--accent);letter-spacing:.02em;} .rv-sep{height:1px;background:var(--border);margin:18px 0;} .rv-pin{font-size:2.2rem;font-weight:800;color:var(--accent);letter-spacing:.2em;} .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:14px 24px;border-radius:14px;font-weight:600;font-size:.85rem;z-index:999;white-space:nowrap;animation:tin .22s ease;font-family:var(--f);} .t-ok{background:var(--green);color:#fff;} .t-err{background:var(--red);color:#fff;} .t-info{background:var(--elev);color:var(--text);border:1px solid var(--border);} @keyframes tin{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}} .empty{text-align:center;color:var(--text3);padding:48px 0;font-weight:600;font-size:.9rem;}
+/* ===================== Family portal =======================================
+   Scoped to this one page. The rest of the app keeps --bg/--bg2 until the
+   other portals follow, so nothing here can recolour the business dashboard
+   or the student portal by accident.
+
+   The live page painted four backgrounds in three hues — and the notes boxes
+   were a purple gradient while the cards beside them were flat, which is what
+   made the dark read as muddy rather than deep. One neutral charcoal family
+   here: ground, card, and a slightly raised strip. Five type sizes, not
+   fourteen. */
+.page.fam{
+  --fam-bg:#0B0B0C; --fam-card:#161618; --fam-raise:#1D1D20;
+  --fam-line:rgba(255,255,255,.07); --fam-line2:rgba(255,255,255,.045);
+  --fam-t1:#F6F6F5; --fam-t2:#A3A3A9; --fam-t3:#6F6F77; --fam-ok:#4FD1A5;
+  background:var(--fam-bg);min-height:100vh;color:var(--fam-t1);
+  font-variant-numeric:tabular-nums;
+}
+.fam .topbar{padding:18px 18px 20px;gap:10px;}
+.fam .topbar h2{font-size:1.06rem;font-weight:600;letter-spacing:-.01em;flex:1;}
+.fam .tb-act{
+  width:32px;height:32px;border-radius:99px;background:var(--fam-card);
+  border:1px solid var(--fam-line);color:var(--fam-t2);font-size:.8rem;
+  display:flex;align-items:center;justify-content:center;padding:0;flex:none;
+}
+.fam .fam-out{
+  background:transparent;border:1px solid var(--fam-line);border-radius:99px;
+  color:var(--fam-t2);padding:7px 14px;font-family:var(--f);font-size:.82rem;
+  font-weight:500;cursor:pointer;flex:none;white-space:nowrap;
+}
+.fam .sec-title{font-size:.7rem;font-weight:600;color:var(--fam-t3);letter-spacing:.14em;}
+.fam .empty{color:var(--fam-t3);}
+
+/* The amount is the message. It had a box, a border, and a full-width filled
+   button under it for an action the app cannot actually perform. */
+.fam-due{padding:0 2px 20px;border-bottom:1px solid var(--fam-line2);margin-bottom:20px;}
+.fam-due-lbl{
+  display:block;font-size:.7rem;font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--fam-t3);margin-bottom:7px;
+}
+.fam-due-line{display:flex;align-items:flex-end;gap:12px;}
+.fam-due-amt{font-size:2.6rem;font-weight:600;letter-spacing:-.035em;line-height:.92;color:var(--owed);}
+.fam-due-who{flex:1;min-width:0;font-size:.82rem;color:var(--fam-t2);line-height:1.35;padding-bottom:3px;overflow-wrap:anywhere;}
+.fam-due-who b{display:block;color:var(--fam-t1);font-weight:600;}
+.fam-acts{display:flex;align-items:center;gap:18px;margin-top:16px;flex-wrap:wrap;}
+.fam-link{
+  background:none;border:none;padding:0 0 2px;font-family:var(--f);font-size:.82rem;
+  font-weight:600;color:var(--fam-t1);border-bottom:1px solid var(--fam-t3);cursor:pointer;
+}
+.fam-link.quiet{color:var(--fam-t2);border-bottom-color:var(--fam-line);}
+.fam-fine{font-size:.7rem;color:var(--fam-t3);line-height:1.5;margin-top:14px;max-width:36ch;}
+
+.fam-pill{
+  background:transparent;border:1px solid var(--fam-line);border-radius:99px;padding:6px 13px;
+  font-family:var(--f);font-size:.76rem;font-weight:600;color:var(--fam-t2);cursor:pointer;white-space:nowrap;
+}
+.fam-pill.solid{background:var(--fam-t1);border-color:var(--fam-t1);color:#0B0B0C;}
+
+/* One child, one object: name, school, progress, and their latest note. The
+   note strip used to be a separate floating box, which is why it read as an
+   unloaded element rather than as part of anything. */
+.fam-kid{background:var(--fam-card);border:1px solid var(--fam-line);border-radius:18px;margin-bottom:12px;overflow:hidden;}
+.fam-kid-main{display:flex;align-items:center;gap:14px;padding:15px 16px 14px;cursor:pointer;}
+.fam-kid-mid{flex:1;min-width:0;}
+.fam-kid-name{font-size:1.06rem;font-weight:600;letter-spacing:-.012em;line-height:1.25;overflow-wrap:anywhere;}
+.fam-kid-school{display:flex;align-items:center;gap:7px;font-size:.82rem;color:var(--fam-t2);margin-top:3px;overflow-wrap:anywhere;}
+.fam-dot{width:7px;height:7px;border-radius:99px;flex:none;}
+.fam-kid-amt{font-size:1.35rem;font-weight:600;color:var(--owed);line-height:1;letter-spacing:-.02em;text-align:right;}
+.fam-kid-amt u{display:block;text-decoration:none;font-size:.7rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;margin-top:5px;opacity:.85;}
+.fam-ok{display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--fam-t2);font-weight:500;white-space:nowrap;}
+.fam-ok::before{
+  content:"";width:15px;height:15px;border-radius:99px;flex:none;border:1.5px solid var(--fam-ok);opacity:.75;
+  background:
+    linear-gradient(45deg,transparent 46%,var(--fam-ok) 46%,var(--fam-ok) 60%,transparent 60%) no-repeat 3px 6px/5px 5px,
+    linear-gradient(-45deg,transparent 46%,var(--fam-ok) 46%,var(--fam-ok) 60%,transparent 60%) no-repeat 5px 4px/7px 7px;
+}
+/* This product IS a stamp card. "1/7 months" makes a parent do arithmetic; a
+   row of seven marks with one filled says it before it is read — and puts the
+   school's colour somewhere legible, which a 10px uppercase caption was not. */
+.fam-track{display:flex;gap:3px;padding:0 16px 14px;}
+.fam-track i{height:4px;border-radius:99px;flex:1;background:rgba(255,255,255,.08);}
+.fam-track i.on{background:var(--fam-paid,var(--fam-t2));opacity:.9;}
+.fam-foot{display:flex;align-items:center;gap:9px;padding:11px 16px;border-top:1px solid var(--fam-line2);background:var(--fam-raise);cursor:pointer;}
+.fam-foot-k{font-size:.7rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--fam-t3);flex:none;}
+.fam-foot-p{flex:1;min-width:0;font-size:.82rem;color:var(--fam-t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fam-foot-n{flex:none;font-size:.68rem;font-weight:700;color:#0B0B0C;background:var(--fam-t2);border-radius:99px;padding:1px 7px;}
+.fam-foot-c{flex:none;color:var(--fam-t3);font-size:.78rem;}
+.fam-note{border-top:1px solid var(--fam-line2);padding:12px 16px;cursor:pointer;background:var(--fam-raise);}
+.fam-note-t{font-size:.86rem;line-height:1.35;overflow-wrap:anywhere;}
+.fam-note-m{font-size:.7rem;color:var(--fam-t3);margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.fam-note-b{font-size:.82rem;color:var(--fam-t2);line-height:1.5;white-space:pre-wrap;margin-top:8px;overflow-wrap:anywhere;}
+.fam-tag{font-size:.62rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--fam-line);border-radius:6px;padding:1px 6px;}
+.fam-more{width:100%;text-align:left;background:var(--fam-raise);border:none;border-top:1px solid var(--fam-line2);padding:11px 16px;font-family:var(--f);font-size:.76rem;font-weight:600;color:var(--fam-t2);cursor:pointer;}
+/* A child with several cards keeps a heading — that is where it earns its
+   place, because it carries their combined total. */
+.fam-sec-head{display:flex;align-items:center;gap:8px;padding:10px 4px;cursor:pointer;}
+.fam-sec-head b{font-size:.88rem;font-weight:600;color:var(--fam-t1);}
+.fam-sec-head span{font-size:.76rem;font-weight:500;color:var(--fam-t3);}
+.fam-sec-head em{font-style:normal;font-size:.76rem;font-weight:600;color:var(--owed);}
+.fam-sec-head i{margin-left:auto;font-style:normal;color:var(--fam-t3);font-size:.78rem;} .info-box{background:var(--bg);border-radius:14px;padding:16px 18px;font-size:.84rem;color:var(--text2);line-height:1.7;font-weight:500;border:1px solid var(--border);} .mth-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:16px 0;} .mth-btn{border-radius:12px;padding:14px 6px;text-align:center;border:1px solid var(--border);cursor:pointer;font-family:var(--f);font-weight:700;background:var(--bg2);color:var(--text);transition:all .15s;} .mth-btn:hover{border-color:var(--accent);} .mth-btn.off{background:var(--bg);color:var(--text3);border-color:transparent;} .mth-btn-lbl{font-size:.6rem;margin-bottom:4px;letter-spacing:.14em;text-transform:uppercase;} .mth-btn-char{font-size:.9rem;font-weight:800;} .hero-stats{display:grid;grid-template-columns:repeat(6,1fr);border-top:1px solid rgba(255,255,255,.1);} .hero-stats>div{grid-column:span 2;padding:12px 8px;text-align:center;border-right:1px solid rgba(255,255,255,.1);border-bottom:1px solid rgba(255,255,255,.1);} .hero-stats>div:nth-child(4),.hero-stats>div:nth-child(5){grid-column:span 3;} .hero-stats>div:nth-child(3),.hero-stats>div:nth-child(5){border-right:none;} .hero-stats>div:nth-child(4),.hero-stats>div:nth-child(5){border-bottom:none;} @media (min-width:768px){.hero-stats{grid-template-columns:repeat(5,1fr);} .hero-stats>div,.hero-stats>div:nth-child(4),.hero-stats>div:nth-child(5){grid-column:span 1;border-bottom:none;} .hero-stats>div:nth-child(3){border-right:1px solid rgba(255,255,255,.1);} .hero-stats>div:nth-child(5){border-right:none;}} 
 /* Settings. On a phone: the bottom sheet, unchanged — these classes carry the
    exact values that used to sit inline, so nothing about the phone rendering
    depends on anything below. On a desktop: a docked column, and the sheet is
@@ -1695,9 +1794,9 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   // of repeating a bare number.
   const showDueSummary = totalDue > 0;
   const single = owing.length === 1 ? owing[0] : null;
-  const dueSubtitle = single
-    ? ((childName(single.childId) || single.card.name) + " · " + single.biz.name)
-    : ("across " + owing.length + " cards");
+  // Named where there is one to name; counted, with the schools it spans,
+  // where there is not.
+  const owingSchools = [...new Set(owing.map(r=>r.biz.name))];
 
   const summaryText = owing.map(r=>r.biz.name+" — "+r.card.name+": €"+r.due).join("\n")
     + "\nTotal: €" + totalDue;
@@ -1709,46 +1808,65 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   }
 
   const eyebrow = {fontSize:".64rem",fontWeight:800,textTransform:"uppercase",letterSpacing:".1em"};
+  // Compares two spellings of the same person: "Afrodite Marina" vs
+  // "Afrodite marina savva" are not equal, but "Christos Christou" written
+  // twice with different spacing is.
+  const norm = (x)=>String(x||"").toLowerCase().replace(/\s+/g," ").trim();
 
   // ---- one card row ------------------------------------------------------
   // The right-hand side used to be a coloured dot on every row, whether or not
   // anything was wrong. It now carries the one signal that matters: the amount
   // due, or a quiet "Up to date". Nothing owing means nothing shouting.
-  function renderRow(r) {
+  function renderRow(r, titleOverride, footEl) {
     const isOpen = !!expanded[r.it.cardId];
+    // "Afrodite Marina" as a heading with "Afrodite marina savva" directly
+    // under it is a stutter, not two facts. Containment, not equality:
+    // "Andreas" and "Andreas Christou" are one person written short and long.
+    const title = titleOverride || r.card.name;
+    const alsoCard = titleOverride && !norm(r.card.name).includes(norm(titleOverride)) ? r.card.name : null;
+    // The months bar. bc is what this student is actually billed for — it
+    // already accounts for inactive months, pauses and a mid-year start — so
+    // the bar and the fraction can never disagree.
+    const cells = Math.max(1, r.bc);
     return (
-      <div key={r.it.cardId} style={{marginBottom:10,"--accent":r.pal.acc}}>
-        <div onClick={()=>setExpanded(s=>({...s,[r.it.cardId]:!s[r.it.cardId]}))} style={{display:"flex",alignItems:"center",gap:12,background:"var(--bg2)",border:"1px solid "+(isOpen?"rgba(255,255,255,.16)":"var(--border)"),borderRadius:16,padding:"13px 16px",cursor:"pointer"}}>
-          <div style={{width:40,height:40,borderRadius:12,background:"rgba(255,255,255,.06)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.3rem",flexShrink:0}}>{r.pal.icon}</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{...eyebrow,color:r.pal.acc,marginBottom:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.biz.name}</div>
-            <div style={{fontSize:"1rem",fontWeight:700,color:"#fff",marginBottom:2}}>{r.card.name}</div>
-            <div style={{fontSize:".72rem",fontWeight:600,color:"var(--text2)"}}>{r.mp+"/"+r.bc+" months · €"+r.paid.toFixed(0)+" paid"}</div>
+      <div key={r.it.cardId} className="fam-kid" style={{"--accent":r.pal.acc,"--fam-paid":r.pal.acc}}>
+        <div className="fam-kid-main" onClick={()=>setExpanded(s=>({...s,[r.it.cardId]:!s[r.it.cardId]}))}>
+          <div className="fam-kid-mid">
+            {/* The child's name leads. The school used to sit above it in
+                uppercase colour, which made the school the headline and the
+                child the detail — backwards for a parent looking for their
+                own child. */}
+            <div className="fam-kid-name">{title}</div>
+            <div className="fam-kid-school">
+              <span className="fam-dot" style={{background:r.pal.acc}} />
+              <span>{r.biz.name}{alsoCard ? " · "+alsoCard : ""}</span>
+            </div>
           </div>
-          <div style={{flexShrink:0,textAlign:"right"}}>
-            {r.due>0 ? (
-              <>
-                <div style={{fontSize:"1.15rem",fontWeight:800,color:"var(--owed)",lineHeight:1.1}}>{"€"+r.due}</div>
-                <div style={{...eyebrow,color:"var(--owed)",opacity:.8,marginTop:2}}>Due now</div>
-              </>
-            ) : (
-              <div style={{fontSize:".72rem",fontWeight:700,color:"var(--text2)"}}>Up to date</div>
-            )}
+          <div style={{flex:"none"}}>
+            {r.due>0
+              ? <div className="fam-kid-amt">{"€"+r.due}<u>Due</u></div>
+              : <div className="fam-ok">Up to date</div>}
           </div>
         </div>
+        <div className="fam-track" role="img" aria-label={r.mp+" of "+cells+" months paid"}>
+          {Array.from({length:cells}).map((_,i)=>(
+            <i key={i} className={i < r.mp ? "on" : ""} />
+          ))}
+        </div>
+        {footEl}
         {isOpen && (
-          <div style={{marginTop:8}}>
+          <div style={{padding:"0 12px 12px",borderTop:"1px solid var(--fam-line2)"}}>
             <BizCard biz={r.biz} card={r.card} isTeacher={false} onTap={null} inactiveMonths={r.biz.inactiveMonths} />
             {kids.length>0 && (
               <div style={{display:"flex",gap:6,flexWrap:"wrap",margin:"2px 0 8px",alignItems:"center"}}>
-                <span style={{fontSize:".66rem",color:"var(--text2)",fontWeight:700,textTransform:"uppercase",letterSpacing:".08em"}}>Child:</span>
+                <span style={{fontSize:".7rem",color:"var(--fam-t3)",fontWeight:600,textTransform:"uppercase",letterSpacing:".12em"}}>Child</span>
                 {kids.map(k=>(
-                  <button key={k.id} onClick={()=>onAssign(r.it.cardId, k.id)} style={{padding:"6px 12px",borderRadius:99,border:"1px solid "+(r.childId===k.id?"var(--accent)":"var(--border)"),background:r.childId===k.id?"var(--accent)":"rgba(255,255,255,.06)",color:r.childId===k.id?"var(--accent-ink)":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:800,cursor:"pointer"}}>{k.name}</button>
+                  <button key={k.id} className={"fam-pill"+(r.childId===k.id?" solid":"")} onClick={()=>onAssign(r.it.cardId, k.id)}>{k.name}</button>
                 ))}
-                <button onClick={()=>onAssign(r.it.cardId, null)} style={{padding:"6px 12px",borderRadius:99,border:"1px solid "+(!r.childId?"var(--accent)":"var(--border)"),background:!r.childId?"var(--accent)":"rgba(255,255,255,.06)",color:!r.childId?"var(--accent-ink)":"var(--text2)",fontFamily:"var(--f)",fontSize:".72rem",fontWeight:800,cursor:"pointer"}}>Unassigned</button>
+                <button className={"fam-pill"+(!r.childId?" solid":"")} onClick={()=>onAssign(r.it.cardId, null)}>Unassigned</button>
               </div>
             )}
-            <button onClick={()=>onUnlink(r.it.cardId, r.card.name)} style={{width:"100%",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:"10px",fontFamily:"var(--f)",fontWeight:700,fontSize:".78rem",color:"var(--text2)",cursor:"pointer"}}>Unlink</button>
+            <button className="fam-pill" style={{width:"100%",padding:"10px"}} onClick={()=>onUnlink(r.it.cardId, r.card.name)}>Unlink</button>
           </div>
         )}
       </div>
@@ -1757,10 +1875,9 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
 
   // ---- "From the school" -------------------------------------------------
   // Notes sit with the child they concern rather than in one merged card above
-  // everything. `names` is the set of schools that child actually attends, so a
-  // parent with kids at two schools never sees one school's notes under the
-  // other's child.
-  function renderNotes(blockId, secRows) {
+  // everything, and — where a child has a single card — attached to that card
+  // rather than floating under it as a box of their own.
+  function renderNotes(blockId, secRows, attached) {
     // Targeting makes the per-child grouping exact rather than approximate.
     // Matching on the school alone would put "Sharks moves to Thursday" under a
     // sibling who is in Dolphins — the very confusion the targeting removes.
@@ -1785,16 +1902,22 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
     const shown = showAll ? mine : mine.slice(0, ANN_CAP);
     const hidden = mine.length - shown.length;
     const multi = names.length > 1;
-    return (
-      // One box, with the heading inside it and the notes as divided rows —
-      // rather than a bare heading over a stack of separately bordered cards,
-      // which read as loose fragments sitting between the student cards.
-      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"4px 16px 6px",marginBottom:12}}>
-        <div onClick={()=>setNotesOpen(s=>({...s,[blockId]:!open}))}
-             style={{display:"flex",alignItems:"center",gap:8,padding:"12px 0",cursor:"pointer"}}>
-          <span style={{...eyebrow,color:"var(--text2)",letterSpacing:".16em"}}>From the school</span>
-          {unread>0 && <span style={{fontSize:".62rem",fontWeight:800,color:"var(--accent-ink)",background:"var(--accent)",borderRadius:99,padding:"1px 7px"}}>{unread+" new"}</span>}
-          <span style={{marginLeft:"auto",color:"var(--text2)",fontSize:".8rem"}}>{open?"▾":"▸"}</span>
+    const body = (
+      <>
+        {/* Collapsed, this was an arrow and nothing else. It now carries the
+            newest note's title, which is usually the whole message, and how
+            many there are — so the tap is a known quantity. */}
+        <div className="fam-foot" onClick={()=>setNotesOpen(s=>({...s,[blockId]:!open}))}>
+          <span className="fam-foot-k">School</span>
+          {/* Closed, this was an arrow and nothing else. Open, the notes speak
+              for themselves and a preview would only repeat the first one. */}
+          <span className="fam-foot-p" style={unread>0&&!open?{color:"var(--fam-t1)",fontWeight:600}:null}>
+            {open ? "" : mine[0].title}
+          </span>
+          {unread>0
+            ? <span className="fam-foot-n" style={{background:"var(--accent)"}} aria-label={unread+" unread"}>{unread}</span>
+            : <span className="fam-foot-n" aria-label={mine.length+" notes"}>{mine.length}</span>}
+          <span className="fam-foot-c">{open?"▾":"›"}</span>
         </div>
         {open && shown.map((a,idx)=>{
           const isOpen = !!annOpenItem[a.id];
@@ -1803,68 +1926,73 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
           // when this block spans more than one school in the first place.
           const showSchool = multi && (idx===0 || shown[idx-1].business_name!==a.business_name);
           return (
-            <div key={a.id} onClick={()=>openAnnItem(a)}
-                 style={{borderTop:"1px solid var(--border)",padding:"12px 0",cursor:"pointer"}}>
+            <div key={a.id} className="fam-note" onClick={()=>openAnnItem(a)}>
               {showSchool && (
-                <div style={{...eyebrow,fontSize:".62rem",color:annAccent(a.business_name),opacity:isUnread?1:.6,marginBottom:7}}>{a.business_name}</div>
+                <div style={{fontSize:".68rem",fontWeight:600,letterSpacing:".1em",textTransform:"uppercase",color:annAccent(a.business_name),marginBottom:6}}>{a.business_name}</div>
               )}
               <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-                <span style={{flexShrink:0,marginTop:1,fontSize:".54rem",fontWeight:800,letterSpacing:".1em",color:a.is_pinned?"var(--accent-ink)":"var(--accent)",background:a.is_pinned?"var(--accent)":"transparent",border:"1px solid "+(a.is_pinned?"var(--accent)":"rgba(129,140,248,.45)"),borderRadius:8,padding:"3px 7px"}}>{a.is_pinned?"PINNED":"NOTE"}</span>
                 <div style={{flex:1,minWidth:0}}>
-                  {/* The timestamp sits under the title rather than after it.
-                      Inline, a long title pushed the date past the ellipsis and
-                      the note lost the one piece of context it needed most. */}
-                  <div style={{fontSize:".88rem",fontWeight:isUnread?800:600,color:isUnread?"#fff":"var(--text2)",lineHeight:1.35,overflowWrap:"anywhere"}}>{a.title}</div>
-                  <div style={{fontSize:".72rem",fontWeight:600,color:"var(--text3)",marginTop:3,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                  <div className="fam-note-t" style={{fontWeight:isUnread?600:400,color:isUnread?"var(--fam-t1)":"var(--fam-t2)"}}>
+                    {a.is_pinned && <span className="fam-tag" style={{color:"var(--accent)",marginRight:7,verticalAlign:"middle"}}>Pinned</span>}
+                    {a.title}
+                  </div>
+                  <div className="fam-note-m">
                     <span>{relTime(a.created_at)}</span>
                     {/* Whether a note is for the school, the class or this one
                         child changes how a parent should read it, so it is
-                        said rather than left to be inferred from the wording. */}
+                        said rather than left to be inferred. */}
                     {a.target_kind==="group" && a.target_name && (
-                      <span style={{fontSize:".6rem",fontWeight:800,letterSpacing:".06em",textTransform:"uppercase",color:annAccent(a.business_name),border:"1px solid var(--border)",borderRadius:6,padding:"1px 6px"}}>{a.target_name}</span>
+                      <span className="fam-tag" style={{color:annAccent(a.business_name)}}>{a.target_name}</span>
                     )}
                     {a.target_kind==="student" && (
-                      <span style={{fontSize:".6rem",fontWeight:800,letterSpacing:".06em",textTransform:"uppercase",color:"var(--accent)",border:"1px solid rgba(129,140,248,.45)",borderRadius:6,padding:"1px 6px"}}>Just for them</span>
+                      <span className="fam-tag" style={{color:"var(--accent)"}}>Just for them</span>
                     )}
                   </div>
                 </div>
-                {isUnread && <span style={{width:9,height:9,borderRadius:99,flexShrink:0,marginTop:5,background:"var(--accent)",boxShadow:"0 0 8px rgba(129,140,248,.6)"}} />}
-                <span style={{flexShrink:0,color:"var(--text3)",fontSize:".8rem",lineHeight:1,marginTop:4,display:"inline-block",transform:isOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s ease-out"}}>⌄</span>
+                {isUnread && <span style={{width:7,height:7,borderRadius:99,flexShrink:0,marginTop:6,background:"var(--accent)"}} />}
+                <span style={{flexShrink:0,color:"var(--fam-t3)",fontSize:".78rem",marginTop:2,display:"inline-block",transform:isOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s ease-out"}}>⌄</span>
               </div>
-              {isOpen && a.body && <div style={{fontSize:".82rem",color:"var(--text2)",lineHeight:1.5,whiteSpace:"pre-wrap",marginTop:9,overflowWrap:"anywhere"}}>{a.body}</div>}
-              {isOpen && a.image_url && <img src={a.image_url} alt="" style={{display:"block",width:"100%",height:"auto",maxHeight:340,objectFit:"contain",borderRadius:12,marginTop:9,background:"var(--bg)"}} />}
+              {isOpen && a.body && <div className="fam-note-b">{a.body}</div>}
+              {isOpen && a.image_url && <img src={a.image_url} alt="" style={{display:"block",width:"100%",height:"auto",maxHeight:340,objectFit:"contain",borderRadius:12,marginTop:9,background:"var(--fam-bg)"}} />}
             </div>
           );
         })}
         {open && (hidden>0 || showAll) && (
-          <button onClick={()=>setAnnShowAll(s=>({...s,[blockId]:!s[blockId]}))} style={{width:"100%",textAlign:"left",background:"none",borderTop:"1px solid var(--border)",borderLeft:"none",borderRight:"none",borderBottom:"none",padding:"11px 0 5px",fontFamily:"var(--f)",fontSize:".76rem",fontWeight:800,color:"var(--accent)",cursor:"pointer"}}>
+          <button className="fam-more" onClick={()=>setAnnShowAll(s=>({...s,[blockId]:!s[blockId]}))}>
             {showAll ? "Show less" : ("Show all ("+mine.length+")")}
           </button>
         )}
-      </div>
+      </>
     );
+    // Attached: rendered inside the child's own card, so a child is one object
+    // on the page rather than a card with a loose box under it.
+    if (attached) return body;
+    return <div key={blockId} className="fam-kid" style={{marginTop:-4}}>{body}</div>;
   }
 
   // ---- one child's section ----------------------------------------------
-  // No status dot here any more. A child with several cards gets their combined
-  // due on the header, because that is information the rows below do not give
-  // in one place; a child with one card gets nothing, because the row already
-  // says it and repeating it is the redundancy this redesign removes.
-  function renderSection(id, title, secRows) {
+  function renderSection(id, title, secRows, nameIsChild) {
     const open = openGroups[id] !== false;
     const secDue = secRows.reduce((a,r)=>a+r.due, 0);
+    // One card is the common case, and it was costing three lines: a header
+    // naming the child, a "(1)" that counts nothing, and a card naming them
+    // again. The child's name goes on the card and the header goes away, with
+    // their school's notes attached to the same card.
+    // Only for a real child: "Unassigned" is a category, not a name, so it
+    // stays a heading rather than being stamped on a card as its title.
+    if (secRows.length === 1 && nameIsChild) {
+      return <div key={id}>{renderRow(secRows[0], title, renderNotes("notes-"+id, secRows, true))}</div>;
+    }
     return (
       <div key={id} style={{marginBottom:6}}>
-        <div onClick={()=>setOpenGroups(s=>({...s,[id]: open?false:true}))} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 4px",cursor:"pointer"}}>
-          <span style={{fontSize:".82rem",fontWeight:800,color:"#fff"}}>{title}</span>
-          <span style={{fontSize:".72rem",fontWeight:700,color:"var(--text2)"}}>{"("+secRows.length+")"}</span>
-          {secRows.length>1 && secDue>0 && (
-            <span style={{fontSize:".72rem",fontWeight:800,color:"var(--owed)"}}>{"€"+secDue+" due"}</span>
-          )}
-          <span style={{marginLeft:"auto",color:"var(--text2)",fontSize:".8rem"}}>{open?"▾":"▸"}</span>
+        <div className="fam-sec-head" onClick={()=>setOpenGroups(s=>({...s,[id]: open?false:true}))}>
+          <b>{title}</b>
+          <span>{"("+secRows.length+")"}</span>
+          {secRows.length>1 && secDue>0 && <em>{"€"+secDue+" due"}</em>}
+          <i>{open?"▾":"▸"}</i>
         </div>
         {open && <>
-          {secRows.map(renderRow)}
+          {secRows.map(r=>renderRow(r))}
           {renderNotes("notes-"+id, secRows)}
         </>}
       </div>
@@ -1874,65 +2002,63 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   const unassigned = rows.filter(r=>!r.childId || !childIds.includes(r.childId));
 
   return (
-    <div className="page">
+    <div className="page fam">
       <div className="topbar">
         <h2 style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>My Family</h2>
-        <div style={{display:"flex",gap:8,flexShrink:0,alignItems:"center"}}>
-          {onTeacher && <button className="tb-act" onClick={onTeacher} style={{fontWeight:800,whiteSpace:"nowrap",flexShrink:0}}>Business</button>}
-          {onSettings && <button className="tb-act" onClick={onSettings} style={{fontWeight:800,whiteSpace:"nowrap",flexShrink:0}} aria-label="Account settings">⚙</button>}
-          <button onClick={onLogout} style={{flexShrink:0,whiteSpace:"nowrap",background:"var(--bg3)",border:"1px solid var(--border)",borderRadius:10,padding:"7px 14px",fontFamily:"var(--f)",fontSize:".78rem",fontWeight:800,color:"var(--text)",cursor:"pointer"}}>Sign out</button>
-        </div>
+        {onTeacher && <button className="fam-out" onClick={onTeacher}>Business</button>}
+        {onSettings && <button className="tb-act" onClick={onSettings} aria-label="Account settings">⚙</button>}
+        <button className="fam-out" onClick={onLogout}>Sign out</button>
       </div>
       <div className="section">
+        {/* The amount is the message. This was a bordered box whose loudest
+            element was a full-width filled button for Copy summary — primary
+            weight for a utility action, on a screen where the app cannot take
+            the payment at all. */}
         {showDueSummary && (
-          <div style={{background:"var(--surface)",border:"1px solid rgba(240,80,124,.35)",borderRadius:16,padding:"16px 18px",marginBottom:14}}>
-            <div style={{...eyebrow,color:"var(--owed)"}}>Due now</div>
-            <div style={{display:"flex",alignItems:"baseline",gap:10,marginTop:4,flexWrap:"wrap"}}>
-              <div style={{fontSize:"2rem",fontWeight:800,color:"var(--owed)",lineHeight:1.1}}>{"€"+totalDue}</div>
-              <div style={{fontSize:".78rem",fontWeight:600,color:"var(--text2)",minWidth:0,overflowWrap:"anywhere"}}>
-                {dueSubtitle}
+          <div className="fam-due">
+            <span className="fam-due-lbl">Due now</span>
+            <div className="fam-due-line">
+              <div className="fam-due-amt">{"€"+totalDue}</div>
+              <div className="fam-due-who">
+                {single
+                  ? <><b>{childName(single.childId) || single.card.name}</b>{single.biz.name}</>
+                  : <><b>{"across "+owing.length+" cards"}</b>{owingSchools.length>1 ? (owingSchools.length+" schools") : owingSchools[0]}</>}
               </div>
             </div>
-            {/* Nothing to break down when there is one card owing — the line
-                above already names the child and the school. */}
-            {!single && (
-              <div onClick={()=>setDueOpen(v=>!v)} style={{marginTop:10,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
-                <span style={{fontSize:".76rem",fontWeight:800,color:"var(--text2)"}}>{dueOpen?"Hide breakdown":"See breakdown"}</span>
-                <span style={{color:"var(--text3)",fontSize:".8rem"}}>{dueOpen?"▾":"▸"}</span>
-              </div>
-            )}
+            <div className="fam-acts">
+              <button className="fam-link" onClick={copySummary}>{copied ? "Copied ✓" : "Copy for school"}</button>
+              {!single && (
+                <button className="fam-link quiet" onClick={()=>setDueOpen(v=>!v)}>{dueOpen?"Hide breakdown":"See breakdown"}</button>
+              )}
+            </div>
             {dueOpen && !single && (
-              <div style={{marginTop:10,borderTop:"1px solid var(--border)",paddingTop:10}}>
+              <div style={{marginTop:14,paddingTop:12,borderTop:"1px solid var(--fam-line2)"}}>
                 {owing.map(r=>(
-                  <div key={r.it.cardId} style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:7}}>
+                  <div key={r.it.cardId} style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:8}}>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:".84rem",fontWeight:700,color:"#fff",overflowWrap:"anywhere"}}>{childName(r.childId) || r.card.name}</div>
-                      <div style={{fontSize:".7rem",fontWeight:600,color:"var(--text2)",overflowWrap:"anywhere"}}>{r.biz.name}</div>
+                      <div style={{fontSize:".86rem",fontWeight:600,color:"var(--fam-t1)",overflowWrap:"anywhere"}}>{childName(r.childId) || r.card.name}</div>
+                      <div style={{fontSize:".74rem",color:"var(--fam-t3)",overflowWrap:"anywhere"}}>{r.biz.name}</div>
                     </div>
-                    <div style={{fontSize:".92rem",fontWeight:800,color:"var(--owed)",flexShrink:0}}>{"€"+r.due}</div>
+                    <div style={{fontSize:".92rem",fontWeight:600,color:"var(--owed)",flexShrink:0}}>{"€"+r.due}</div>
                   </div>
                 ))}
               </div>
             )}
-            {/* PayStamp records cash a teacher has already taken — it does not
-                process payments. A button that said "Pay all" would take money
-                from nobody while telling a parent they had paid, so the single
-                action is the one that is actually true here: the whole amount,
-                itemised, ready to send to the school. */}
-            <button onClick={copySummary} style={{width:"100%",marginTop:14,background:"var(--accent)",color:"var(--accent-ink)",border:"none",borderRadius:12,padding:"13px",fontFamily:"var(--f)",fontSize:".9rem",fontWeight:800,cursor:"pointer"}}>
-              {copied ? "Copied ✓" : "Copy summary"}
-            </button>
-            <div style={{fontSize:".7rem",fontWeight:500,color:"var(--text3)",lineHeight:1.5,marginTop:8}}>
-              Pay your school directly — PayStamp keeps the record, it doesn't take payments.
-            </div>
+            {/* PayStamp records cash a teacher has already taken. A button that
+                said "Pay all" would take money from nobody while telling a
+                parent they had paid, so this says where the money goes — once,
+                quietly, instead of as the second-largest text in a box. */}
+            <p className="fam-fine">Hand the money to your school — PayStamp keeps the record, it doesn't take payments.</p>
           </div>
         )}
 
+        {/* Was "Cards" beside a button labelled "Children" — two words for the
+            same thing, and the heading used app jargon no parent uses. */}
         <div className="sec-row">
-          <div className="sec-title">Cards</div>
+          <div className="sec-title">{grouped ? "Children" : "Students"}</div>
           <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>setManage(m=>!m)} style={{background:"var(--bg3)",border:"1px solid var(--border)",borderRadius:14,padding:"9px 14px",fontFamily:"var(--f)",fontWeight:700,fontSize:".78rem",color:"var(--text2)",cursor:"pointer"}}>Children</button>
-            <button className="btn-new" onClick={onLink}>+ Link</button>
+            <button className="fam-pill" onClick={()=>setManage(m=>!m)}>{manage ? "Done" : "Edit"}</button>
+            <button className="fam-pill solid" onClick={onLink}>Link a card</button>
           </div>
         </div>
 
@@ -1967,11 +2093,11 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
           ? <div className="empty">No cards linked yet. Tap "+ Link".</div>
           : !grouped
             ? <>
-                {rows.map(renderRow)}
+                {rows.map(r=>renderRow(r))}
                 {renderNotes("notes-all", rows)}
               </>
             : <>
-                {kids.map(k=>{ const sec=rows.filter(r=>r.childId===k.id); return sec.length>0 ? renderSection(k.id, k.name, sec) : null; })}
+                {kids.map(k=>{ const sec=rows.filter(r=>r.childId===k.id); return sec.length>0 ? renderSection(k.id, k.name, sec, true) : null; })}
                 {unassigned.length>0 ? renderSection("unassigned", "Unassigned", unassigned) : null}
               </>
         }
