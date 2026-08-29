@@ -1,0 +1,74 @@
+-- ============================================================================
+--  Migration: an owner-chosen school icon  (PART A — the column)
+--  ----------------------------------------------------------------------------
+--  The icon on a student's card comes from the business CATEGORY: PAL[type].
+--  A school whose category is "Other" is stuck with the star, and one that
+--  teaches, say, ballet but registered as "Dance" gets the wrong figure — the
+--  same problem the accent colour had before migration-business-accent.sql.
+--
+--  This adds ONE nullable column holding the chosen icon as a short text
+--  string (an emoji from the app's own set — "🩰", "⚽"). Null means "use my
+--  category's icon", which is what every existing row already is.
+--
+--  ----------------------------------------------------------------------------
+--  THIS IS PART A ONLY. It makes the picker work FOR THE OWNER.
+--
+--  Parents and students read their business through get_my_cards() and
+--  get_student_card(), which build the business object key by key. Until those
+--  return `icon` as well, an owner will see their chosen icon on the dashboard
+--  and on their own copy of a card, while parents and students still see the
+--  category's. Nothing breaks — it is a fallback, not an error — but the
+--  feature is only half delivered until Part B.
+--
+--  Part B is deliberately NOT in this file. get_student_card was last
+--  recreated by migration-announcement-targeting.sql, not by
+--  migration-business-accent-part-b.sql, and this repo's SQL has been behind
+--  the live database twice before. Writing Part B from the wrong file would
+--  silently revert announcement targeting — which would make a note written
+--  for ONE student readable by every student at that school. So dump what is
+--  actually running first:
+--
+--    select p.proname, pg_get_functiondef(p.oid)
+--      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--     where n.nspname = 'public'
+--       and p.proname in ('get_my_cards', 'get_student_card');
+--
+--  ----------------------------------------------------------------------------
+--  No GRANT is needed. This schema grants at TABLE level (a one-time
+--  `grant ... on all tables in schema public`), which covers columns added
+--  later. The teachers/groups migration needed an explicit grant because it
+--  added a TABLE, which that snapshot had never seen.
+--
+--  Additive and reversible: one nullable column, no data read or written, no
+--  policy, function or trigger touched.
+--
+--  Run ONCE in the Supabase SQL editor.
+-- ============================================================================
+
+alter table public.businesses add column if not exists icon text;
+
+comment on column public.businesses.icon is
+  'Owner-chosen icon for the school, as a short text string. Null = use the icon for this business''s category (PAL[type] in the app).';
+
+
+-- ============================================================================
+--  SANITY CHECKS
+--
+--  1) the column exists and every existing row is null — i.e. unchanged
+--       select count(*) as businesses, count(icon) as with_custom_icon
+--         from public.businesses;         -- with_custom_icon = 0
+--
+--  2) it round-trips. Replace <YOUR BIZ> with your own business id:
+--       update public.businesses set icon = '🩰' where id = '<YOUR BIZ>';
+--       select name, type, icon from public.businesses where id = '<YOUR BIZ>';
+--     Then reload the app: Settings -> Appearance -> Icon should show it
+--     selected, and the dashboard header should carry it.
+--
+--  3) clearing it returns you to the category icon
+--       update public.businesses set icon = null where id = '<YOUR BIZ>';
+--
+--  ROLLBACK (returns every school to its category icon):
+--       alter table public.businesses drop column if exists icon;
+--     The app keeps working: bizPal falls back to the category whenever the
+--     field is absent, and loadMyBusiness selects *.
+-- ============================================================================
