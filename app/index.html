@@ -476,6 +476,12 @@ function cardFee(card, biz) { return (card.level&&card.level.fee) ? card.level.f
   const mp = card ? monthsPaid(pmts, vy, inact, es) : 0;
   const ac = billableCount(vy, inact, es);
   const pct = ac > 0 ? Math.round((mp/ac)*100) : 0;
+  // The third tile used to repeat the progress bar directly beneath it as a
+  // number. What is actually wanted from a stamp card is the amount outstanding,
+  // and it comes from the same getStudentMonthStatus the dashboard totals and
+  // the family portal bill on — so the card and every list agree. Scoped to the
+  // viewed year, since the card can be scrolled back to a previous one.
+  const owedNow = card ? Math.round(getStudentMonthStatus(card, biz, vy).owedTotal) : 0;
   const hasImg = !!biz.customCardImage;
   const bgVal = hasImg ? "#000" : "linear-gradient(135deg,"+p.bg1+","+p.bg2+")";
   const _rg = resolveGroup(card, biz.groups);
@@ -518,8 +524,8 @@ function cardFee(card, biz) { return (card.level&&card.level.fee) ? card.level.f
                 <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:700,marginTop:2,textTransform:"uppercase"}}>Months</div>
               </div>
               <div style={{background:"rgba(255,255,255,.1)",borderRadius:12,padding:"8px 6px",textAlign:"center"}}>
-                <div style={{fontSize:"var(--fs-stat)",fontWeight:800,color:p.acc}}>{pct+"%"}</div>
-                <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:700,marginTop:2,textTransform:"uppercase"}}>Progress</div>
+                <div style={{fontSize:"var(--fs-stat)",fontWeight:800,color:owedNow>0?"var(--owed)":"rgba(255,255,255,.55)"}}>{"€"+owedNow}</div>
+                <div style={{fontSize:".58rem",color:"rgba(255,255,255,.4)",fontWeight:700,marginTop:2,textTransform:"uppercase"}}>Owed</div>
               </div>
             </div>
             <div style={{height:2,background:"rgba(255,255,255,.1)",borderRadius:99,marginBottom:12,overflow:"hidden"}}>
