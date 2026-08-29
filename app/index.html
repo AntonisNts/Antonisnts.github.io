@@ -304,6 +304,19 @@ function cardFee(card, biz) { return (card.level&&card.level.fee) ? card.level.f
 .fam-sec-head span{font-size:.76rem;font-weight:500;color:var(--fam-t3);}
 .fam-sec-head em{font-style:normal;font-size:.76rem;font-weight:600;color:var(--owed);}
 .fam-sec-head i{margin-left:auto;font-style:normal;color:var(--fam-t3);font-size:.78rem;}
+/* The details panel: what the total is made of, and who is clear. */
+.fam-det{padding:13px 0 12px;border-bottom:1px solid var(--fam-line2);}
+.fam-det:last-child{border-bottom:none;padding-bottom:2px;}
+.fam-det-hd{display:flex;align-items:baseline;justify-content:space-between;gap:12px;}
+.fam-det-nm{font-size:.88rem;font-weight:600;color:var(--fam-t1);overflow-wrap:anywhere;}
+.fam-det-sch{display:flex;align-items:center;gap:6px;font-size:.72rem;color:var(--fam-t3);margin-top:2px;overflow-wrap:anywhere;}
+.fam-det-amt{font-size:.88rem;font-weight:600;color:var(--owed);flex:none;}
+.fam-det-ok{font-size:.78rem;color:var(--fam-t2);flex:none;}
+.fam-det-note{font-size:.76rem;color:var(--fam-t3);padding:6px 0 0 14px;}
+.fam-mth{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:7px 0 0 14px;}
+.fam-mth-nm{font-size:.82rem;color:var(--fam-t2);}
+.fam-mth-part{font-size:.7rem;color:var(--fam-t3);margin-left:7px;}
+.fam-mth-amt{font-size:.82rem;font-weight:600;color:var(--owed);flex:none;}
 
 /* ===================== Student portal =====================================
    Scoped to .page.stu, the same way the family portal is scoped to .page.fam,
@@ -1873,7 +1886,6 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   const [annShowAll, setAnnShowAll] = useState({});     // per block
   const [annOpenItem, setAnnOpenItem] = useState({});   // per announcement
   const [dueOpen, setDueOpen] = useState(false);        // the combined-total breakdown
-  const [copied, setCopied] = useState(false);
   const readSet = {}; (annRead||[]).forEach(id=>{readSet[id]=true;});
   const annAll = (announcements||[]).slice().sort((a,b)=>String(b.created_at||"").localeCompare(String(a.created_at||"")));
   const ANN_CAP = 4;
@@ -1909,6 +1921,10 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
              mp:monthsPaid(card.payments||{}, year, inactive, es),
              bc:billableCount(year, inactive, es),
              paid:totalPaid(card.payments||{}, card.history||[]),
+             // Already computed and thrown away. Each entry carries the month,
+             // the fee, what was paid against it and what is short — which is
+             // exactly what "what is the €85 made of" needs.
+             unpaid: st.unpaidMonths || [],
              due: Math.round(st.owedTotal) };
   });
   rows.sort((a,b)=> (b.due>0?1:0) - (a.due>0?1:0));
@@ -1931,14 +1947,6 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   // where there is not.
   const owingSchools = [...new Set(owing.map(r=>r.biz.name))];
 
-  const summaryText = owing.map(r=>r.biz.name+" — "+r.card.name+": €"+r.due).join("\n")
-    + "\nTotal: €" + totalDue;
-  function copySummary(){
-    const done=()=>{ setCopied(true); setTimeout(()=>setCopied(false), 1800); };
-    const manual=()=>{ try{ const ta=document.createElement("textarea"); ta.value=summaryText; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); done(); }catch(e){} };
-    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(summaryText).then(done, manual);
-    else manual();
-  }
 
   const eyebrow = {fontSize:".64rem",fontWeight:800,textTransform:"uppercase",letterSpacing:".1em"};
   // Compares two spellings of the same person: "Afrodite Marina" vs
@@ -2158,23 +2166,56 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
                   : <><b>{"across "+owing.length+" cards"}</b>{owingSchools.length>1 ? (owingSchools.length+" schools") : owingSchools[0]}</>}
               </div>
             </div>
+            {/* One control, always available. The old pair was "Copy for
+                school" — which put the two lines above it on the clipboard in
+                worse formatting — and a "See breakdown" that only appeared when
+                MORE THAN ONE card owed, so with one child owing it showed
+                nothing, which is exactly when a parent asks why €85. */}
             <div className="fam-acts">
-              <button className="fam-link" onClick={copySummary}>{copied ? "Copied ✓" : "Copy for school"}</button>
-              {!single && (
-                <button className="fam-link quiet" onClick={()=>setDueOpen(v=>!v)}>{dueOpen?"Hide breakdown":"See breakdown"}</button>
-              )}
+              <button className="fam-link" onClick={()=>setDueOpen(v=>!v)}>
+                {dueOpen ? "Hide details" : "Show details"}
+                <span style={{marginLeft:6,color:"var(--fam-t3)",fontSize:".7rem"}}>{dueOpen?"▴":"▾"}</span>
+              </button>
             </div>
-            {dueOpen && !single && (
-              <div style={{marginTop:14,paddingTop:12,borderTop:"1px solid var(--fam-line2)"}}>
-                {owing.map(r=>(
-                  <div key={r.it.cardId} style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:8}}>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:".86rem",fontWeight:600,color:"var(--fam-t1)",overflowWrap:"anywhere"}}>{childName(r.childId) || r.card.name}</div>
-                      <div style={{fontSize:".74rem",color:"var(--fam-t3)",overflowWrap:"anywhere"}}>{r.biz.name}</div>
+            {dueOpen && (
+              <div style={{marginTop:14,borderTop:"1px solid var(--fam-line2)"}}>
+                {/* Owing first, then the ones that are clear: the panel answers
+                    both halves — what the money is, and who has paid. */}
+                {rows.map(r=>{
+                  const name = childName(r.childId) || r.card.name;
+                  return (
+                    <div key={r.it.cardId} className="fam-det">
+                      <div className="fam-det-hd">
+                        <div style={{minWidth:0}}>
+                          <div className="fam-det-nm">{name}</div>
+                          <div className="fam-det-sch">
+                            <span style={{width:6,height:6,borderRadius:99,flex:"none",background:r.pal.acc}} />
+                            <span>{r.biz.name}</span>
+                          </div>
+                        </div>
+                        {r.due>0
+                          ? <div className="fam-det-amt">{"€"+r.due}</div>
+                          : <div className="fam-det-ok">Up to date</div>}
+                      </div>
+                      {r.due>0
+                        ? r.unpaid.map(m=>(
+                            <div key={m.ym} className="fam-mth">
+                              <div className="fam-mth-nm">
+                                {MONTHS[m.mi]}
+                                {/* A month where part of the fee was handed over
+                                    disappears into the lump sum otherwise — and
+                                    it is the line a parent is least sure of. */}
+                                {m.amount>0 && (
+                                  <span className="fam-mth-part">{"€"+Math.round(m.amount)+" of €"+Math.round(m.fee)+" paid"}</span>
+                                )}
+                              </div>
+                              <div className="fam-mth-amt">{"€"+Math.round(m.owed)}</div>
+                            </div>
+                          ))
+                        : <div className="fam-det-note">{r.mp+" of "+r.bc+" months paid · €"+r.paid.toFixed(0)}</div>}
                     </div>
-                    <div style={{fontSize:".92rem",fontWeight:600,color:"var(--owed)",flexShrink:0}}>{"€"+r.due}</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
             {/* PayStamp records cash a teacher has already taken. A button that
