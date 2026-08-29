@@ -1709,21 +1709,34 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   }
 
   const eyebrow = {fontSize:".64rem",fontWeight:800,textTransform:"uppercase",letterSpacing:".1em"};
+  // Compares two spellings of the same person: "Afrodite Marina" vs
+  // "Afrodite marina savva" are not equal, but "Christos Christou" written
+  // twice with different spacing is.
+  const norm = (x)=>String(x||"").toLowerCase().replace(/\s+/g," ").trim();
 
   // ---- one card row ------------------------------------------------------
   // The right-hand side used to be a coloured dot on every row, whether or not
   // anything was wrong. It now carries the one signal that matters: the amount
   // due, or a quiet "Up to date". Nothing owing means nothing shouting.
-  function renderRow(r) {
+  function renderRow(r, titleOverride) {
     const isOpen = !!expanded[r.it.cardId];
+    // "Afrodite Marina" as a heading with "Afrodite marina savva" directly
+    // under it is a stutter, not two facts. When the child's own name is
+    // already the title, the school's spelling of it is only worth repeating
+    // if it is actually a different name.
+    const title = titleOverride || r.card.name;
+    // Containment, not equality: "Andreas" and "Andreas Christou" are the same
+    // person written short and long, and printing both wrapped the row onto a
+    // third line to say nothing. Only a genuinely different name is kept.
+    const alsoCard = titleOverride && !norm(r.card.name).includes(norm(titleOverride)) ? r.card.name : null;
     return (
       <div key={r.it.cardId} style={{marginBottom:10,"--accent":r.pal.acc}}>
         <div onClick={()=>setExpanded(s=>({...s,[r.it.cardId]:!s[r.it.cardId]}))} style={{display:"flex",alignItems:"center",gap:12,background:"var(--bg2)",border:"1px solid "+(isOpen?"rgba(255,255,255,.16)":"var(--border)"),borderRadius:16,padding:"13px 16px",cursor:"pointer"}}>
           <div style={{width:40,height:40,borderRadius:12,background:"rgba(255,255,255,.06)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.3rem",flexShrink:0}}>{r.pal.icon}</div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{...eyebrow,color:r.pal.acc,marginBottom:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.biz.name}</div>
-            <div style={{fontSize:"1rem",fontWeight:700,color:"#fff",marginBottom:2}}>{r.card.name}</div>
-            <div style={{fontSize:".72rem",fontWeight:600,color:"var(--text2)"}}>{r.mp+"/"+r.bc+" months · €"+r.paid.toFixed(0)+" paid"}</div>
+            <div style={{fontSize:"1rem",fontWeight:700,color:"#fff",marginBottom:2,overflowWrap:"anywhere"}}>{title}</div>
+            <div style={{fontSize:".72rem",fontWeight:600,color:"var(--text2)",overflowWrap:"anywhere"}}>{(alsoCard ? alsoCard+" · " : "")+r.mp+"/"+r.bc+" months · €"+r.paid.toFixed(0)+" paid"}</div>
           </div>
           <div style={{flexShrink:0,textAlign:"right"}}>
             {r.due>0 ? (
@@ -1791,10 +1804,22 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
       // which read as loose fragments sitting between the student cards.
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"4px 16px 6px",marginBottom:12}}>
         <div onClick={()=>setNotesOpen(s=>({...s,[blockId]:!open}))}
-             style={{display:"flex",alignItems:"center",gap:8,padding:"12px 0",cursor:"pointer"}}>
-          <span style={{...eyebrow,color:"var(--text2)",letterSpacing:".16em"}}>From the school</span>
-          {unread>0 && <span style={{fontSize:".62rem",fontWeight:800,color:"var(--accent-ink)",background:"var(--accent)",borderRadius:99,padding:"1px 7px"}}>{unread+" new"}</span>}
-          <span style={{marginLeft:"auto",color:"var(--text2)",fontSize:".8rem"}}>{open?"▾":"▸"}</span>
+             style={{display:"flex",alignItems:"center",gap:8,padding:"11px 0",cursor:"pointer"}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{...eyebrow,color:"var(--text2)",letterSpacing:".16em"}}>From the school</span>
+              {unread>0
+                ? <span style={{fontSize:".62rem",fontWeight:800,color:"var(--accent-ink)",background:"var(--accent)",borderRadius:99,padding:"1px 7px"}}>{unread+" new"}</span>
+                : <span style={{fontSize:".68rem",fontWeight:700,color:"var(--text3)"}}>{mine.length}</span>}
+            </div>
+            {/* Collapsed, this was an empty bar with an arrow: nothing said
+                what was inside or whether it was worth opening. It now shows
+                the newest note's title, which is usually the whole message. */}
+            {!open && (
+              <div style={{fontSize:".8rem",fontWeight:unread>0?700:600,color:unread>0?"#fff":"var(--text2)",marginTop:3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{mine[0].title}</div>
+            )}
+          </div>
+          <span style={{flexShrink:0,color:"var(--text2)",fontSize:".8rem"}}>{open?"▾":"▸"}</span>
         </div>
         {open && shown.map((a,idx)=>{
           const isOpen = !!annOpenItem[a.id];
@@ -1850,9 +1875,22 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   // due on the header, because that is information the rows below do not give
   // in one place; a child with one card gets nothing, because the row already
   // says it and repeating it is the redundancy this redesign removes.
-  function renderSection(id, title, secRows) {
+  function renderSection(id, title, secRows, nameIsChild) {
     const open = openGroups[id] !== false;
     const secDue = secRows.reduce((a,r)=>a+r.due, 0);
+    // One card is the common case, and it was costing three lines: a header
+    // naming the child, a "(1)" that counts nothing, and a card naming them
+    // again. The child's name goes on the card itself and the header goes away.
+    // Only for a real child: "Unassigned" is a category, not a name, so it
+    // stays a heading rather than being stamped on the card as its title.
+    if (secRows.length === 1 && nameIsChild) {
+      return (
+        <div key={id}>
+          {renderRow(secRows[0], title)}
+          {renderNotes("notes-"+id, secRows)}
+        </div>
+      );
+    }
     return (
       <div key={id} style={{marginBottom:6}}>
         <div onClick={()=>setOpenGroups(s=>({...s,[id]: open?false:true}))} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 4px",cursor:"pointer"}}>
@@ -1864,7 +1902,7 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
           <span style={{marginLeft:"auto",color:"var(--text2)",fontSize:".8rem"}}>{open?"▾":"▸"}</span>
         </div>
         {open && <>
-          {secRows.map(renderRow)}
+          {secRows.map(r=>renderRow(r))}
           {renderNotes("notes-"+id, secRows)}
         </>}
       </div>
@@ -1884,19 +1922,32 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
         </div>
       </div>
       <div className="section">
+        {/* A strip, not a hero. This was a large bordered box whose loudest
+            element was a full-width filled button for Copy summary — a utility
+            action, given the weight of a primary one on a screen where the app
+            cannot take the payment at all. The amount is the information; Copy
+            is a small action beside it, and the caveat is one quiet line rather
+            than two lines of apology inside the box. */}
         {showDueSummary && (
-          <div style={{background:"var(--surface)",border:"1px solid rgba(240,80,124,.35)",borderRadius:16,padding:"16px 18px",marginBottom:14}}>
-            <div style={{...eyebrow,color:"var(--owed)"}}>Due now</div>
-            <div style={{display:"flex",alignItems:"baseline",gap:10,marginTop:4,flexWrap:"wrap"}}>
-              <div style={{fontSize:"2rem",fontWeight:800,color:"var(--owed)",lineHeight:1.1}}>{"€"+totalDue}</div>
-              <div style={{fontSize:".78rem",fontWeight:600,color:"var(--text2)",minWidth:0,overflowWrap:"anywhere"}}>
-                {dueSubtitle}
+          <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderLeft:"3px solid var(--owed)",borderRadius:14,padding:"12px 14px",marginBottom:6}}>
+            <div style={{display:"flex",alignItems:"center",gap:12}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"baseline",gap:7,flexWrap:"wrap"}}>
+                  <span style={{fontSize:"1.45rem",fontWeight:800,color:"var(--owed)",lineHeight:1.1}}>{"€"+totalDue}</span>
+                  <span style={{fontSize:".76rem",fontWeight:700,color:"var(--text2)"}}>due now</span>
+                </div>
+                <div style={{fontSize:".72rem",fontWeight:600,color:"var(--text3)",marginTop:2,overflowWrap:"anywhere"}}>{dueSubtitle}</div>
               </div>
+              {/* Outlined, not filled. The one filled button on this page is
+                  "+ Link", so the eye has a single place to land. */}
+              <button onClick={copySummary} style={{flexShrink:0,background:"transparent",border:"1px solid var(--border)",borderRadius:10,padding:"9px 13px",fontFamily:"var(--f)",fontSize:".78rem",fontWeight:800,color:copied?"var(--green)":"var(--text)",cursor:"pointer"}}>
+                {copied ? "Copied ✓" : "Copy"}
+              </button>
             </div>
             {/* Nothing to break down when there is one card owing — the line
                 above already names the child and the school. */}
             {!single && (
-              <div onClick={()=>setDueOpen(v=>!v)} style={{marginTop:10,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+              <div onClick={()=>setDueOpen(v=>!v)} style={{marginTop:8,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
                 <span style={{fontSize:".76rem",fontWeight:800,color:"var(--text2)"}}>{dueOpen?"Hide breakdown":"See breakdown"}</span>
                 <span style={{color:"var(--text3)",fontSize:".8rem"}}>{dueOpen?"▾":"▸"}</span>
               </div>
@@ -1914,24 +1965,25 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
                 ))}
               </div>
             )}
-            {/* PayStamp records cash a teacher has already taken — it does not
-                process payments. A button that said "Pay all" would take money
-                from nobody while telling a parent they had paid, so the single
-                action is the one that is actually true here: the whole amount,
-                itemised, ready to send to the school. */}
-            <button onClick={copySummary} style={{width:"100%",marginTop:14,background:"var(--accent)",color:"var(--accent-ink)",border:"none",borderRadius:12,padding:"13px",fontFamily:"var(--f)",fontSize:".9rem",fontWeight:800,cursor:"pointer"}}>
-              {copied ? "Copied ✓" : "Copy summary"}
-            </button>
-            <div style={{fontSize:".7rem",fontWeight:500,color:"var(--text3)",lineHeight:1.5,marginTop:8}}>
-              Pay your school directly — PayStamp keeps the record, it doesn't take payments.
-            </div>
+          </div>
+        )}
+        {/* Outside the strip and small. A parent needs to know once that the
+            money is handed over at the school; it does not need to be the
+            second-largest text in the box every visit. */}
+        {showDueSummary && (
+          <div style={{fontSize:".68rem",fontWeight:500,color:"var(--text3)",lineHeight:1.5,margin:"0 2px 14px"}}>
+            Pay your school directly — PayStamp keeps the record, it doesn't take payments.
           </div>
         )}
 
+        {/* Was "Cards" beside a button labelled "Children" — two words for the
+            same thing, and the one on the heading was app jargon a parent does
+            not use. The heading now says what the list is; the button says what
+            it does. */}
         <div className="sec-row">
-          <div className="sec-title">Cards</div>
+          <div className="sec-title">{grouped ? "Children" : "Students"}</div>
           <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>setManage(m=>!m)} style={{background:"var(--bg3)",border:"1px solid var(--border)",borderRadius:14,padding:"9px 14px",fontFamily:"var(--f)",fontWeight:700,fontSize:".78rem",color:"var(--text2)",cursor:"pointer"}}>Children</button>
+            <button onClick={()=>setManage(m=>!m)} style={{background:"var(--bg3)",border:"1px solid var(--border)",borderRadius:14,padding:"9px 14px",fontFamily:"var(--f)",fontWeight:700,fontSize:".78rem",color:"var(--text2)",cursor:"pointer"}}>{manage ? "Done" : "Edit"}</button>
             <button className="btn-new" onClick={onLink}>+ Link</button>
           </div>
         </div>
@@ -1967,11 +2019,11 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
           ? <div className="empty">No cards linked yet. Tap "+ Link".</div>
           : !grouped
             ? <>
-                {rows.map(renderRow)}
+                {rows.map(r=>renderRow(r))}
                 {renderNotes("notes-all", rows)}
               </>
             : <>
-                {kids.map(k=>{ const sec=rows.filter(r=>r.childId===k.id); return sec.length>0 ? renderSection(k.id, k.name, sec) : null; })}
+                {kids.map(k=>{ const sec=rows.filter(r=>r.childId===k.id); return sec.length>0 ? renderSection(k.id, k.name, sec, true) : null; })}
                 {unassigned.length>0 ? renderSection("unassigned", "Unassigned", unassigned) : null}
               </>
         }
