@@ -425,7 +425,62 @@ function cardFee(card, biz) { return (card.level&&card.level.fee) ? card.level.f
 }
 .dc-track{display:flex;gap:3px;margin-top:11px;}
 .dc-track i{height:4px;border-radius:99px;flex:1;background:rgba(255,255,255,.08);}
-.dc-track i.on{background:var(--accent);opacity:.9;} .info-box{background:var(--bg);border-radius:14px;padding:16px 18px;font-size:.84rem;color:var(--text2);line-height:1.7;font-weight:500;border:1px solid var(--border);} .mth-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:16px 0;} .mth-btn{border-radius:12px;padding:14px 6px;text-align:center;border:1px solid var(--border);cursor:pointer;font-family:var(--f);font-weight:700;background:var(--bg2);color:var(--text);transition:all .15s;} .mth-btn:hover{border-color:var(--accent);} .mth-btn.off{background:var(--bg);color:var(--text3);border-color:transparent;} .mth-btn-lbl{font-size:.6rem;margin-bottom:4px;letter-spacing:.14em;text-transform:uppercase;} .mth-btn-char{font-size:.9rem;font-weight:800;} .hero-stats{display:grid;grid-template-columns:repeat(6,1fr);border-top:1px solid rgba(255,255,255,.1);} .hero-stats>div{grid-column:span 2;padding:12px 8px;text-align:center;border-right:1px solid rgba(255,255,255,.1);border-bottom:1px solid rgba(255,255,255,.1);} .hero-stats>div:nth-child(4),.hero-stats>div:nth-child(5){grid-column:span 3;} .hero-stats>div:nth-child(3),.hero-stats>div:nth-child(5){border-right:none;} .hero-stats>div:nth-child(4),.hero-stats>div:nth-child(5){border-bottom:none;} @media (min-width:768px){.hero-stats{grid-template-columns:repeat(5,1fr);} .hero-stats>div,.hero-stats>div:nth-child(4),.hero-stats>div:nth-child(5){grid-column:span 1;border-bottom:none;} .hero-stats>div:nth-child(3){border-right:1px solid rgba(255,255,255,.1);} .hero-stats>div:nth-child(5){border-right:none;}} 
+.dc-track i.on{background:var(--accent);opacity:.9;}
+
+/* ===================== Owner screens: one shared skin =====================
+   Every secondary screen the dashboard opens — Manage, Groups, Remind,
+   Announcements, Export, Levels, Months — grew its own inline card and button
+   styles, so the same control looks different depending on which screen you
+   reached it from, and none of them match the student list.
+
+   This is one skin they adopt a screen at a time, by adding scr to the page
+   root. Tokens are the same values .dash-shell uses, so stepping from the
+   dashboard into a screen it opened is not a change of surface. */
+.page.scr, .reg-page.scr{
+  --bg:#0B0B0C; --bg2:#161618; --bg3:rgba(255,255,255,.055);
+  --border:rgba(255,255,255,.06); --elev:#1D1D20;
+  --surface:linear-gradient(160deg,#1D1D20 0%,#141416 100%);
+  background:var(--bg);min-height:100vh;
+}
+/* Section labels take the school's accent, exactly as the settings sidebar
+   group labels do. They were --text2 grey, which read as disabled. */
+.scr-lbl{
+  font-size:.7rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent);margin:0 0 12px;
+}
+/* A second section used to start immediately under the last control of the
+   first, so its label read as a caption for the row above it. */
+.scr .section + .section{margin-top:26px;}
+.scr .topbar + .section{margin-top:6px;}
+/* One card treatment, the student list's: charcoal with a lit top edge. */
+.scr-card{
+  background:var(--bg2);
+  background-image:linear-gradient(180deg,rgba(255,255,255,.038) 0%,rgba(255,255,255,0) 38%);
+  border:1px solid var(--border);border-top-color:rgba(255,255,255,.14);
+  border-radius:20px;padding:14px 16px;margin-bottom:10px;
+}
+.scr-card-t{font-size:1.06rem;font-weight:600;color:#fff;letter-spacing:-.012em;overflow-wrap:anywhere;}
+.scr-card-s{font-size:.82rem;color:var(--text2);margin-top:4px;line-height:1.5;overflow-wrap:anywhere;}
+.scr-empty{font-size:.82rem;color:var(--text3);font-weight:500;margin-bottom:12px;}
+/* One button family, at the radius the dashboard's + New already uses.
+   Quiet by default; accent when it starts something; red when it destroys
+   something. Destructive stays semantic and never follows the accent, the same
+   way "owes" stays red whatever colour a school picks. */
+.scr-acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;}
+.scr-btn{
+  flex:0 0 auto;width:auto;margin:0;background:var(--bg3);
+  border:1px solid var(--border);border-radius:12px;padding:10px 18px;
+  font-family:var(--f);font-size:.85rem;font-weight:700;color:var(--text);cursor:pointer;
+  transition:background .12s,border-color .12s;
+}
+.scr-btn:hover{background:rgba(255,255,255,.1);}
+.scr-btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:800;}
+.scr-btn.primary:hover{filter:brightness(1.08);background:var(--accent);}
+.scr-btn.danger{background:transparent;color:var(--red);border-color:rgba(239,68,68,.32);font-weight:800;}
+.scr-btn.danger:hover{background:rgba(239,68,68,.1);}
+.scr-btn:disabled{opacity:.4;cursor:not-allowed;}
+.scr-btn.wide{width:100%;padding:14px;}
+.scr-btn.tall{align-self:stretch;padding:0 20px;} .info-box{background:var(--bg);border-radius:14px;padding:16px 18px;font-size:.84rem;color:var(--text2);line-height:1.7;font-weight:500;border:1px solid var(--border);} .mth-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:16px 0;} .mth-btn{border-radius:12px;padding:14px 6px;text-align:center;border:1px solid var(--border);cursor:pointer;font-family:var(--f);font-weight:700;background:var(--bg2);color:var(--text);transition:all .15s;} .mth-btn:hover{border-color:var(--accent);} .mth-btn.off{background:var(--bg);color:var(--text3);border-color:transparent;} .mth-btn-lbl{font-size:.6rem;margin-bottom:4px;letter-spacing:.14em;text-transform:uppercase;} .mth-btn-char{font-size:.9rem;font-weight:800;} .hero-stats{display:grid;grid-template-columns:repeat(6,1fr);border-top:1px solid rgba(255,255,255,.1);} .hero-stats>div{grid-column:span 2;padding:12px 8px;text-align:center;border-right:1px solid rgba(255,255,255,.1);border-bottom:1px solid rgba(255,255,255,.1);} .hero-stats>div:nth-child(4),.hero-stats>div:nth-child(5){grid-column:span 3;} .hero-stats>div:nth-child(3),.hero-stats>div:nth-child(5){border-right:none;} .hero-stats>div:nth-child(4),.hero-stats>div:nth-child(5){border-bottom:none;} @media (min-width:768px){.hero-stats{grid-template-columns:repeat(5,1fr);} .hero-stats>div,.hero-stats>div:nth-child(4),.hero-stats>div:nth-child(5){grid-column:span 1;border-bottom:none;} .hero-stats>div:nth-child(3){border-right:1px solid rgba(255,255,255,.1);} .hero-stats>div:nth-child(5){border-right:none;}} 
 /* Settings. On a phone: the bottom sheet, unchanged — these classes carry the
    exact values that used to sit inline, so nothing about the phone rendering
    depends on anything below. On a desktop: a docked column, and the sheet is
@@ -3013,35 +3068,32 @@ function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, on
 
   const setSch = (fn)=> setGEdit(g=>({ ...g, schedule: fn(g.schedule||[]) }));
   const lbl = {fontSize:".68rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".1em",margin:"14px 0 6px"};
-  const secTitle = {fontSize:".72rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".16em",marginBottom:12};
-  // Compact, content-sized row actions. These deliberately do NOT use .btn-ghost
-  // / .btn-add: those are full-width form buttons (.btn-ghost is width:100%),
-  // which is what previously stretched Edit across the row and crushed the name
-  // and schedule text beside it at every viewport width.
-  const rowActions = {display:"flex",gap:8,marginTop:12,flexWrap:"wrap"};
-  const rowBtn = {flex:"0 0 auto",width:"auto",padding:"9px 16px",borderRadius:10,border:"1px solid var(--border)",background:"var(--bg3)",color:"var(--text)",fontFamily:"var(--f)",fontWeight:700,fontSize:".8rem",cursor:"pointer",margin:0};
-  const rowBtnDanger = {...rowBtn,background:"transparent",color:"var(--red)",fontWeight:800};
-  const rowBtnPrimary = {...rowBtn,background:"var(--accent)",color:"var(--accent-ink)",border:"none",fontWeight:800};
+  // Section labels, cards and buttons come from the shared .scr skin now rather
+  // than from style objects local to this screen — that is what stops the same
+  // control looking different depending on which screen you reached it from.
+  // Row actions stay content-sized: .btn-ghost / .btn-add are width:100% form
+  // buttons, which is what once stretched Edit across the row and crushed the
+  // name beside it.
 
   // ---- Group create/edit form ----
   if (gEdit) {
     return (
-      <div className="page" style={{"--accent":p.acc}}>
+      <div className="page scr" style={{"--accent":p.acc}}>
         <div className="topbar">
           <button className="tb-back" onClick={()=>setGEdit(null)}>←</button>
           <h2>{gEdit.id ? "Edit Group" : "New Group"}</h2>
           <div style={{width:24}} />
         </div>
         <div className="section">
-          <div style={lbl}>Group name</div>
+          <div className="scr-lbl" style={{marginTop:16}}>Group name</div>
           <input className="inp" placeholder="e.g. Τρ/Παρ 15:15" value={gEdit.name} onChange={e=>setGEdit(g=>({...g,name:e.target.value}))} autoFocus />
-          <div style={lbl}>Teacher</div>
+          <div className="scr-lbl" style={{marginTop:16}}>Teacher</div>
           <select className="inp" value={gEdit.teacher_id||""} onChange={e=>setGEdit(g=>({...g,teacher_id:e.target.value}))}>
             <option value="">— No teacher —</option>
             {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
           {teachers.length===0 && <div style={{fontSize:".72rem",color:"var(--text3)",fontWeight:600,marginTop:6}}>Add a teacher below first to assign one.</div>}
-          <div style={lbl}>Schedule</div>
+          <div className="scr-lbl" style={{marginTop:16}}>Schedule</div>
           {(gEdit.schedule||[]).map((row,i)=>(
             <div key={i} style={{marginBottom:10,padding:"10px",background:"var(--bg2)",borderRadius:12,border:"1px solid var(--border)"}}>
               <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3055,8 +3107,8 @@ function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, on
               </div>
             </div>
           ))}
-          {(gEdit.schedule||[]).length<7 && <button type="button" onClick={()=>setSch(s=>[...s,{day:"Monday",start_time:"17:00",end_time:"18:00"}])} className="btn-ghost" style={{padding:"12px",width:"100%"}}>+ Add day</button>}
-          <button className="btn" style={{marginTop:16}} onClick={saveGroup} disabled={busy}>{busy?"…":(gEdit.id?"Save Group":"Create Group")}</button>
+          {(gEdit.schedule||[]).length<7 && <button type="button" onClick={()=>setSch(s=>[...s,{day:"Monday",start_time:"17:00",end_time:"18:00"}])} className="scr-btn wide">+ Add day</button>}
+          <button className="scr-btn primary wide" style={{marginTop:14}} onClick={saveGroup} disabled={busy}>{busy?"…":(gEdit.id?"Save Group":"Create Group")}</button>
         </div>
       </div>
     );
@@ -3064,7 +3116,7 @@ function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, on
 
   // ---- Lists ----
   return (
-    <div className="page" style={{"--accent":p.acc}}>
+    <div className="page scr" style={{"--accent":p.acc}}>
       <div className="topbar">
         <button className="tb-back" onClick={onBack}>←</button>
         <h2>Manage</h2>
@@ -3072,24 +3124,24 @@ function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, on
       </div>
 
       <div className="section">
-        <div style={secTitle}>Teachers</div>
-        {teachers.length===0 && <div style={{fontSize:".82rem",color:"var(--text3)",fontWeight:600,marginBottom:10}}>No teachers yet.</div>}
+        <div className="scr-lbl">Teachers</div>
+        {teachers.length===0 && <div className="scr-empty">No teachers yet.</div>}
         {teachers.map(t=>(
-          <div key={t.id} style={{padding:"12px 14px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,marginBottom:8}}>
+          <div key={t.id} className="scr-card">
             {tEdit && tEdit.id===t.id ? (
               <>
                 <input className="inp" style={{width:"100%",marginBottom:0}} value={tEdit.name} onChange={e=>setTEdit({...tEdit,name:e.target.value})} autoFocus />
-                <div style={rowActions}>
-                  <button style={rowBtnPrimary} onClick={saveTeacherEdit} disabled={busy}>Save</button>
-                  <button style={rowBtn} onClick={()=>setTEdit(null)}>Cancel</button>
+                <div className="scr-acts">
+                  <button className="scr-btn primary" onClick={saveTeacherEdit} disabled={busy}>Save</button>
+                  <button className="scr-btn" onClick={()=>setTEdit(null)}>Cancel</button>
                 </div>
               </>
             ) : (
               <>
-                <div style={{fontWeight:700,fontSize:".95rem",overflowWrap:"anywhere"}}>{t.name}</div>
-                <div style={rowActions}>
-                <button style={rowBtn} onClick={()=>setTEdit({id:t.id,name:t.name})}>Edit</button>
-                <button style={rowBtnDanger} onClick={()=>askDeleteTeacher(t)}>Delete</button>
+                <div className="scr-card-t">{t.name}</div>
+                <div className="scr-acts">
+                  <button className="scr-btn" onClick={()=>setTEdit({id:t.id,name:t.name})}>Edit</button>
+                  <button className="scr-btn danger" onClick={()=>askDeleteTeacher(t)}>Delete</button>
                 </div>
               </>
             )}
@@ -3097,26 +3149,26 @@ function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, on
         ))}
         <div style={{display:"flex",gap:8,marginTop:4}}>
           <input className="inp" style={{flex:1,marginBottom:0}} placeholder="New teacher name" value={tName} onChange={e=>setTName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTeacher()} />
-          <button style={{...rowBtnPrimary,padding:"12px 20px",fontSize:".85rem",opacity:(busy||!tName.trim())?.4:1,cursor:(busy||!tName.trim())?"not-allowed":"pointer"}} onClick={addTeacher} disabled={busy||!tName.trim()}>Add</button>
+          <button className="scr-btn primary tall" onClick={addTeacher} disabled={busy||!tName.trim()}>Add</button>
         </div>
       </div>
 
       <div className="section">
-        <div style={secTitle}>Groups</div>
-        {groups.length===0 && <div style={{fontSize:".82rem",color:"var(--text3)",fontWeight:600,marginBottom:10}}>No groups yet.</div>}
+        <div className="scr-lbl">Groups</div>
+        {groups.length===0 && <div className="scr-empty">No groups yet.</div>}
         {groups.map(g=>(
-          <div key={g.id} style={{padding:"12px 14px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,marginBottom:8}}>
+          <div key={g.id} className="scr-card">
             <div>
-              <div style={{fontWeight:800,fontSize:".95rem",overflowWrap:"anywhere"}}>{g.name}</div>
-              <div style={{fontSize:".72rem",color:"var(--text2)",fontWeight:600,marginTop:3,lineHeight:1.5,overflowWrap:"anywhere"}}>{teacherName(g.teacher_id) ? ("👤 "+teacherName(g.teacher_id)) : "No teacher"} · {schedSummary(g.schedule)}</div>
-              <div style={rowActions}>
-                <button style={rowBtn} onClick={()=>setGEdit({id:g.id,name:g.name,schedule:(g.schedule||[]).map(s=>({day:s.day,start_time:s.start_time||s.time||"",end_time:s.end_time||""})),teacher_id:g.teacher_id||""})}>Edit</button>
-                <button style={rowBtnDanger} onClick={()=>askDeleteGroup(g)}>Delete</button>
+              <div className="scr-card-t">{g.name}</div>
+              <div className="scr-card-s">{teacherName(g.teacher_id) ? ("👤 "+teacherName(g.teacher_id)) : "No teacher"} · {schedSummary(g.schedule)}</div>
+              <div className="scr-acts">
+                <button className="scr-btn" onClick={()=>setGEdit({id:g.id,name:g.name,schedule:(g.schedule||[]).map(s=>({day:s.day,start_time:s.start_time||s.time||"",end_time:s.end_time||""})),teacher_id:g.teacher_id||""})}>Edit</button>
+                <button className="scr-btn danger" onClick={()=>askDeleteGroup(g)}>Delete</button>
               </div>
             </div>
           </div>
         ))}
-        <button className="btn" style={{marginTop:8}} onClick={()=>setGEdit({name:"",schedule:[],teacher_id:""})}>+ New Group</button>
+        <button className="scr-btn primary wide" style={{marginTop:10}} onClick={()=>setGEdit({name:"",schedule:[],teacher_id:""})}>+ New Group</button>
       </div>
 
       {del && (
@@ -3126,8 +3178,10 @@ function PgManage({ biz, onBack, onSaveTeacher, onDeleteTeacher, onSaveGroup, on
             <div style={{fontSize:".85rem",color:"var(--text2)",fontWeight:600,lineHeight:1.5,marginBottom:4}}>“{del.name}” will be permanently removed.</div>
             {del.warn && <div style={{fontSize:".82rem",color:"var(--partial)",fontWeight:700,lineHeight:1.5,marginBottom:4}}>{del.warn}</div>}
             <div style={{display:"flex",gap:8,marginTop:16}}>
-              <button className="btn-ghost" style={{flex:1,padding:"12px",marginTop:0}} onClick={()=>setDel(null)} disabled={busy}>Cancel</button>
-              <button style={{flex:1,padding:"12px",background:"var(--red)",border:"none",borderRadius:12,color:"#fff",fontWeight:800,cursor:"pointer"}} onClick={confirmDelete} disabled={busy}>{busy?"…":"Delete"}</button>
+              <button className="scr-btn" style={{flex:1,textAlign:"center"}} onClick={()=>setDel(null)} disabled={busy}>Cancel</button>
+              {/* Filled red, not outlined: this is the confirm, so it should
+                  look like the thing that does the deleting. */}
+              <button className="scr-btn" style={{flex:1,textAlign:"center",background:"var(--red)",borderColor:"var(--red)",color:"#fff",fontWeight:800}} onClick={confirmDelete} disabled={busy}>{busy?"…":"Delete"}</button>
             </div>
           </div>
         </div>
@@ -3203,7 +3257,7 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
           <div style={{width:24}} />
         </div>
         <div className="section">
-          <div style={lbl}>Who is this link for?</div>
+          <div className="scr-lbl" style={{marginTop:16}}>Who is this link for?</div>
           <select className="inp" value={form.groupId||""} onChange={e=>setForm(f=>({...f,groupId:e.target.value}))}>
             <option value="">Any class — the family chooses</option>
             {groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
@@ -3213,7 +3267,7 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
               ? "Everyone using this link is registered for that one class."
               : (groups.length ? "The form shows your classes and their times so the family can pick one." : "You have no classes yet, so the form will just take the student's details.")}
           </div>
-          <div style={lbl}>Label <span style={{textTransform:"none",letterSpacing:0,fontWeight:600,color:"var(--text3)"}}>— optional, only you see it</span></div>
+          <div className="scr-lbl" style={{marginTop:16}}>Label <span style={{textTransform:"none",letterSpacing:0,fontWeight:600,color:"var(--text3)"}}>— optional, only you see it</span></div>
           <input className="inp" placeholder="e.g. Autumn flyer" value={form.label} onChange={e=>setForm(f=>({...f,label:e.target.value}))} />
           <div style={{...meta,marginTop:8}}>Handy when you have several links out and want to know which one people used.</div>
           <button className="btn" style={{marginTop:20}} onClick={createLink} disabled={busy}>{busy?"…":"Create Link"}</button>
@@ -3344,7 +3398,7 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
             </div>
             {groups.length>0 && (
               <>
-                <div style={lbl}>Class</div>
+                <div className="scr-lbl" style={{marginTop:16}}>Class</div>
                 <select className="inp" value={decide.groupId||""} onChange={e=>setDecide(d=>({...d,groupId:e.target.value}))}>
                   <option value="">— No class —</option>
                   {groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
@@ -3356,7 +3410,7 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
             )}
             {levels.length>0 && (
               <>
-                <div style={lbl}>Level</div>
+                <div className="scr-lbl" style={{marginTop:16}}>Level</div>
                 <select className="inp" value={decide.levelId||""} onChange={e=>setDecide(d=>({...d,levelId:e.target.value}))}>
                   <option value="">{"No level — default €"+(biz.fee||0)+"/mo"}</option>
                   {levels.map(l=><option key={l.id} value={l.id}>{l.name+" — €"+l.fee+"/mo"}</option>)}
