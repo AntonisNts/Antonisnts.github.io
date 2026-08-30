@@ -46,7 +46,7 @@ const sb = window.supabase.createClient(SB_URL, SB_KEY);
 function bizFromRow(b, cardRows) {
   const cards = {};
   (cardRows||[]).forEach(c => { cards[c.id] = { id:c.id, name:c.name, level:c.level||null, shareCode:c.share_code, pin:c.pin, phone:c.phone||"", payments:c.payments||{}, history:c.history||[], groupId:c.group_id||null, groupName:c.group_name||"", lessonSchedule:c.lesson_schedule||[], enrollmentStart:c.enrollment_start_month||null, pausedMonths:c.paused_months||[], feeHistory:c.fee_history||[] }; });
-  return { id:b.id, bizCode:b.biz_code, name:b.name, type:b.type, accent:b.accent||null, fee:Number(b.fee), year:b.year, email:b.contact_email||"", inactiveMonths:b.inactive_months||[], levels:b.levels||[], customCardImage:b.custom_card_image||null, cards };
+  return { id:b.id, bizCode:b.biz_code, name:b.name, type:b.type, accent:b.accent||null, icon:b.icon||null, fee:Number(b.fee), year:b.year, email:b.contact_email||"", inactiveMonths:b.inactive_months||[], levels:b.levels||[], customCardImage:b.custom_card_image||null, cards };
 }
 // Resolve a card's effective group: prefer the real group (group_id -> groups
 // table) and fall back to the legacy free-text group_name / per-card schedule
@@ -90,7 +90,7 @@ async function loadMyCards() {
   return (Array.isArray(data) ? data : []).map(e => ({
     cardId: e.card.id,
     childId: e.card.child_id || null,
-    biz: { id:e.business.biz_code, bizCode:e.business.biz_code, name:e.business.name, type:e.business.type, accent:e.business.accent||null, fee:Number(e.business.fee), year:e.business.year, inactiveMonths:e.business.inactive_months||[], levels:e.business.levels||[], customCardImage:e.business.custom_card_image||null },
+    biz: { id:e.business.biz_code, bizCode:e.business.biz_code, name:e.business.name, type:e.business.type, accent:e.business.accent||null, icon:e.business.icon||null, fee:Number(e.business.fee), year:e.business.year, inactiveMonths:e.business.inactive_months||[], levels:e.business.levels||[], customCardImage:e.business.custom_card_image||null },
     card: { name:e.card.name, level:e.card.level||null, shareCode:e.card.share_code, payments:e.card.payments||{}, history:e.card.history||[], groupId:e.card.group_id||null, group:e.card.group||null, groupName:e.card.group_name||"", lessonSchedule:e.card.lesson_schedule||[], enrollmentStart:e.card.enrollment_start_month||null, pausedMonths:e.card.paused_months||[], feeHistory:e.card.fee_history||[] }
   }));
 }
@@ -155,6 +155,11 @@ function relTime(iso) {
   return then.toLocaleDateString("en-GB", { day:"numeric", month:"short", year: then.getFullYear()===new Date().getFullYear()?undefined:"numeric" });
 }  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; const MFULL = ["January","February","March","April","May","June","July","August","September","October","November","December"]; const MGREEK = ["Ιανουαρίου","Φεβρουαρίου","Μαρτίου","Απριλίου","Μαΐου","Ιουνίου","Ιουλίου","Αυγούστου","Σεπτεμβρίου","Οκτωβρίου","Νοεμβρίου","Δεκεμβρίου"]; const TYPES = ["English","Greek","Mathematics","Sciences","Swimming","Karate","Taekwondo","Gymnastics","Dance","Ballet","Football","Music","Art","Chess","Computer","Yoga","Pilates","Other"];  const PAL = {   Swimming:    {bg1:"#0ea5e9",bg2:"#0c4a6e",acc:"#38bdf8",icon:"🏊"},   Karate:      {bg1:"#dc2626",bg2:"#7f1d1d",acc:"#f87171",icon:"🥋"},   Taekwondo:   {bg1:"#dc2626",bg2:"#7f1d1d",acc:"#f87171",icon:"🥋"},   Dance:       {bg1:"#a855f7",bg2:"#581c87",acc:"#d8b4fe",icon:"💃"},   Ballet:      {bg1:"#ec4899",bg2:"#831843",acc:"#f9a8d4",icon:"🩰"},   Music:       {bg1:"#10b981",bg2:"#064e3b",acc:"#6ee7b7",icon:"🎵"},   Football:    {bg1:"#16a34a",bg2:"#14532d",acc:"#86efac",icon:"⚽"},   English:     {bg1:"#6366f1",bg2:"#312e81",acc:"#a5b4fc",icon:"📚"},   Greek:       {bg1:"#6366f1",bg2:"#312e81",acc:"#a5b4fc",icon:"📖"},   Mathematics: {bg1:"#8b5cf6",bg2:"#4c1d95",acc:"#c4b5fd",icon:"📐"},   Gymnastics:  {bg1:"#d946ef",bg2:"#701a75",acc:"#f0abfc",icon:"🤸"},   Art:         {bg1:"#f97316",bg2:"#7c2d12",acc:"#fdba74",icon:"🎨"},   Chess:       {bg1:"#ca8a04",bg2:"#713f12",acc:"#fde047",icon:"♟"},   Computer:    {bg1:"#0891b2",bg2:"#164e63",acc:"#67e8f9",icon:"💻"},   Other:       {bg1:"#6366f1",bg2:"#312e81",acc:"#a5b4fc",icon:"⭐"}, }; const PAID = { Swimming:"#38bdf8", Karate:"#fb7185", Taekwondo:"#fb7185", Dance:"#c084fc", Ballet:"#f472b6", Music:"#34d399", Football:"#4ade80", English:"#818cf8", Greek:"#818cf8", Mathematics:"#a78bfa", Gymnastics:"#e879f9", Art:"#fb923c", Chess:"#facc15", Computer:"#22d3ee", Other:"#818cf8" }; function getPal(type) { const p = PAL[type] || PAL.Other; return { ...p, paid: PAID[type] || PAID.Other }; }
 
+// The icons a school can choose from: every distinct one already in PAL, in
+// the order the categories are listed, so nothing new is invented and the set
+// cannot drift from the categories it came from.
+const ICONS = (() => { const seen = []; TYPES.forEach(t => { const i = (PAL[t]||PAL.Other).icon; if (seen.indexOf(i) < 0) seen.push(i); }); return seen; })();
+
 // Owner-chosen accent themes. The accent used to be derived from the business
 // CATEGORY (getPal), so a school whose category was "Other" was stuck with
 // violet and could only change colour by mis-stating what it teaches. A theme
@@ -186,7 +191,11 @@ const THEMES = {
 function bizPal(biz) {
   const base = getPal(biz && biz.type);
   const t = (biz && biz.accent) ? THEMES[biz.accent] : null;
-  return t ? { ...base, acc:t.acc, bg1:t.bg1, bg2:t.bg2, paid:t.paid } : base;
+  const p = t ? { ...base, acc:t.acc, bg1:t.bg1, bg2:t.bg2, paid:t.paid } : base;
+  // A school that teaches something the category list does not name was stuck
+  // with the star. An owner-chosen icon overrides the category's, the same way
+  // an owner-chosen accent overrides the category's colour.
+  return (biz && biz.icon) ? { ...p, icon: biz.icon } : p;
 }
 
 // Presentation helper: the palette accents are 6-digit hex, and the skin needs
@@ -810,12 +819,12 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
       <button className="btn" style={{marginTop:8}} onClick={doCreate} disabled={busy}>{busy?"…":"Create Business"}</button>
     </div>
   );
-}  function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
+}  function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
       the two can never fall out of step. Grouped by what the owner is trying
       to do rather than by when each screen happened to be built. */
    const SET_GROUPS = [
      ["Students",      [["📅","Months","Manage active/inactive months",onMonths],["🎓","Levels","Edit student levels & fees",onLevels],["👥","Groups","Weekly schedule by group",onGroups],["🗂️","Manage","Create groups & assign teachers",onManage]]],
-     ["Appearance",    [["🎨","Colour","Pick your accent colour",onTheme],["🖼️","Card","Choose card design",onCustomCard]]],
+     ["Appearance",    [["🎨","Colour","Pick your accent colour",onTheme],["🏫","Icon","Choose your school's icon",onIcon],["🖼️","Card","Choose card design",onCustomCard]]],
      ["Communication", [["🔔","Remind","Send payment reminders",onRemind],["📣","Announcements","Post news to parents & students",onAnnouncements],["📝","Registration","Public sign-up links & requests",onRegistrations,pendingRegs]]],
      ["Data",          [["📤","Export","Download payment records",onExport]]],
    ];   const hasImg = !!biz.customCardImage;   const headerBg = hasImg ? "#000" : "linear-gradient(160deg,"+alphaHex(p.acc,.22)+" 0%,#131315 100%)";    const filtered = allCards     .filter(c=>{       if (levelFilter==="all") return true;       if (levelFilter==="none") return !c.level;       return c.level && c.level.id===levelFilter;     })     .filter(c=>!search||(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.shareCode||"").toLowerCase().includes(search.toLowerCase()))     .sort((a,b)=>{       if (sort==="owed") {         const oA=getStudentMonthStatus(a,biz,year).owedTotal;         const oB=getStudentMonthStatus(b,biz,year).owedTotal;         return oB-oA;       }       if (sort==="progress") { return monthsPaid(b.payments||{},year,inactive.concat(b.pausedMonths||[]),b.enrollmentStart)-monthsPaid(a.payments||{},year,inactive.concat(a.pausedMonths||[]),a.enrollmentStart); }       return (a.name||"").localeCompare(b.name||"");     });
@@ -1549,7 +1558,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
     if (data && data.locked) { setErr("Too many attempts. Try again in 15 minutes."); return; }
     if (!data) { setErr("Wrong code or PIN."); return; }
     const b = data.business, c = data.card;
-    const biz = { id:b.biz_code, bizCode:b.biz_code, name:b.name, type:b.type, accent:b.accent||null, fee:Number(b.fee), year:b.year, inactiveMonths:b.inactive_months||[], levels:b.levels||[], customCardImage:b.custom_card_image||null };
+    const biz = { id:b.biz_code, bizCode:b.biz_code, name:b.name, type:b.type, accent:b.accent||null, icon:b.icon||null, fee:Number(b.fee), year:b.year, inactiveMonths:b.inactive_months||[], levels:b.levels||[], customCardImage:b.custom_card_image||null };
     const card = { name:c.name, level:c.level||null, shareCode:c.share_code, enrollmentStart:c.enrollment_start_month||null, pausedMonths:c.paused_months||[], feeHistory:c.fee_history||[], payments:c.payments||{}, history:c.history||[], groupId:c.group_id||null, group:c.group||null, groupName:c.group_name||"", lessonSchedule:c.lesson_schedule||[] };
     // Read the seen marker ONCE, when the card is opened. Reading it on every
     // render meant the first render advanced it and the next one — expanding
@@ -1728,7 +1737,53 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
       <button className="btn" disabled={!dirty} onClick={()=>onSave(sel||null)}>Save Colour</button>
     </div>
   );
-}  function PgCustomCard({ biz, onBack, onSave }) {   const [preview, setPreview] = useState(biz.customCardImage||null);   const [err, setErr] = useState("");   const p = bizPal(biz);   const fileRef = useRef(null);   function handleFile(e) {     const file = e.target.files[0];     if (!file) return;     if (file.size > 2*1024*1024) { setErr("Image must be under 2MB."); return; }     if (!file.type.startsWith("image/")) { setErr("Please select an image file."); return; }     setErr("");     const reader = new FileReader();     reader.onload = ev => setPreview(ev.target.result);     reader.readAsDataURL(file);   }   const previewBg = preview ? "#000" : "linear-gradient(135deg,"+p.bg1+","+p.bg2+")";   return (     <div className="reg-page" style={{"--accent":p.acc}}>       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>         <button className="tb-back" onClick={onBack}>←</button>         <h2>Card Design</h2>       </div>       <p>Upload a custom background for student cards. Max 2MB.</p>       <div style={{borderRadius:22,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,.4)",marginBottom:20,position:"relative",background:previewBg}}>         {preview && <img src={preview} alt="" style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%",objectFit:"cover",opacity:0.45}} />}         <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"linear-gradient(180deg,rgba(0,0,0,.5) 0%,rgba(0,0,0,.75) 100%)"}} />         <div style={{position:"relative",zIndex:2,padding:20}}>           <div style={{fontSize:".7rem",fontWeight:800,color:p.acc,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}}>{p.icon} {biz.type}</div>           <div style={{fontSize:"1.2rem",fontWeight:800,color:"#fff",marginBottom:2}}>{biz.name}</div>           <div style={{fontSize:".78rem",color:"rgba(255,255,255,.5)",fontWeight:700,marginBottom:16}}>{biz.bizCode}</div>           <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:5}}>             {MONTHS.map((m,mi)=>(               <div key={mi} style={{borderRadius:10,padding:"6px 2px",textAlign:"center",background:mi<3?"rgba(255,255,255,.25)":"rgba(255,255,255,.08)"}}>                 <div style={{fontSize:".5rem",color:"rgba(255,255,255,.5)",fontWeight:700}}>{m}</div>                 <div style={{fontSize:".75rem",fontWeight:800,color:"#fff"}}>{m.slice(0,1)}</div>               </div>             ))}           </div>         </div>       </div>       {err && <div className="err" style={{marginBottom:12}}>{err}</div>}       <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFile} />       <button className="btn" onClick={()=>fileRef.current.click()}>Upload Image</button>       {preview && <button onClick={()=>setPreview(null)} className="btn-ghost" style={{color:"var(--red)"}}>Remove Custom Image</button>}       <button className="btn" style={{marginTop:10,background:"var(--green)"}} onClick={()=>onSave(preview)}>Save Card Design</button>     </div>   ); }  function PgCreateBusiness({ email, onCreated, onLogout }) {
+}
+
+function PgIcon({ biz, onBack, onSave }) {
+  const [sel, setSel] = useState(biz.icon || "");
+  const base = getPal(biz.type);
+  const p = bizPal(biz);
+  const shown = sel || base.icon;
+  const dirty = (sel || "") !== (biz.icon || "");
+  return (
+    <div className="reg-page" style={{"--accent":p.acc}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
+        <button className="tb-back" onClick={onBack}>&larr;</button>
+        <h2>Icon</h2>
+      </div>
+      <p>Pick the icon for your school. It appears on every student&rsquo;s card, so parents and students see it too.</p>
+      {/* The same preview the Colour screen uses, so the choice is judged where
+          it will actually be read rather than in a grid on its own. */}
+      <div style={{borderRadius:22,overflow:"hidden",marginBottom:20,background:"linear-gradient(135deg,"+p.bg1+","+p.bg2+")",boxShadow:"0 8px 32px rgba(0,0,0,.4)"}}>
+        <div style={{padding:"18px 20px 20px"}}>
+          <div style={{fontSize:".68rem",fontWeight:800,color:p.acc,textTransform:"uppercase",letterSpacing:".1em",marginBottom:3}}>{shown} {biz.type}</div>
+          <div style={{fontSize:"1.2rem",fontWeight:800,color:"#fff"}}>{biz.name}</div>
+          <div style={{fontSize:".78rem",color:"rgba(255,255,255,.5)",fontWeight:700,marginTop:2}}>{biz.bizCode}</div>
+        </div>
+      </div>
+      <div className="ws-lbl">School Icon</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:10,margin:"0 0 18px"}}>
+        {ICONS.map(ic=>{
+          const on = shown === ic;
+          return (
+            <button key={ic} onClick={()=>setSel(ic)} aria-label={"Icon "+ic} aria-pressed={on} title={ic}
+              style={{width:52,height:52,borderRadius:16,padding:0,cursor:"pointer",fontSize:"1.5rem",lineHeight:1,
+                background:on?alphaHex(p.acc,.18):"rgba(255,255,255,.06)",
+                border:on?("2px solid "+p.acc):"1px solid var(--border)"}}>{ic}</button>
+          );
+        })}
+      </div>
+      {biz.icon && (
+        <button className="btn-ghost" style={{marginTop:0,marginBottom:10}} onClick={()=>setSel("")}>
+          Use my category&rsquo;s default icon
+        </button>
+      )}
+      <button className="btn" disabled={!dirty} onClick={()=>onSave(sel||null)}>Save Icon</button>
+    </div>
+  );
+}
+
+function PgCustomCard({ biz, onBack, onSave }) {   const [preview, setPreview] = useState(biz.customCardImage||null);   const [err, setErr] = useState("");   const p = bizPal(biz);   const fileRef = useRef(null);   function handleFile(e) {     const file = e.target.files[0];     if (!file) return;     if (file.size > 2*1024*1024) { setErr("Image must be under 2MB."); return; }     if (!file.type.startsWith("image/")) { setErr("Please select an image file."); return; }     setErr("");     const reader = new FileReader();     reader.onload = ev => setPreview(ev.target.result);     reader.readAsDataURL(file);   }   const previewBg = preview ? "#000" : "linear-gradient(135deg,"+p.bg1+","+p.bg2+")";   return (     <div className="reg-page" style={{"--accent":p.acc}}>       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>         <button className="tb-back" onClick={onBack}>←</button>         <h2>Card Design</h2>       </div>       <p>Upload a custom background for student cards. Max 2MB.</p>       <div style={{borderRadius:22,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,.4)",marginBottom:20,position:"relative",background:previewBg}}>         {preview && <img src={preview} alt="" style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%",objectFit:"cover",opacity:0.45}} />}         <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"linear-gradient(180deg,rgba(0,0,0,.5) 0%,rgba(0,0,0,.75) 100%)"}} />         <div style={{position:"relative",zIndex:2,padding:20}}>           <div style={{fontSize:".7rem",fontWeight:800,color:p.acc,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}}>{p.icon} {biz.type}</div>           <div style={{fontSize:"1.2rem",fontWeight:800,color:"#fff",marginBottom:2}}>{biz.name}</div>           <div style={{fontSize:".78rem",color:"rgba(255,255,255,.5)",fontWeight:700,marginBottom:16}}>{biz.bizCode}</div>           <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:5}}>             {MONTHS.map((m,mi)=>(               <div key={mi} style={{borderRadius:10,padding:"6px 2px",textAlign:"center",background:mi<3?"rgba(255,255,255,.25)":"rgba(255,255,255,.08)"}}>                 <div style={{fontSize:".5rem",color:"rgba(255,255,255,.5)",fontWeight:700}}>{m}</div>                 <div style={{fontSize:".75rem",fontWeight:800,color:"#fff"}}>{m.slice(0,1)}</div>               </div>             ))}           </div>         </div>       </div>       {err && <div className="err" style={{marginBottom:12}}>{err}</div>}       <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFile} />       <button className="btn" onClick={()=>fileRef.current.click()}>Upload Image</button>       {preview && <button onClick={()=>setPreview(null)} className="btn-ghost" style={{color:"var(--red)"}}>Remove Custom Image</button>}       <button className="btn" style={{marginTop:10,background:"var(--green)"}} onClick={()=>onSave(preview)}>Save Card Design</button>     </div>   ); }  function PgCreateBusiness({ email, onCreated, onLogout }) {
   const [v, setV] = useState({name:"",type:TYPES[0],fee:""});
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -3889,6 +3944,12 @@ async function doUpdateCard(updates){
     const { error } = await sb.from("businesses").update({accent}).eq("id",bizId);
     if(error){pop(error.message,"err");} else {pop(accent?"Colour saved!":"Back to your category colour");}
   }
+  async function doSaveIcon(icon){
+    setDb(d=>({businesses:{...d.businesses,[bizId]:{...d.businesses[bizId],icon}}}));
+    setView("dashboard");
+    const { error } = await sb.from("businesses").update({icon}).eq("id",bizId);
+    if(error){pop(error.message,"err");} else {pop(icon?"Icon saved!":"Back to your category icon");}
+  }
   async function doSaveCard(img){
     let url=img;
     if (img && img.indexOf("data:")===0){
@@ -3939,7 +4000,7 @@ async function doUpdateCard(updates){
         {view==="register" && <PgRegister onBack={()=>setView("login")} onCreated={onRegistered} />}
         {view==="student" && <PgStudent onBack={()=>setView("landing")} />}
         {view==="parentAuth" && <PgParentAuth onBack={()=>setView("landing")} />}
-        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} />}
+        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onIcon={()=>goView("icon")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} />}
         {view==="addCard" && biz && <PgAddCard biz={biz} onBack={()=>setView("dashboard")} onCreate={doAddCard} />}
         {view==="import" && biz && <PgImport biz={biz} onBack={()=>setView("dashboard")} onImport={doImportStudents} />}
         {view==="reveal" && revealCard && <PgReveal biz={biz} card={revealCard} onDone={()=>{setRevealCard(null);setView("dashboard");}} />}
@@ -3948,6 +4009,7 @@ async function doUpdateCard(updates){
         {view==="levels" && biz && <PgManageLevels biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveLevels} />}
         {view==="customCard" && biz && <PgCustomCard biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveCard} />}
         {view==="theme" && biz && <PgTheme biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveAccent} />}
+        {view==="icon" && biz && <PgIcon biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveIcon} />}
         {view==="export" && biz && <PgExport biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="remind" && biz && <PgRemind biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="announcements" && biz && <PgAnnouncements biz={biz} onBack={()=>setView("dashboard")} />}
