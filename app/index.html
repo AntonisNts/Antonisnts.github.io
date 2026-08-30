@@ -478,7 +478,8 @@ function cardFee(card, biz) { return (card.level&&card.level.fee) ? card.level.f
 .scr-btn.primary:hover{filter:brightness(1.08);background:var(--accent);}
 .scr-btn.danger{background:transparent;color:var(--red);border-color:rgba(239,68,68,.32);font-weight:800;}
 .scr-btn.danger:hover{background:rgba(239,68,68,.1);}
-.scr-btn:disabled{opacity:.4;cursor:not-allowed;}
+.scr-btn:disabled{opacity:.45;cursor:not-allowed;}
+.scr-btn.primary:disabled{background:var(--bg3);border-color:var(--border);color:var(--text3);opacity:1;}
 .scr-btn.wide{width:100%;padding:14px;}
 .scr-btn.tall{align-self:stretch;padding:0 20px;}
 /* A selectable filter chip is not a button — it reports state rather than
@@ -1337,7 +1338,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
   const levelSummary = card.level ? ("Level: "+card.level.name+" · €"+feeForMonth(card,biz,new Date().getMonth())+"/mo") : ("Default · €"+feeForMonth(card,biz,new Date().getMonth())+"/mo");
 
   return (
-    <div className="page" style={{"--accent":p.acc}}>
+    <div className="page scr" style={{"--accent":p.acc}}>
       <div className="topbar">
         <button className="tb-back" onClick={onBack}>←</button>
         <h2 style={{fontSize:"var(--fs-stat)",fontWeight:800}}>{card.name}</h2>
@@ -1377,8 +1378,8 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
           </div>
         )}
         <div className="btn-row">
-          <button className="btn-add" onClick={doPreview} disabled={!amount||+amount<=0}>Add Payment</button>
-          <button className="btn-undo" onClick={doUndo}>↩ Undo</button>
+          <button className="scr-btn primary" style={{flex:1,padding:16,fontSize:".95rem",textAlign:"center"}} onClick={doPreview} disabled={!amount||+amount<=0}>Add Payment</button>
+          <button className="scr-btn" style={{flex:1,padding:16,fontSize:".92rem",textAlign:"center"}} onClick={doUndo}>↩ Undo</button>
         </div>
       </div>
 
@@ -1402,8 +1403,8 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
               );
             }) : <div style={{padding:"12px 14px",background:"var(--bg2)",borderRadius:12,marginBottom:8,fontSize:".88rem",color:"var(--text2)",fontWeight:700}}>Payment recorded in history</div>}
             <div style={{display:"flex",gap:10,marginTop:16}}>
-              <button style={{flex:1,padding:"13px",border:"1px solid var(--border)",borderRadius:12,background:"rgba(255,255,255,.06)",color:"var(--text)",fontFamily:"var(--f)",fontWeight:800,fontSize:".9rem",cursor:"pointer"}} onClick={()=>setConfirm(null)}>Cancel</button>
-              <button style={{flex:2,padding:"13px",border:"none",borderRadius:12,background:"var(--accent)",color:"var(--accent-ink)",fontFamily:"var(--f)",fontWeight:800,fontSize:".9rem",cursor:"pointer"}} onClick={doConfirm}>Confirm Payment</button>
+              <button className="scr-btn" style={{flex:1,padding:"13px",fontSize:".9rem",textAlign:"center"}} onClick={()=>setConfirm(null)}>Cancel</button>
+              <button className="scr-btn primary" style={{flex:2,padding:"13px",fontSize:".9rem",textAlign:"center"}} onClick={doConfirm}>Confirm Payment</button>
             </div>
           </div>
         </div>
@@ -1418,8 +1419,8 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
               {"Undo €"+(hist[0].amount||0).toFixed(0)+" payment covering "+coveredMonths(hist[0]).map(mi=>MFULL[mi]).join(", ")+"? This will remove the recorded amount."}
             </div>
             <div style={{display:"flex",gap:10}}>
-              <button style={{flex:1,padding:"13px",border:"1px solid var(--border)",borderRadius:12,background:"rgba(255,255,255,.06)",color:"var(--text)",fontFamily:"var(--f)",fontWeight:800,fontSize:".9rem",cursor:"pointer"}} onClick={()=>setUndoAsk(false)}>Cancel</button>
-              <button style={{flex:2,padding:"13px",border:"none",borderRadius:12,background:"var(--red)",color:"#fff",fontFamily:"var(--f)",fontWeight:800,fontSize:".9rem",cursor:"pointer"}} onClick={doUndoConfirm}>Undo</button>
+              <button className="scr-btn" style={{flex:1,padding:"13px",fontSize:".9rem",textAlign:"center"}} onClick={()=>setUndoAsk(false)}>Cancel</button>
+              <button className="scr-btn" style={{flex:2,padding:"13px",fontSize:".9rem",textAlign:"center",background:"var(--red)",borderColor:"var(--red)",color:"#fff"}} onClick={doUndoConfirm}>Undo</button>
             </div>
           </div>
         </div>
@@ -1431,7 +1432,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
             <div className="ws-t" style={{marginBottom:0}}>Payment History</div>
             <div style={{display:"flex",gap:4}}>
               {[["EN","EN"],["EL","EL"]].map(([v,l])=>(
-                <button key={v} onClick={()=>setSendLang(v)} style={{padding:"4px 10px",borderRadius:99,border:"1px solid "+(sendLang===v?"var(--accent)":"var(--border)"),background:sendLang===v?"var(--accent)":"rgba(255,255,255,.06)",color:sendLang===v?"var(--accent-ink)":"var(--text2)",fontFamily:"var(--f)",fontWeight:800,fontSize:".68rem",cursor:"pointer"}}>{l}</button>
+                <button key={v} onClick={()=>setSendLang(v)} className={"scr-chip"+(sendLang===v?" on":"")} style={{padding:"4px 10px",fontSize:".68rem"}}>{l}</button>
               ))}
             </div>
           </div>
@@ -1449,14 +1450,14 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
                 </div>
                 <div style={{display:"flex",gap:6,marginTop:12}}>
                   {[["whatsapp","WhatsApp","#25D366","var(--accent-ink)"],["viber","Viber","#7360F2","#fff"],["sms","SMS","var(--accent)","var(--accent-ink)"]].map(([v,l,bg,ink])=>(
-                    <button key={v} onClick={()=>sendReceipt(h,v)} disabled={!card.phone&&v!=="viber"} style={{flex:1,padding:"9px",borderRadius:99,border:(chan===v?"2px solid #fff":"none"),background:((!card.phone&&v!=="viber")?"var(--bg3)":bg),color:((!card.phone&&v!=="viber")?"var(--text3)":ink),fontFamily:"var(--f)",fontWeight:800,fontSize:".72rem",cursor:((!card.phone&&v!=="viber")?"not-allowed":"pointer"),opacity:((!card.phone&&v!=="viber")?.45:1)}}>{l}</button>
+                    <button key={v} onClick={()=>sendReceipt(h,v)} disabled={!card.phone&&v!=="viber"} className="scr-btn" style={{flex:1,padding:"9px",fontSize:".72rem",textAlign:"center",border:(chan===v?"2px solid #fff":"none"),background:((!card.phone&&v!=="viber")?"var(--bg3)":bg),color:((!card.phone&&v!=="viber")?"var(--text3)":ink),opacity:((!card.phone&&v!=="viber")?.45:1)}}>{l}</button>
                   ))}
                 </div>
                 {h.receipt_sent_at && <div style={{fontSize:".68rem",color:"var(--green)",fontWeight:700,marginTop:8}}>✓ Receipt sent</div>}
               </div>
             );
           })}
-          {hist.length>3 && <button onClick={()=>setShowAllHist(s=>!s)} style={{width:"100%",background:"transparent",border:"none",color:"var(--accent)",fontFamily:"var(--f)",fontWeight:800,fontSize:".78rem",cursor:"pointer",padding:"8px"}}>{showAllHist?"Show less":("Show more ("+(hist.length-3)+")")}</button>}
+          {hist.length>3 && <button className="scr-link" onClick={()=>setShowAllHist(s=>!s)} style={{width:"100%",padding:"8px"}}>{showAllHist?"Show less":("Show more ("+(hist.length-3)+")")}</button>}
         </div>
       )}
 
@@ -1482,13 +1483,13 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
                 </select>
                 <p style={{fontSize:".72rem",color:"var(--text2)",margin:"8px 0 0",lineHeight:1.5}}>Months before {MFULL[effMonth]} keep the current fee; {MFULL[effMonth]} onward uses €{(pendingLevel&&pendingLevel.fee)||biz.fee}/mo.</p>
                 <div className="btn-row">
-                  <button className="btn-add" onClick={()=>{
+                  <button className="scr-btn primary" style={{flex:1,padding:16,fontSize:".95rem",textAlign:"center"}} onClick={()=>{
                     const newFee=(pendingLevel&&pendingLevel.fee)?pendingLevel.fee:biz.fee;
                     let fh=(card.feeHistory&&card.feeHistory.length)?card.feeHistory.slice():[{from:0,fee:cardFee(card,biz)}];
                     fh=fh.filter(p=>p.from!==effMonth); fh.push({from:effMonth,fee:newFee}); fh.sort((a,b)=>a.from-b.from);
                     onUpdate({level:pendingLevel,feeHistory:fh}); setPendingLevel(undefined);
                   }}>Apply from {MFULL[effMonth]}</button>
-                  <button className="btn-undo" onClick={()=>setPendingLevel(undefined)}>Cancel</button>
+                  <button className="scr-btn" style={{flex:1,padding:16,fontSize:".92rem",textAlign:"center"}} onClick={()=>setPendingLevel(undefined)}>Cancel</button>
                 </div>
               </div>
             )}
@@ -1507,13 +1508,13 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
         <div className="ws-lbl" style={{marginTop:14}}>Preferred Channel</div>
         <div style={{display:"flex",gap:6}}>
           {[["whatsapp","WhatsApp"],["viber","Viber"],["sms","SMS"]].map(([v,l])=>(
-            <button key={v} onClick={()=>setChan(v)} style={{flex:1,padding:"11px 6px",borderRadius:99,border:"1px solid "+(chan===v?"var(--accent)":"var(--border)"),background:chan===v?"var(--accent)":"rgba(255,255,255,.06)",color:chan===v?"var(--accent-ink)":"var(--text2)",fontFamily:"var(--f)",fontWeight:800,fontSize:".78rem",cursor:"pointer"}}>{l}</button>
+            <button key={v} onClick={()=>setChan(v)} className={"scr-chip"+(chan===v?" on":"")} style={{flex:1,padding:"11px 6px",fontSize:".78rem",textAlign:"center"}}>{l}</button>
           ))}
         </div>
         <div className="ws-lbl" style={{marginTop:14}}>Receipt Language</div>
         <div style={{display:"flex",gap:6}}>
           {[["EN","English"],["EL","Ελληνικά"]].map(([v,l])=>(
-            <button key={v} onClick={()=>setLang(v)} style={{flex:1,padding:"11px 6px",borderRadius:99,border:"1px solid "+(lang===v?"var(--accent)":"var(--border)"),background:lang===v?"var(--accent)":"rgba(255,255,255,.06)",color:lang===v?"var(--accent-ink)":"var(--text2)",fontFamily:"var(--f)",fontWeight:800,fontSize:".78rem",cursor:"pointer"}}>{l}</button>
+            <button key={v} onClick={()=>setLang(v)} className={"scr-chip"+(lang===v?" on":"")} style={{flex:1,padding:"11px 6px",fontSize:".78rem",textAlign:"center"}}>{l}</button>
           ))}
         </div>
         <div className="ws-lbl" style={{marginTop:14}}>Enrollment Start (optional)</div>
@@ -1530,7 +1531,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
           <div key={i} style={{marginBottom:10,padding:"10px",background:"var(--bg)",borderRadius:12,border:"1px solid var(--border)"}}>
             <div style={{display:"flex",gap:6,alignItems:"center"}}>
               <select className="ws-inp" style={{flex:1}} value={row.day} onChange={e=>setSched(s=>s.map((r,j)=>j===i?{...r,day:e.target.value}:r))}>{SCHED_DAYS.map(d=><option key={d} value={d}>{d}</option>)}</select>
-              <button type="button" onClick={()=>setSched(s=>s.filter((_,j)=>j!==i))} aria-label="Remove" style={{background:"transparent",border:"1px solid var(--border)",borderRadius:10,minWidth:44,height:52,color:"var(--red)",fontWeight:800,fontSize:"1.1rem",cursor:"pointer",flexShrink:0}}>×</button>
+              <button type="button" className="scr-btn danger" onClick={()=>setSched(s=>s.filter((_,j)=>j!==i))} aria-label="Remove" style={{minWidth:44,height:52,padding:0,fontSize:"1.1rem",flexShrink:0}}>×</button>
             </div>
             <div style={{display:"flex",gap:6,alignItems:"center",marginTop:6}}>
               <input className="ws-inp" style={{flex:1}} type="time" value={row.start_time||""} onChange={e=>setSched(s=>s.map((r,j)=>j===i?{...r,start_time:e.target.value}:r))} />
@@ -1539,9 +1540,9 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
             </div>
           </div>
         ))}
-        {sched.length<5 && <button type="button" onClick={()=>setSched(s=>[...s,{day:"Monday",start_time:"17:00",end_time:"18:00"}])} className="btn-undo" style={{width:"100%",flex:"none",marginTop:2}}>+ Add another day</button>}</>)}
+        {sched.length<5 && <button type="button" className="scr-btn wide" style={{marginTop:2}} onClick={()=>setSched(s=>[...s,{day:"Monday",start_time:"17:00",end_time:"18:00"}])}>+ Add another day</button>}</>)}
         {groupId && <div style={{fontSize:".72rem",color:"var(--text3)",fontWeight:600,marginTop:10,lineHeight:1.5}}>Schedule is managed by the group (edit it in 🗂️ Manage).</div>}
-        <button className="btn-add" style={{marginTop:14}} disabled={!sName.trim()} onClick={()=>{onUpdate({name:sName.trim(),phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupId:groupId||null,lessonSchedule:sched.filter(r=>r.day&&r.start_time)}); setSendLang(lang);}}>Save Settings</button>
+        <button className="scr-btn primary wide" style={{marginTop:14}} disabled={!sName.trim()} onClick={()=>{onUpdate({name:sName.trim(),phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupId:groupId||null,lessonSchedule:sched.filter(r=>r.day&&r.start_time)}); setSendLang(lang);}}>Save Settings</button>
         </div>}
       </div>
 
@@ -1559,7 +1560,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
         <div className="info-box" style={{margin:"14px 0"}}>
           <strong style={{color:"var(--text)"}}>Paused: </strong>{pausedDraft.length===0?"None":pausedDraft.slice().sort((a,b)=>a-b).map(mi=>MONTHS[mi]).join(", ")}
         </div>
-        <button className="btn-add" onClick={()=>onUpdate({pausedMonths:pausedDraft})}>Save Paused Months</button>
+        <button className="scr-btn primary wide" onClick={()=>onUpdate({pausedMonths:pausedDraft})}>Save Paused Months</button>
         </div>}
       </div>
 
@@ -1575,7 +1576,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
         <div style={{fontSize:".78rem",color:"var(--text2)",fontWeight:700,margin:"16px 0 8px"}}>Send the code &amp; PIN to the parent:</div>
         <div style={{display:"flex",gap:8}}>
           {[["whatsapp","WhatsApp","#25D366","var(--accent-ink)"],["viber","Viber","#7360F2","#fff"],["sms","SMS","var(--accent)","var(--accent-ink)"]].map(([ch,lbl,col,ink])=>(
-            <button key={ch} onClick={()=>{ const msg="Hi! Use this code to track "+card.name+"'s lessons on PayStamp.\nCode: "+card.shareCode+"\nPIN: "+(card.pin||"")+"\n\nRegister & link your child:\nhttps://paystamp.app/app/\n\nStep-by-step guide:\nhttps://paystamp.app/help/"; const enc=encodeURIComponent(msg); const digits=(card.phone||"").replace(/\D/g,""); const plus=(card.phone||"").replace(/[^\d+]/g,""); if(ch==="whatsapp") window.open("https://wa.me/"+digits+"?text="+enc,"_blank"); else if(ch==="sms") window.location.href="sms:"+plus+"?&body="+enc; else { try{ if(navigator.clipboard) navigator.clipboard.writeText(msg); }catch(e){} window.location.href="viber://forward?text="+enc; } }} style={{flex:1,padding:"11px 6px",borderRadius:99,border:"none",background:col,color:ink,fontFamily:"var(--f)",fontWeight:800,fontSize:".8rem",cursor:"pointer"}}>{lbl}</button>
+            <button key={ch} onClick={()=>{ const msg="Hi! Use this code to track "+card.name+"'s lessons on PayStamp.\nCode: "+card.shareCode+"\nPIN: "+(card.pin||"")+"\n\nRegister & link your child:\nhttps://paystamp.app/app/\n\nStep-by-step guide:\nhttps://paystamp.app/help/"; const enc=encodeURIComponent(msg); const digits=(card.phone||"").replace(/\D/g,""); const plus=(card.phone||"").replace(/[^\d+]/g,""); if(ch==="whatsapp") window.open("https://wa.me/"+digits+"?text="+enc,"_blank"); else if(ch==="sms") window.location.href="sms:"+plus+"?&body="+enc; else { try{ if(navigator.clipboard) navigator.clipboard.writeText(msg); }catch(e){} window.location.href="viber://forward?text="+enc; } }} className="scr-btn" style={{flex:1,padding:"11px 6px",fontSize:".8rem",textAlign:"center",border:"none",background:col,color:ink}}>{lbl}</button>
           ))}
         </div>
       </div>
