@@ -147,6 +147,17 @@
   .tier-feat{list-style:none;margin:20px 0 0;padding-top:18px;border-top:1px solid var(--border);}
   .tier-feat li{font-size:.86rem;color:var(--text2);font-weight:500;padding-left:24px;position:relative;margin-bottom:9px;}
   .tier-feat li::before{content:'✓';position:absolute;left:0;color:var(--c,var(--green));font-weight:800;}
+  /* The shared feature set. Deliberately quieter than the tier cards: it is
+     reassurance under the decision, not a fifth thing to choose between. */
+  .incl{margin-top:26px;border:1px solid var(--border);border-radius:20px;padding:24px 22px;
+    background:rgba(255,255,255,.02);}
+  .incl-h{text-align:center;font-size:.7rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--text2);margin-bottom:18px;}
+  .incl-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr;gap:10px 26px;}
+  @media (min-width:640px){ .incl-list{grid-template-columns:repeat(2,1fr);} }
+  @media (min-width:1000px){ .incl-list{grid-template-columns:repeat(3,1fr);} }
+  .incl-list li{font-size:.86rem;color:var(--text2);font-weight:500;padding-left:24px;position:relative;}
+  .incl-list li::before{content:'✓';position:absolute;left:0;color:var(--green);font-weight:800;}
   .price-foot{text-align:center;color:var(--text3);font-size:.78rem;font-weight:600;margin-top:30px;}
 
   /* ---------- final cta ---------- */
@@ -269,7 +280,7 @@
   <div class="wrap">
     <div class="sec-label">Pricing</div>
     <h2>Simple pricing, one school at a time</h2>
-    <p class="sec-sub">Every plan includes the parent portal, reminders, exports and unlimited months. Cancel whenever you like.</p>
+    <p class="sec-sub">Every plan is the complete app. The only difference is how many students you track. Cancel whenever you like.</p>
     <div class="price-badge" id="price-badge" hidden><span>Founding Member Pricing — locked in for life</span></div>
     <p class="price-urgency" id="price-urgency" hidden></p>
     <div class="toggle">
@@ -279,6 +290,10 @@
       </div>
     </div>
     <div class="tiers" id="tiers"></div>
+    <div class="incl" id="incl">
+      <div class="incl-h">In every plan, at every price</div>
+      <ul class="incl-list" id="incl-list"></ul>
+    </div>
     <p class="price-foot" id="price-foot"></p>
   </div>
 </section>
@@ -324,45 +339,44 @@ var SHOW_FOUNDING_PRICING = true;
    the line disappears without touching anything else. */
 var FOUNDING_SPOTS_REMAINING = 20;
 
+/* Every plan is the complete app — capacity is the only thing being sold, so
+   the feature set lives here once rather than being repeated down four cards.
+   Anything added to the product goes in this one list. */
+var INCLUDED_IN_EVERY_PLAN = [
+  "Full payment tracking — 12-month grid, partial payments, fee history",
+  "Pause months, levels and per-student fees",
+  "Business + Family + Student portals",
+  "Self-registration links with approval",
+  "One-tap reminders (WhatsApp/Viber/SMS/email)",
+  "Payment receipts in English and Greek",
+  "Groups & teachers with weekly timetable",
+  "Announcements feed, targeted or school-wide",
+  "Bulk student import",
+  "Export — summary, detailed, CSV",
+  "Branding — accent colors, school icon, card image",
+  "Dashboard filters, sort and bulk actions"
+];
+
 var PRICING_TIERS = [
-  /* limit    the headline capacity, shown under the tier name.
-     features the bullet list; an empty array renders no list at all. */
+  /* limit    the headline capacity, shown under the tier name. This is the
+              only real difference between the plans.
+     features anything true of THIS plan alone; an empty array renders no list
+              at all. Priority support is the one thing that isn't universal,
+              because unlike a feature it costs more to actually deliver. */
   { id:"starter",   name:"Starter",   limit:"Up to 25 students",
-    features:[
-      "Full payment tracking (12-month grid, partial payments, fee history, pause months, levels)",
-      "Business + Family + Student portals",
-      "Self-registration links",
-      "One-tap reminders (WhatsApp/Viber/SMS/email)",
-      "Payment receipts (EN/GR)",
-      "Branding (accent colors, icon)"
-    ],
+    features:["Email support"],
     monthly:{ regularPrice:12, foundingPrice:10 },
     annual: { regularPrice:115, foundingPrice:96  } },
   { id:"growth",    name:"Growth",    limit:"Up to 80 students",
-    features:[
-      "Everything in Starter",
-      "Groups & teachers with weekly timetable",
-      "Announcements feed",
-      "Bulk student import",
-      "Export (summary/detailed/CSV)"
-    ],
+    features:["Email support"],
     monthly:{ regularPrice:24, foundingPrice:20 },
     annual: { regularPrice:230, foundingPrice:192 } },
   { id:"pro",       name:"Pro",       limit:"Up to 200 students",
-    features:[
-      "Everything in Growth",
-      "Custom card background image",
-      "Bulk delete & advanced dashboard filters/sort",
-      "Priority support"
-    ],
+    features:["Priority support"],
     monthly:{ regularPrice:39, foundingPrice:35 },
     annual: { regularPrice:374, foundingPrice:336 } },
   { id:"unlimited", name:"Unlimited", limit:"Unlimited students",
-    features:[
-      "Everything",
-      "Unlimited students",
-      "No caps"
-    ],
+    features:["Priority support"],
     monthly:{ regularPrice:59, foundingPrice:55 },
     annual: { regularPrice:566, foundingPrice:528 } }
 ];
@@ -378,6 +392,17 @@ var PRICING_TIERS = [
   if (!tiersEl) return;
 
   var euro = function (n) { return "\u20AC" + n; };
+
+  /* Rendered once: it does not vary by billing period or by the offer. */
+  (function () {
+    var list = document.getElementById("incl-list");
+    if (!list) return;
+    INCLUDED_IN_EVERY_PLAN.forEach(function (f) {
+      var li = document.createElement("li");
+      li.textContent = f;
+      list.appendChild(li);
+    });
+  })();
 
   function render() {
     var suffix = period === "monthly" ? "/mo" : "/year";
