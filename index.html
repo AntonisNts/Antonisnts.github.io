@@ -135,7 +135,8 @@
   .tiers .tier:nth-child(2){--c:#67e8f9;--ct:rgba(103,232,249,.13);}
   .tiers .tier:nth-child(3){--c:#6ee7b7;--ct:rgba(110,231,183,.13);}
   .tiers .tier:nth-child(4){--c:#fdba74;--ct:rgba(253,186,116,.12);}
-  .tier-name{font-size:.7rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--c,var(--accent));margin-bottom:14px;}
+  .tier-name{font-size:.7rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--c,var(--accent));margin-bottom:4px;}
+  .tier-limit{font-size:.82rem;font-weight:600;color:var(--text2);margin-bottom:14px;}
   /* The regular price: smaller, grey, struck through, sitting above the one
      that is actually being offered. */
   .tier-was{font-size:.95rem;font-weight:600;color:var(--text3);text-decoration:line-through;
@@ -143,7 +144,7 @@
   .tier-now{display:flex;align-items:baseline;gap:5px;}
   .tier-now b{font-size:2.3rem;font-weight:800;letter-spacing:-.03em;color:var(--c,var(--accent));line-height:1;}
   .tier-now span{font-size:.85rem;font-weight:700;color:var(--text2);}
-  .tier-feat{list-style:none;margin:20px 0 0;}
+  .tier-feat{list-style:none;margin:20px 0 0;padding-top:18px;border-top:1px solid var(--border);}
   .tier-feat li{font-size:.86rem;color:var(--text2);font-weight:500;padding-left:24px;position:relative;margin-bottom:9px;}
   .tier-feat li::before{content:'✓';position:absolute;left:0;color:var(--c,var(--green));font-weight:800;}
   .price-foot{text-align:center;color:var(--text3);font-size:.78rem;font-weight:600;margin-top:30px;}
@@ -324,19 +325,46 @@ var SHOW_FOUNDING_PRICING = true;
 var FOUNDING_SPOTS_REMAINING = 20;
 
 var PRICING_TIERS = [
-  /* features: [] renders no list. Add strings when the plan limits are
-     decided, e.g. features: ["Up to 30 students", "1 teacher account"] —
-     left empty rather than guessed, so nothing unintended can go live. */
-  { id:"starter",   name:"Starter",   features:[],
+  /* limit    the headline capacity, shown under the tier name.
+     features the bullet list; an empty array renders no list at all. */
+  { id:"starter",   name:"Starter",   limit:"Up to 25 students",
+    features:[
+      "Unlimited payment tracking",
+      "Public self-registration links",
+      "Business + Family + Student portals",
+      "Parent QR codes for every student",
+      "Live revenue dashboard",
+      "Cloud backup & restore",
+      "Email support"
+    ],
     monthly:{ regularPrice:12, foundingPrice:10 },
     annual: { regularPrice:115, foundingPrice:96  } },
-  { id:"growth",    name:"Growth",    features:[],
+  { id:"growth",    name:"Growth",    limit:"Up to 80 students",
+    features:[
+      "Everything in Starter",
+      "Up to 80 student profiles",
+      "Groups & teachers dashboard",
+      "Announcements feed",
+      "Bulk student import",
+      "Class & subject analytics"
+    ],
     monthly:{ regularPrice:24, foundingPrice:20 },
     annual: { regularPrice:230, foundingPrice:192 } },
-  { id:"pro",       name:"Pro",       features:[],
+  { id:"pro",       name:"Pro",       limit:"Up to 200 students",
+    features:[
+      "Everything in Growth",
+      "Up to 200 student profiles",
+      "Advanced analytics & exports",
+      "Priority phone & email support"
+    ],
     monthly:{ regularPrice:39, foundingPrice:35 },
     annual: { regularPrice:374, foundingPrice:336 } },
-  { id:"unlimited", name:"Unlimited", features:[],
+  { id:"unlimited", name:"Unlimited", limit:"Unlimited students",
+    features:[
+      "Everything in Pro",
+      "Unlimited student profiles",
+      "No caps, ever"
+    ],
     monthly:{ regularPrice:59, foundingPrice:55 },
     annual: { regularPrice:566, foundingPrice:528 } }
 ];
@@ -381,6 +409,13 @@ var PRICING_TIERS = [
       name.className = "tier-name";
       name.textContent = tier.name;
       el.appendChild(name);
+
+      if (tier.limit) {
+        var lim = document.createElement("div");
+        lim.className = "tier-limit";
+        lim.textContent = tier.limit;
+        el.appendChild(lim);
+      }
 
       var was = document.createElement("div");
       was.className = "tier-was";
