@@ -5,182 +5,46 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Terms of Service — PayStamp</title>
 <style>html,body{margin:0;padding:0;background:#f7f8fa;}</style>
-<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
-<script>
-  // Force the classic JSX runtime (React.createElement via the React UMD
-  // global). Newer Babel defaults preset-react to the AUTOMATIC runtime, which
-  // injects an ESM import of react/jsx-runtime — illegal in a classic <script>
-  // ("Cannot use import statement outside a module") and blanks the page.
-  Babel.registerPreset("react-classic", { presets: [[Babel.availablePresets["react"], { runtime: "classic" }]] });
-</script>
 </head>
 <body>
-<div id="root"></div>
-<script type="text/babel" data-presets="react-classic">
-const { useMemo } = React;
-
-/**
- * LegalPage — renders a markdown legal document (Privacy, Terms, or DPA).
- *
- * Usage:
- *   <LegalPage title="Privacy Policy" markdown={privacyMarkdown} onBack={() => navigate("/")} />
- *
- * Pass the .md file content as a string in `markdown`. A tiny built-in parser
- * handles the subset of markdown these documents use (# headings, **bold**,
- * - bullets, paragraphs). No external markdown library required.
- */
-function LegalPage({ title, markdown, onBack, footer }) {
-  const blocks = useMemo(() => parseMarkdown(markdown), [markdown]);
-
-  return (
-    <div style={styles.page}>
-      <div style={styles.container}>
-        {onBack && (
-          <button onClick={onBack} style={styles.back}>
-            ← Back
-          </button>
-        )}
-        <article style={styles.article}>
-          {blocks.map((block, i) => renderBlock(block, i))}
-        </article>
-        {footer && <div style={styles.footer}>{footer}</div>}
-      </div>
+<div id="root">
+  <div style="min-height:100vh;background:#f7f8fa;padding:32px 16px;box-sizing:border-box">
+    <div style="max-width:720px;margin:0 auto">
+      <a href="/" style="background:none;border:none;color:#2563eb;font-size:15px;cursor:pointer;padding:4px 0;margin-bottom:16px;display:inline-block;text-decoration:none;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">← Back</a>
+      <article style="background:#ffffff;border-radius:12px;padding:40px 36px;box-shadow:0 1px 3px rgba(0,0,0,0.06);color:#1f2937;line-height:1.65;font-size:16px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+          <h1 style="font-size:26px;font-weight:700;margin:0 0 8px;color:#111827">Terms of Service</h1>
+          <p style="margin:0 0 14px"><strong>Last updated: 31 August 2026</strong></p>
+          <p style="margin:0 0 14px">These Terms of Service ("Terms") govern your use of PayStamp ("the Service"), operated by <strong>Antonis Christodoulou, Cyprus</strong> ("we", "us", "the Operator"). By creating an account or using the Service, you ("the Business") agree to these Terms. If you do not agree, do not use the Service.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">1. What PayStamp is</h2>
+          <p style="margin:0 0 14px">PayStamp is a web application that lets lesson-based businesses (such as swimming schools, music schools and sports clubs) record student enrolment and track which students have paid for lessons. Payments themselves are handled in cash directly between you and your customers. PayStamp only records that a payment has been confirmed by you.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">2. Your account</h2>
+          <p style="margin:0 0 14px">You are responsible for keeping your login credentials secure and for all activity under your account. You must provide accurate information and are responsible for the accuracy of the student and payment records you enter.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">3. Your responsibilities regarding data</h2>
+          <p style="margin:0 0 14px">You decide what student and parent data to enter into PayStamp and why. In data protection terms, <strong>you are the Data Controller</strong> of that data and the Operator is your <strong>Data Processor</strong>. You are responsible for:</p>
+          <ul style="margin:0 0 14px;padding-left:22px"><li style="margin:0 0 6px">Having a lawful basis to collect and process your students' data.</li><li style="margin:0 0 6px">Informing your students or their parents about how their data is used (our Privacy Policy can help, but the relationship is yours).</li><li style="margin:0 0 6px">Only entering data you are entitled to process.</li><li style="margin:0 0 6px">Handling requests from your customers about their data (for example requests for access or deletion).</li></ul>
+          <p style="margin:0 0 14px">The separate <strong>Data Processing Agreement</strong> sets out how the Operator processes data on your behalf and forms part of these Terms.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">4. Acceptable use</h2>
+          <p style="margin:0 0 14px">You agree not to use the Service to store unlawful content, to attempt to access other Businesses' data, to disrupt or probe the Service's security, or to use it in any way that breaks applicable law.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">5. Availability</h2>
+          <p style="margin:0 0 14px">We aim to keep the Service available and working, but we provide it on an "as is" and "as available" basis. We may carry out maintenance, updates or changes, and the Service may occasionally be unavailable. We do not guarantee uninterrupted access.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">6. Security</h2>
+          <p style="margin:0 0 14px">We apply appropriate technical and organisational measures to protect data, including encrypted connections, access controls that isolate each Business's data, and EU-based hosting. No internet-connected system can be guaranteed completely secure. We do not warrant that the Service will be free from all vulnerabilities, but we work to keep risk low and to address issues promptly.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">7. Limitation of liability</h2>
+          <p style="margin:0 0 14px">To the maximum extent permitted by law, the Operator is not liable for indirect or consequential losses, loss of profits, or loss of data arising from your use of the Service. Nothing in these Terms limits liability that cannot be limited by law. Because PayStamp records payment status that you confirm, you remain responsible for verifying your own financial records.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">8. Fees</h2>
+          <p style="margin:0 0 14px">PayStamp is a paid service. Current pricing is published on our pricing page. We reserve the right to change pricing with at least 30 days’ notice to existing subscribers; founding-member pricing, where offered, is locked for the duration stated at signup.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">9. Termination</h2>
+          <p style="margin:0 0 14px">You may stop using the Service and request deletion of your data at any time. We may suspend or terminate access if these Terms are breached. On termination, your data is deleted in line with the Privacy Policy.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">10. Changes to these Terms</h2>
+          <p style="margin:0 0 14px">We may update these Terms from time to time. If we make a material change, we will take reasonable steps to notify you. Continued use after a change means you accept the updated Terms.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">11. Governing law</h2>
+          <p style="margin:0 0 14px">These Terms are governed by the laws of the <strong>Republic of Cyprus</strong>, and any dispute is subject to the exclusive jurisdiction of the Cyprus courts.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">12. Contact</h2>
+          <p style="margin:0 0 14px"><strong>paystampapp@gmail.com</strong></p>
+      </article>
+      <div style="text-align:center;padding:20px 4px 8px;font-size:14px;color:#6b7280"><span><a href="/privacy" style="color:#2563eb;text-decoration:none">Privacy Policy</a>   ·   <a href="/terms" style="color:#2563eb;text-decoration:none">Terms of Service</a></span></div>
     </div>
-  );
-}
-
-/* ---------- minimal markdown parsing ---------- */
-
-function parseMarkdown(md = "") {
-  const lines = md.replace(/\r\n/g, "\n").split("\n");
-  const blocks = [];
-  let paragraph = [];
-  let list = [];
-
-  const flushParagraph = () => {
-    if (paragraph.length) {
-      blocks.push({ type: "p", text: paragraph.join(" ") });
-      paragraph = [];
-    }
-  };
-  const flushList = () => {
-    if (list.length) {
-      blocks.push({ type: "ul", items: [...list] });
-      list = [];
-    }
-  };
-
-  for (const raw of lines) {
-    const line = raw.trimEnd();
-    if (!line.trim()) {
-      flushParagraph();
-      flushList();
-      continue;
-    }
-    if (line.startsWith("# ")) {
-      flushParagraph(); flushList();
-      blocks.push({ type: "h1", text: line.slice(2) });
-    } else if (line.startsWith("## ")) {
-      flushParagraph(); flushList();
-      blocks.push({ type: "h2", text: line.slice(3) });
-    } else if (line.startsWith("### ")) {
-      flushParagraph(); flushList();
-      blocks.push({ type: "h3", text: line.slice(4) });
-    } else if (/^[-*]\s+/.test(line)) {
-      flushParagraph();
-      list.push(line.replace(/^[-*]\s+/, ""));
-    } else {
-      flushList();
-      paragraph.push(line);
-    }
-  }
-  flushParagraph();
-  flushList();
-  return blocks;
-}
-
-// Inline **bold** -> <strong>, leaving the rest as text.
-function renderInline(text) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return <strong key={i}>{part.slice(2, -2)}</strong>;
-    }
-    return <span key={i}>{part}</span>;
-  });
-}
-
-function renderBlock(block, i) {
-  switch (block.type) {
-    case "h1":
-      return <h1 key={i} style={styles.h1}>{renderInline(block.text)}</h1>;
-    case "h2":
-      return <h2 key={i} style={styles.h2}>{renderInline(block.text)}</h2>;
-    case "h3":
-      return <h3 key={i} style={styles.h3}>{renderInline(block.text)}</h3>;
-    case "ul":
-      return (
-        <ul key={i} style={styles.ul}>
-          {block.items.map((item, j) => (
-            <li key={j} style={styles.li}>{renderInline(item)}</li>
-          ))}
-        </ul>
-      );
-    default:
-      return <p key={i} style={styles.p}>{renderInline(block.text)}</p>;
-  }
-}
-
-/* ---------- styles (inline so the component is drop-in) ---------- */
-
-const styles = {
-  page: {
-    minHeight: "100vh",
-    background: "#f7f8fa",
-    padding: "32px 16px",
-    boxSizing: "border-box",
-  },
-  container: {
-    maxWidth: 720,
-    margin: "0 auto",
-  },
-  back: {
-    background: "none",
-    border: "none",
-    color: "#2563eb",
-    fontSize: 15,
-    cursor: "pointer",
-    padding: "4px 0",
-    marginBottom: 16,
-  },
-  article: {
-    background: "#ffffff",
-    borderRadius: 12,
-    padding: "40px 36px",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-    color: "#1f2937",
-    lineHeight: 1.65,
-    fontSize: 16,
-    fontFamily:
-      "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-  },
-  h1: { fontSize: 26, fontWeight: 700, margin: "0 0 8px", color: "#111827" },
-  h2: { fontSize: 19, fontWeight: 600, margin: "28px 0 8px", color: "#111827" },
-  h3: { fontSize: 16, fontWeight: 600, margin: "20px 0 6px", color: "#111827" },
-  p: { margin: "0 0 14px" },
-  ul: { margin: "0 0 14px", paddingLeft: 22 },
-  li: { margin: "0 0 6px" },
-  footer: { textAlign: "center", padding: "20px 4px 8px", fontSize: 14, color: "#6b7280" },
-};
-
-
-const MARKDOWN = "# Terms of Service\n\n**Last updated: 31 August 2026**\n\nThese Terms of Service (\"Terms\") govern your use of PayStamp (\"the Service\"), operated by **Antonis Christodoulou, Cyprus** (\"we\", \"us\", \"the Operator\"). By creating an account or using the Service, you (\"the Business\") agree to these Terms. If you do not agree, do not use the Service.\n\n## 1. What PayStamp is\n\nPayStamp is a web application that lets lesson-based businesses (such as swimming schools, music schools and sports clubs) record student enrolment and track which students have paid for lessons. Payments themselves are handled in cash directly between you and your customers. PayStamp only records that a payment has been confirmed by you.\n\n## 2. Your account\n\nYou are responsible for keeping your login credentials secure and for all activity under your account. You must provide accurate information and are responsible for the accuracy of the student and payment records you enter.\n\n## 3. Your responsibilities regarding data\n\nYou decide what student and parent data to enter into PayStamp and why. In data protection terms, **you are the Data Controller** of that data and the Operator is your **Data Processor**. You are responsible for:\n\n- Having a lawful basis to collect and process your students' data.\n- Informing your students or their parents about how their data is used (our Privacy Policy can help, but the relationship is yours).\n- Only entering data you are entitled to process.\n- Handling requests from your customers about their data (for example requests for access or deletion).\n\nThe separate **Data Processing Agreement** sets out how the Operator processes data on your behalf and forms part of these Terms.\n\n## 4. Acceptable use\n\nYou agree not to use the Service to store unlawful content, to attempt to access other Businesses' data, to disrupt or probe the Service's security, or to use it in any way that breaks applicable law.\n\n## 5. Availability\n\nWe aim to keep the Service available and working, but we provide it on an \"as is\" and \"as available\" basis. We may carry out maintenance, updates or changes, and the Service may occasionally be unavailable. We do not guarantee uninterrupted access.\n\n## 6. Security\n\nWe apply appropriate technical and organisational measures to protect data, including encrypted connections, access controls that isolate each Business's data, and EU-based hosting. No internet-connected system can be guaranteed completely secure. We do not warrant that the Service will be free from all vulnerabilities, but we work to keep risk low and to address issues promptly.\n\n## 7. Limitation of liability\n\nTo the maximum extent permitted by law, the Operator is not liable for indirect or consequential losses, loss of profits, or loss of data arising from your use of the Service. Nothing in these Terms limits liability that cannot be limited by law. Because PayStamp records payment status that you confirm, you remain responsible for verifying your own financial records.\n\n## 8. Fees\n\nPayStamp is a paid service. Current pricing is published on our pricing page. We reserve the right to change pricing with at least 30 days’ notice to existing subscribers; founding-member pricing, where offered, is locked for the duration stated at signup.\n\n## 9. Termination\n\nYou may stop using the Service and request deletion of your data at any time. We may suspend or terminate access if these Terms are breached. On termination, your data is deleted in line with the Privacy Policy.\n\n## 10. Changes to these Terms\n\nWe may update these Terms from time to time. If we make a material change, we will take reasonable steps to notify you. Continued use after a change means you accept the updated Terms.\n\n## 11. Governing law\n\nThese Terms are governed by the laws of the **Republic of Cyprus**, and any dispute is subject to the exclusive jurisdiction of the Cyprus courts.\n\n## 12. Contact\n\n**paystampapp@gmail.com**\n";
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <LegalPage title="Terms of Service" markdown={MARKDOWN} onBack={()=>{ window.location.href = "/"; }}
-    footer={<span><a href="/privacy" style={{color:"#2563eb",textDecoration:"none"}}>Privacy Policy</a>{"   \u00b7   "}<a href="/terms" style={{color:"#2563eb",textDecoration:"none"}}>Terms of Service</a></span>} />
-);
-</script>
+  </div>
+</div>
 </body>
 </html>
