@@ -1,6 +1,6 @@
 # Terms of Service
 
-**Last updated: 14 June 2026**
+**Last updated: 31 August 2026**
 
 These Terms of Service ("Terms") govern your use of PayStamp ("the Service"), operated by **Antonis Christodoulou, Cyprus** ("we", "us", "the Operator"). By creating an account or using the Service, you ("the Business") agree to these Terms. If you do not agree, do not use the Service.
 
@@ -41,7 +41,7 @@ To the maximum extent permitted by law, the Operator is not liable for indirect 
 
 ## 8. Fees
 
-The Service is currently provided **free of charge** during its pilot phase. We may introduce pricing in the future. If we do, we will give you reasonable advance notice, and any fees will apply only after you have had the opportunity to review them.
+PayStamp is a paid service. Current pricing is published on our pricing page. We reserve the right to change pricing with at least 30 days’ notice to existing subscribers; founding-member pricing, where offered, is locked for the duration stated at signup.
 
 ## 9. Termination
 
