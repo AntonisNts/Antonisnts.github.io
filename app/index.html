@@ -1769,7 +1769,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
   const paid = t ? t.paid : base.paid;
   const dirty = (sel || "") !== (biz.accent || "");
   return (
-    <div className="reg-page" style={{"--accent":acc}}>
+    <div className="reg-page scr" style={{"--accent":acc}}>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
         <button className="tb-back" onClick={onBack}>&larr;</button>
         <h2>Colour</h2>
@@ -1791,7 +1791,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
           </div>
         </div>
       </div>
-      <div className="ws-lbl">Accent Colour</div>
+      <div className="scr-lbl">Accent Colour</div>
       <div style={{display:"flex",flexWrap:"wrap",gap:12,margin:"0 0 18px"}}>
         {Object.keys(THEMES).map(k=>{
           const th = THEMES[k], on = sel===k;
@@ -1804,11 +1804,11 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
         })}
       </div>
       {biz.accent && (
-        <button className="btn-ghost" style={{marginTop:0,marginBottom:10}} onClick={()=>setSel("")}>
+        <button className="scr-btn wide" style={{marginTop:0,marginBottom:10}} onClick={()=>setSel("")}>
           Use my category&rsquo;s default colour
         </button>
       )}
-      <button className="btn" disabled={!dirty} onClick={()=>onSave(sel||null)}>Save Colour</button>
+      <button className="scr-btn primary wide" disabled={!dirty} onClick={()=>onSave(sel||null)}>Save Colour</button>
     </div>
   );
 }
@@ -1820,7 +1820,7 @@ function PgIcon({ biz, onBack, onSave }) {
   const shown = sel || base.icon;
   const dirty = (sel || "") !== (biz.icon || "");
   return (
-    <div className="reg-page" style={{"--accent":p.acc}}>
+    <div className="reg-page scr" style={{"--accent":p.acc}}>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
         <button className="tb-back" onClick={onBack}>&larr;</button>
         <h2>Icon</h2>
@@ -1835,7 +1835,7 @@ function PgIcon({ biz, onBack, onSave }) {
           <div style={{fontSize:".78rem",color:"rgba(255,255,255,.5)",fontWeight:700,marginTop:2}}>{biz.bizCode}</div>
         </div>
       </div>
-      <div className="ws-lbl">School Icon</div>
+      <div className="scr-lbl">School Icon</div>
       <div style={{display:"flex",flexWrap:"wrap",gap:10,margin:"0 0 18px"}}>
         {ICONS.map(ic=>{
           const on = shown === ic;
@@ -1848,16 +1848,16 @@ function PgIcon({ biz, onBack, onSave }) {
         })}
       </div>
       {biz.icon && (
-        <button className="btn-ghost" style={{marginTop:0,marginBottom:10}} onClick={()=>setSel("")}>
+        <button className="scr-btn wide" style={{marginTop:0,marginBottom:10}} onClick={()=>setSel("")}>
           Use my category&rsquo;s default icon
         </button>
       )}
-      <button className="btn" disabled={!dirty} onClick={()=>onSave(sel||null)}>Save Icon</button>
+      <button className="scr-btn primary wide" disabled={!dirty} onClick={()=>onSave(sel||null)}>Save Icon</button>
     </div>
   );
 }
 
-function PgCustomCard({ biz, onBack, onSave }) {   const [preview, setPreview] = useState(biz.customCardImage||null);   const [err, setErr] = useState("");   const p = bizPal(biz);   const fileRef = useRef(null);   function handleFile(e) {     const file = e.target.files[0];     if (!file) return;     if (file.size > 2*1024*1024) { setErr("Image must be under 2MB."); return; }     if (!file.type.startsWith("image/")) { setErr("Please select an image file."); return; }     setErr("");     const reader = new FileReader();     reader.onload = ev => setPreview(ev.target.result);     reader.readAsDataURL(file);   }   const previewBg = preview ? "#000" : "linear-gradient(135deg,"+p.bg1+","+p.bg2+")";   return (     <div className="reg-page" style={{"--accent":p.acc}}>       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>         <button className="tb-back" onClick={onBack}>←</button>         <h2>Card Design</h2>       </div>       <p>Upload a custom background for student cards. Max 2MB.</p>       <div style={{borderRadius:22,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,.4)",marginBottom:20,position:"relative",background:previewBg}}>         {preview && <img src={preview} alt="" style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%",objectFit:"cover",opacity:0.45}} />}         <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"linear-gradient(180deg,rgba(0,0,0,.5) 0%,rgba(0,0,0,.75) 100%)"}} />         <div style={{position:"relative",zIndex:2,padding:20}}>           <div style={{fontSize:".7rem",fontWeight:800,color:p.acc,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}}>{p.icon} {biz.type}</div>           <div style={{fontSize:"1.2rem",fontWeight:800,color:"#fff",marginBottom:2}}>{biz.name}</div>           <div style={{fontSize:".78rem",color:"rgba(255,255,255,.5)",fontWeight:700,marginBottom:16}}>{biz.bizCode}</div>           <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:5}}>             {MONTHS.map((m,mi)=>(               <div key={mi} style={{borderRadius:10,padding:"6px 2px",textAlign:"center",background:mi<3?"rgba(255,255,255,.25)":"rgba(255,255,255,.08)"}}>                 <div style={{fontSize:".5rem",color:"rgba(255,255,255,.5)",fontWeight:700}}>{m}</div>                 <div style={{fontSize:".75rem",fontWeight:800,color:"#fff"}}>{m.slice(0,1)}</div>               </div>             ))}           </div>         </div>       </div>       {err && <div className="err" style={{marginBottom:12}}>{err}</div>}       <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFile} />       <button className="btn" onClick={()=>fileRef.current.click()}>Upload Image</button>       {preview && <button onClick={()=>setPreview(null)} className="btn-ghost" style={{color:"var(--red)"}}>Remove Custom Image</button>}       <button className="btn" style={{marginTop:10,background:"var(--green)"}} onClick={()=>onSave(preview)}>Save Card Design</button>     </div>   ); }  function PgCreateBusiness({ email, onCreated, onLogout }) {
+function PgCustomCard({ biz, onBack, onSave }) {   const [preview, setPreview] = useState(biz.customCardImage||null);   const [err, setErr] = useState("");   const p = bizPal(biz);   const fileRef = useRef(null);   function handleFile(e) {     const file = e.target.files[0];     if (!file) return;     if (file.size > 2*1024*1024) { setErr("Image must be under 2MB."); return; }     if (!file.type.startsWith("image/")) { setErr("Please select an image file."); return; }     setErr("");     const reader = new FileReader();     reader.onload = ev => setPreview(ev.target.result);     reader.readAsDataURL(file);   }   const previewBg = preview ? "#000" : "linear-gradient(135deg,"+p.bg1+","+p.bg2+")";   return (     <div className="reg-page scr" style={{"--accent":p.acc}}>       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>         <button className="tb-back" onClick={onBack}>←</button>         <h2>Card Design</h2>       </div>       <p>Upload a custom background for student cards. Max 2MB.</p>       <div style={{borderRadius:22,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,.4)",marginBottom:20,position:"relative",background:previewBg}}>         {preview && <img src={preview} alt="" style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",height:"100%",objectFit:"cover",opacity:0.45}} />}         <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"linear-gradient(180deg,rgba(0,0,0,.5) 0%,rgba(0,0,0,.75) 100%)"}} />         <div style={{position:"relative",zIndex:2,padding:20}}>           <div style={{fontSize:".7rem",fontWeight:800,color:p.acc,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4}}>{p.icon} {biz.type}</div>           <div style={{fontSize:"1.2rem",fontWeight:800,color:"#fff",marginBottom:2}}>{biz.name}</div>           <div style={{fontSize:".78rem",color:"rgba(255,255,255,.5)",fontWeight:700,marginBottom:16}}>{biz.bizCode}</div>           <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:5}}>             {MONTHS.map((m,mi)=>(               <div key={mi} style={{borderRadius:10,padding:"6px 2px",textAlign:"center",background:mi<3?"rgba(255,255,255,.25)":"rgba(255,255,255,.08)"}}>                 <div style={{fontSize:".5rem",color:"rgba(255,255,255,.5)",fontWeight:700}}>{m}</div>                 <div style={{fontSize:".75rem",fontWeight:800,color:"#fff"}}>{m.slice(0,1)}</div>               </div>             ))}           </div>         </div>       </div>       {err && <div className="err" style={{marginBottom:12}}>{err}</div>}       <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFile} />       <button className="scr-btn wide" onClick={()=>fileRef.current.click()}>Upload Image</button>       {preview && <button onClick={()=>setPreview(null)} className="scr-btn danger wide" style={{marginTop:10}}>Remove Custom Image</button>}       <button className="scr-btn primary wide" style={{marginTop:10}} onClick={()=>onSave(preview)}>Save Card Design</button>     </div>   ); }  function PgCreateBusiness({ email, onCreated, onLogout }) {
   const [v, setV] = useState({name:"",type:TYPES[0],fee:""});
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -2415,7 +2415,7 @@ function PgParentSettings({ email, onBack, onDeleteAccount }) {
   const [ask, setAsk] = useState(false);
   const [busy, setBusy] = useState(false);
   return (
-    <div className="page">
+    <div className="page scr">
       <div className="topbar">
         <button className="tb-back" onClick={onBack}>←</button>
         <h2>Account</h2>
@@ -2433,7 +2433,7 @@ function PgParentSettings({ email, onBack, onDeleteAccount }) {
           <p style={{fontSize:".82rem",color:"var(--text2)",fontWeight:600,lineHeight:1.55,marginBottom:14}}>
             Deleting your family account removes your login and unlinks every student you've linked. The schools' own payment records are not affected. This cannot be undone.
           </p>
-          <button onClick={()=>setAsk(true)} style={{width:"100%",background:"transparent",border:"1px solid var(--red)",borderRadius:14,padding:"14px",fontFamily:"var(--f)",fontWeight:800,fontSize:".85rem",color:"var(--red)",cursor:"pointer"}}>Delete Family Account</button>
+          <button className="scr-btn danger wide" onClick={()=>setAsk(true)} style={{fontSize:".85rem"}}>Delete Family Account</button>
         </div>
       </div>
       {ask && (
@@ -2445,8 +2445,8 @@ function PgParentSettings({ email, onBack, onDeleteAccount }) {
             </div>
             <div style={{fontSize:".82rem",color:"var(--partial)",fontWeight:700}}>This cannot be undone.</div>
             <div style={{display:"flex",gap:8,marginTop:16}}>
-              <button className="btn-ghost" style={{flex:1,padding:"12px",marginTop:0}} onClick={()=>setAsk(false)} disabled={busy}>Cancel</button>
-              <button style={{flex:1,padding:"12px",background:"var(--red)",border:"none",borderRadius:12,color:"#fff",fontFamily:"var(--f)",fontWeight:800,fontSize:".92rem",cursor:"pointer"}}
+              <button className="scr-btn" style={{flex:1,padding:"12px",marginTop:0}} onClick={()=>setAsk(false)} disabled={busy}>Cancel</button>
+              <button className="scr-btn" style={{flex:1,padding:"12px",background:"var(--red)",borderColor:"var(--red)",color:"#fff",fontSize:".92rem"}}
                 onClick={async()=>{ setBusy(true); await onDeleteAccount(); setBusy(false); }} disabled={busy}>{busy?"Deleting…":"Delete"}</button>
             </div>
           </div>
@@ -2885,7 +2885,7 @@ function PgImport({ biz, onBack, onImport }) {
   const editInpStyle = { padding: "6px 8px", fontSize: ".85rem", fontWeight: 700, width: "100%" };
 
   return (
-    <div className="page" style={{"--accent":p.acc}}>
+    <div className="page scr" style={{"--accent":p.acc}}>
       <div className="topbar">
         <button className="tb-back" onClick={step === "preview" ? () => setStep("mapping") : onBack}>←</button>
         <h2>Import Students</h2>
@@ -2903,7 +2903,7 @@ function PgImport({ biz, onBack, onImport }) {
             <div className="ws-t">Upload File / Ανέβασμα Αρχείου</div>
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }}
               onChange={e => handleFile(e.target.files && e.target.files[0])} />
-            <button className="btn" onClick={() => fileRef.current && fileRef.current.click()} disabled={busy}>
+            <button className="scr-btn primary wide" onClick={() => fileRef.current && fileRef.current.click()} disabled={busy}>
               {busy ? "Reading…" : "Choose File / Επιλογή Αρχείου"}
             </button>
             <div style={{ fontSize: ".72rem", color: "var(--text3)", fontWeight: 600, marginTop: 12, lineHeight: 1.5 }}>
@@ -2964,7 +2964,7 @@ function PgImport({ biz, onBack, onImport }) {
               )}
             </div>
 
-            <button className="btn" disabled={!canContinue} onClick={() => setStep("preview")}>Continue / Συνέχεια</button>
+            <button className="scr-btn primary wide" disabled={!canContinue} onClick={() => setStep("preview")}>Continue / Συνέχεια</button>
           </>
         )}
 
@@ -3035,7 +3035,7 @@ function PgImport({ biz, onBack, onImport }) {
               <div className="empty">No usable rows found in this file. / Δεν βρέθηκαν χρησιμοποιήσιμες γραμμές.</div>
             )}
 
-            <button className="btn" style={{ marginTop: 8 }} disabled={willImport === 0 || importing} onClick={doImport}>
+            <button className="scr-btn primary wide" style={{ marginTop: 8 }} disabled={willImport === 0 || importing} onClick={doImport}>
               {importing ? "Importing… / Εισαγωγή…" : ("Import " + willImport + " Students / Εισαγωγή " + willImport + " Μαθητών")}
             </button>
             {importResult && !importResult.ok && (
@@ -3054,8 +3054,8 @@ function PgImport({ biz, onBack, onImport }) {
             <div style={{ fontSize: ".78rem", color: "var(--text2)", fontWeight: 600, lineHeight: 1.6, marginBottom: 20 }}>
               {importedCount + " μαθητές εισήχθησαν επιτυχώς. Each student got a share code and PIN, visible on their card. / Κάθε μαθητής απέκτησε κωδικό και PIN, ορατά στην κάρτα του."}
             </div>
-            <button className="btn" onClick={onBack}>Done / Τέλος</button>
-            <button className="btn-ghost" onClick={reset}>Import More / Εισαγωγή Περισσότερων</button>
+            <button className="scr-btn primary wide" onClick={onBack}>Done / Τέλος</button>
+            <button className="scr-btn wide" onClick={reset}>Import More / Εισαγωγή Περισσότερων</button>
           </div>
         )}
       </div>
@@ -3254,22 +3254,15 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
   async function confirmApprove(){ setBusy(true); await onApprove(decide.req, decide.groupId||null, decide.levelId||null); setBusy(false); setDecide(null); }
 
   const lbl = {fontSize:".68rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".1em",margin:"14px 0 6px"};
-  const secTitle = {fontSize:".72rem",fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".16em",marginBottom:12};
-  // Same content-sized row buttons PgManage uses — .btn-ghost/.btn-add are
-  // full-width form buttons and would stretch across the row.
-  const rowActions = {display:"flex",gap:8,marginTop:12,flexWrap:"wrap"};
-  const rowBtn = {flex:"0 0 auto",width:"auto",padding:"9px 16px",borderRadius:10,border:"1px solid var(--border)",background:"var(--bg3)",color:"var(--text)",fontFamily:"var(--f)",fontWeight:700,fontSize:".8rem",cursor:"pointer",margin:0};
-  const rowBtnDanger = {...rowBtn,background:"transparent",color:"var(--red)",fontWeight:800};
-  const rowBtnPrimary = {...rowBtn,background:"var(--accent)",color:"var(--accent-ink)",border:"none",fontWeight:800};
-  const rowCard = {padding:"13px 15px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,marginBottom:8};
+  // Labels, cards and buttons come from the shared .scr skin now, the same as
+  // Manage and the student list — these were local copies of that pattern.
   const meta = {fontSize:".72rem",color:"var(--text2)",fontWeight:600,marginTop:3,lineHeight:1.5,overflowWrap:"anywhere"};
-  const emptyNote = {fontSize:".82rem",color:"var(--text3)",fontWeight:600,lineHeight:1.6};
   const linkA = {color:"var(--accent)",fontWeight:700,textDecoration:"none"};
 
   // ---- New link form ----
   if (form) {
     return (
-      <div className="page" style={{"--accent":p.acc}}>
+      <div className="page scr" style={{"--accent":p.acc}}>
         <div className="topbar">
           <button className="tb-back" onClick={()=>setForm(null)}>←</button>
           <h2>New Link</h2>
@@ -3289,14 +3282,14 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
           <div className="scr-lbl" style={{marginTop:16}}>Label <span style={{textTransform:"none",letterSpacing:0,fontWeight:600,color:"var(--text3)"}}>— optional, only you see it</span></div>
           <input className="inp" placeholder="e.g. Autumn flyer" value={form.label} onChange={e=>setForm(f=>({...f,label:e.target.value}))} />
           <div style={{...meta,marginTop:8}}>Handy when you have several links out and want to know which one people used.</div>
-          <button className="btn" style={{marginTop:20}} onClick={createLink} disabled={busy}>{busy?"…":"Create Link"}</button>
+          <button className="scr-btn primary wide" style={{marginTop:20}} onClick={createLink} disabled={busy}>{busy?"…":"Create Link"}</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="page" style={{"--accent":p.acc}}>
+    <div className="page scr" style={{"--accent":p.acc}}>
       <div className="topbar">
         <button className="tb-back" onClick={onBack}>←</button>
         <h2>Registration</h2>
@@ -3305,9 +3298,9 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
 
       {/* ---- Requests ---- */}
       <div className="section">
-        <div style={secTitle}>{pending.length ? ("Pending · "+pending.length) : "Pending"}</div>
+        <div className="scr-lbl">{pending.length ? ("Pending · "+pending.length) : "Pending"}</div>
         {pending.length===0 && (
-          <div style={emptyNote}>
+          <div className="scr-empty">
             Nothing waiting. Registrations sent through your links land here, and
             no student is created until you approve one.
           </div>
@@ -3316,7 +3309,7 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
           const asked = groupName(r.group_id);
           const ph = digitsOf(r.phone);
           return (
-            <div key={r.id} style={rowCard}>
+            <div key={r.id} className="scr-card">
               <div style={{fontWeight:800,fontSize:".95rem",overflowWrap:"anywhere"}}>{r.first_name+" "+r.last_name}</div>
               <div style={meta}>
                 {relTime(r.created_at)}
@@ -3330,10 +3323,10 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
                   {r.email && <a style={linkA} href={"mailto:"+r.email}>{r.email}</a>}
                 </div>
               )}
-              <div style={rowActions}>
-                <button style={rowBtnPrimary} onClick={()=>setDecide({ req:r, groupId:r.group_id||"", levelId:"" })}>Approve</button>
-                <button style={rowBtn} onClick={()=>onReject(r.id)}>Reject</button>
-                {ph && <a style={{...rowBtn,textDecoration:"none",display:"inline-block"}} href={"https://wa.me/"+ph} target="_blank" rel="noopener noreferrer">WhatsApp</a>}
+              <div className="scr-acts">
+                <button className="scr-btn primary" onClick={()=>setDecide({ req:r, groupId:r.group_id||"", levelId:"" })}>Approve</button>
+                <button className="scr-btn" onClick={()=>onReject(r.id)}>Reject</button>
+                {ph && <a className="scr-btn" style={{textDecoration:"none",display:"inline-block"}} href={"https://wa.me/"+ph} target="_blank" rel="noopener noreferrer">WhatsApp</a>}
               </div>
             </div>
           );
@@ -3345,16 +3338,16 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
           margin its heading sits directly on top of "Your links". */}
       {rejected.length>0 && (
         <div className="section" style={{marginBottom:22}}>
-          <div onClick={()=>setShowRejected(v=>!v)} style={{...secTitle,marginBottom:showRejected?12:0,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
+          <div onClick={()=>setShowRejected(v=>!v)} className="scr-lbl" style={{marginBottom:showRejected?12:0,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
             <span>Rejected · {rejected.length}</span>
             <span style={{color:"var(--text3)",letterSpacing:0}}>{showRejected?"▲":"▼"}</span>
           </div>
           {showRejected && rejected.map(r=>(
-            <div key={r.id} style={{...rowCard,opacity:.65}}>
+            <div key={r.id} className="scr-card" style={{opacity:.65}}>
               <div style={{fontWeight:700,fontSize:".9rem",overflowWrap:"anywhere"}}>{r.first_name+" "+r.last_name}</div>
               <div style={meta}>Rejected {relTime(r.decided_at||r.created_at).toLowerCase()}</div>
-              <div style={rowActions}>
-                <button style={rowBtn} onClick={()=>onUnreject(r.id)}>Undo</button>
+              <div className="scr-acts">
+                <button className="scr-btn" onClick={()=>onUnreject(r.id)}>Undo</button>
               </div>
             </div>
           ))}
@@ -3363,9 +3356,9 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
 
       {/* ---- Links ---- */}
       <div className="section">
-        <div style={secTitle}>Your links</div>
+        <div className="scr-lbl">Your links</div>
         {links.length===0 && (
-          <div style={emptyNote}>
+          <div className="scr-empty">
             A registration link is a web address you can put on a flyer, a
             WhatsApp group or your social media. Anyone who opens it fills in
             the student's details — no login, no app to install — and it arrives
@@ -3382,23 +3375,23 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
           const where = gn ? [l.label ? gn : null, sched].filter(Boolean).join(" · ") : "Family picks the class";
           const sub = [where, used>0 ? (used+" registration"+(used>1?"s":"")) : null].filter(Boolean).join(" · ");
           return (
-            <div key={l.id} style={{...rowCard,opacity:l.is_active?1:.6}}>
+            <div key={l.id} className="scr-card" style={{opacity:l.is_active?1:.6}}>
               <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                 <div style={{fontWeight:800,fontSize:".95rem",overflowWrap:"anywhere"}}>{l.label || gn || "Any class"}</div>
                 {!l.is_active && <span style={{fontSize:".62rem",fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",color:"var(--text2)",background:"var(--bg3)",borderRadius:99,padding:"3px 9px"}}>Off</span>}
               </div>
               {sub && <div style={meta}>{sub}</div>}
               <div style={{...meta,color:"var(--text3)",fontFamily:"monospace",fontSize:".68rem"}}>{url}</div>
-              <div style={rowActions}>
-                <button style={rowBtnPrimary} onClick={()=>copyLink(url,l.id)}>{copied===l.id?"Copied ✓":"Copy link"}</button>
-                {navigator.share && <button style={rowBtn} onClick={()=>shareLink(url,l.label)}>Share</button>}
-                <button style={rowBtn} onClick={()=>onSetLinkActive(l.id, !l.is_active)}>{l.is_active?"Switch off":"Switch on"}</button>
-                <button style={rowBtnDanger} onClick={()=>setDel(l)}>Delete</button>
+              <div className="scr-acts">
+                <button className="scr-btn primary" onClick={()=>copyLink(url,l.id)}>{copied===l.id?"Copied ✓":"Copy link"}</button>
+                {navigator.share && <button className="scr-btn" onClick={()=>shareLink(url,l.label)}>Share</button>}
+                <button className="scr-btn" onClick={()=>onSetLinkActive(l.id, !l.is_active)}>{l.is_active?"Switch off":"Switch on"}</button>
+                <button className="scr-btn danger" onClick={()=>setDel(l)}>Delete</button>
               </div>
             </div>
           );
         })}
-        <button className="btn" style={{marginTop:8}} onClick={()=>setForm({groupId:"",label:""})}>+ New Link</button>
+        <button className="scr-btn primary wide" style={{marginTop:8}} onClick={()=>setForm({groupId:"",label:""})}>+ New Link</button>
         {links.some(l=>l.is_active) && (
           <div style={{...meta,marginTop:12}}>
             Switching a link off stops new registrations without deleting the
@@ -3442,8 +3435,8 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
               </>
             )}
             <div style={{display:"flex",gap:8,marginTop:18}}>
-              <button className="btn-ghost" style={{flex:1,padding:"12px",marginTop:0}} onClick={()=>setDecide(null)} disabled={busy}>Cancel</button>
-              <button style={{flex:1,padding:"12px",background:"var(--accent)",border:"none",borderRadius:12,color:"var(--accent-ink)",fontFamily:"var(--f)",fontWeight:800,cursor:"pointer"}} onClick={confirmApprove} disabled={busy}>{busy?"…":"Add Student"}</button>
+              <button className="scr-btn" style={{flex:1,padding:"12px",marginTop:0}} onClick={()=>setDecide(null)} disabled={busy}>Cancel</button>
+              <button className="scr-btn primary" style={{flex:1,padding:"12px",cursor:"pointer"}} onClick={confirmApprove} disabled={busy}>{busy?"…":"Add Student"}</button>
             </div>
           </div>
         </div>
@@ -3463,8 +3456,8 @@ function PgRegistrations({ biz, onBack, onCreateLink, onSetLinkActive, onDeleteL
               off instead.
             </div>
             <div style={{display:"flex",gap:8,marginTop:16}}>
-              <button className="btn-ghost" style={{flex:1,padding:"12px",marginTop:0}} onClick={()=>setDel(null)} disabled={busy}>Cancel</button>
-              <button style={{flex:1,padding:"12px",background:"var(--red)",border:"none",borderRadius:12,color:"#fff",fontFamily:"var(--f)",fontWeight:800,cursor:"pointer"}} onClick={confirmDelete} disabled={busy}>{busy?"…":"Delete"}</button>
+              <button className="scr-btn" style={{flex:1,padding:"12px",marginTop:0}} onClick={()=>setDel(null)} disabled={busy}>Cancel</button>
+              <button className="scr-btn" style={{flex:1,padding:"12px",background:"var(--red)",borderColor:"var(--red)",color:"#fff"}} onClick={confirmDelete} disabled={busy}>{busy?"…":"Delete"}</button>
             </div>
           </div>
         </div>
