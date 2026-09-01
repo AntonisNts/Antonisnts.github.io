@@ -876,7 +876,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
     onCreated({bizCode});
   }
   return (
-    <div className="reg-page">
+    <div className="reg-page scr">
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
         <button className="tb-back" onClick={onBack}>←</button>
         <h2>Register Business</h2>
@@ -890,7 +890,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
       <div className="ig"><label>Login Email</label><input className="inp" type="email" placeholder="you@example.com" value={v.email} onChange={e=>setV(p=>({...p,email:e.target.value}))} /></div>
       <div className="ig"><label>Password (min 6 chars)</label><input className="inp" type="password" placeholder="Keep private" value={v.pin} onChange={e=>setV(p=>({...p,pin:e.target.value}))} /></div>
       {err && <div className="err">{err}</div>}
-      <button className="btn" style={{marginTop:8}} onClick={doCreate} disabled={busy}>{busy?"…":"Create Business"}</button>
+      <button className="scr-btn primary wide" style={{marginTop:8}} onClick={doCreate} disabled={busy}>{busy?"…":"Create Business"}</button>
     </div>
   );
 }  function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
@@ -1166,7 +1166,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
   const levels = biz.levels||[];
   const selLevel = levels.find(l=>l.id===levelId)||null;
   return (
-    <div className="reg-page" style={{"--accent":p.acc}}>
+    <div className="reg-page scr" style={{"--accent":p.acc}}>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
         <button className="tb-back" onClick={onBack}>←</button>
         <h2>New Card</h2>
@@ -1220,12 +1220,12 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
             </div>
           </div>
         ))}
-        {schedule.length<5 && <button type="button" onClick={()=>setSchedule(s=>[...s,{day:"Monday",start_time:"17:00",end_time:"18:00"}])} className="btn-ghost" style={{marginTop:0,padding:"12px"}}>+ Add another day</button>}
+        {schedule.length<5 && <button type="button" onClick={()=>setSchedule(s=>[...s,{day:"Monday",start_time:"17:00",end_time:"18:00"}])} className="scr-btn wide" style={{marginTop:0,padding:"12px"}}>+ Add another day</button>}
       </div>
-      <button className="btn" style={{marginTop:8}} onClick={()=>onCreate({name,level:selLevel,phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupId:groupId||null,lessonSchedule:schedule.filter(r=>r.day&&r.start_time)})}>Create Card</button>
+      <button className="scr-btn primary wide" style={{marginTop:8}} onClick={()=>onCreate({name,level:selLevel,phone:phone.trim(),preferredChannel:chan,language:lang,enrollmentStart:enroll||null,groupId:groupId||null,lessonSchedule:schedule.filter(r=>r.day&&r.start_time)})}>Create Card</button>
     </div>
   );
-}  function PgReveal({ biz, card, onDone }) {   return (     <div className="reg-page" style={{"--accent":bizPal(biz).acc}}>       <h2 style={{marginBottom:4}}>Card Created</h2>       <p>Share the code and PIN with the student.</p>       <div className="reveal-box">         <div className="rv-lbl">Student Code</div>         <div className="rv-val">{card.shareCode}</div>         <div className="rv-sep" />         <div className="rv-lbl">PIN</div>         <div className="rv-pin">{card.pin}</div>       </div>       <div className="info-box" style={{marginBottom:16}}>Write these down now.</div>       <button className="btn" onClick={onDone}>Done</button>     </div>   ); }  function PgCard({ biz, card, onBack, onUpdate, onRemove }) {
+}  function PgReveal({ biz, card, onDone }) {   return (     <div className="reg-page scr" style={{"--accent":bizPal(biz).acc}}>       <h2 style={{marginBottom:4}}>Card Created</h2>       <p>Share the code and PIN with the student.</p>       <div className="reveal-box">         <div className="rv-lbl">Student Code</div>         <div className="rv-val">{card.shareCode}</div>         <div className="rv-sep" />         <div className="rv-lbl">PIN</div>         <div className="rv-pin">{card.pin}</div>       </div>       <div className="info-box" style={{marginBottom:16}}>Write these down now.</div>       <button className="scr-btn primary wide" onClick={onDone}>Done</button>     </div>   ); }  function PgCard({ biz, card, onBack, onUpdate, onRemove }) {
   const p = bizPal(biz);   // palette accent, published as --accent on the page root
   const [amount, setAmount] = useState("");
   const [confirm, setConfirm] = useState(null);
@@ -1872,7 +1872,7 @@ function PgCustomCard({ biz, onBack, onSave }) {   const [preview, setPreview] =
     onCreated(bizCode);
   }
   return (
-    <div className="reg-page">
+    <div className="reg-page scr">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
         <h2>Create Your Business</h2>
         <button className="tb-act" onClick={onLogout}>Log out</button>
@@ -1884,7 +1884,7 @@ function PgCustomCard({ biz, onBack, onSave }) {   const [preview, setPreview] =
           {TYPES.map(t=><option key={t}>{t}</option>)}</select></div>
       <div className="ig"><label>Monthly Fee</label><input className="inp" type="number" placeholder="e.g. 50" value={v.fee} onChange={e=>setV(p=>({...p,fee:e.target.value}))} /></div>
       {err && <div className="err">{err}</div>}
-      <button className="btn" style={{marginTop:8}} onClick={doCreate} disabled={busy}>{busy?"…":"Create Business"}</button>
+      <button className="scr-btn primary wide" style={{marginTop:8}} onClick={doCreate} disabled={busy}>{busy?"…":"Create Business"}</button>
     </div>
   );
 }
@@ -1968,7 +1968,7 @@ function PgLinkChild({ onBack, onLink, kids, onAssign, onCreateChild }) {
   }
   if (linked) {
     return (
-      <div className="reg-page">
+      <div className="reg-page scr">
         <h2 style={{marginBottom:6}}>Card Linked</h2>
         <p>Assign <strong style={{color:"var(--text)"}}>{linked.name}</strong> to a child? Optional.</p>
         {kids.length>0 && (
@@ -1981,15 +1981,15 @@ function PgLinkChild({ onBack, onLink, kids, onAssign, onCreateChild }) {
         <div className="ig"><label>Or create a new child</label>
           <div style={{display:"flex",gap:8}}>
             <input className="inp" style={{flex:1}} placeholder="Child name" value={newChild} onChange={e=>setNewChild(e.target.value)} />
-            <button className="btn" style={{width:"auto",padding:"0 22px",marginTop:0}} onClick={createAndAssign}>Add</button>
+            <button className="scr-btn primary tall" onClick={createAndAssign}>Add</button>
           </div>
         </div>
-        <button className="btn-ghost" onClick={()=>onBack()}>Skip — leave Unassigned</button>
+        <button className="scr-btn wide" onClick={()=>onBack()}>Skip — leave Unassigned</button>
       </div>
     );
   }
   return (
-    <div className="reg-page">
+    <div className="reg-page scr">
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
         <button className="tb-back" onClick={onBack}>←</button>
         <h2>Link a Child</h2>
@@ -2003,7 +2003,7 @@ function PgLinkChild({ onBack, onLink, kids, onAssign, onCreateChild }) {
           onChange={e=>{setPin(e.target.value.replace(/\D/g,"").slice(0,4));setErr("");}}
           onKeyDown={e=>e.key==="Enter"&&doLink()} /></div>
       {err && <div className="err">{err}</div>}
-      <button className="btn" style={{marginTop:8}} onClick={doLink} disabled={busy}>{busy?"…":"Link Card"}</button>
+      <button className="scr-btn primary wide" style={{marginTop:8}} onClick={doLink} disabled={busy}>{busy?"…":"Link Card"}</button>
     </div>
   );
 }
