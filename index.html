@@ -114,6 +114,52 @@
   .panel a{color:var(--c,var(--accent));text-decoration:none;font-weight:800;font-size:.92rem;}
   .panel a:hover{text-decoration:underline;}
 
+  /* ---------- pricing ---------- */
+  .price-badge{display:flex;justify-content:center;margin-bottom:12px;}
+  .price-badge span{display:inline-block;font-size:.68rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:#fdba74;background:rgba(253,186,116,.12);border:1px solid rgba(253,186,116,.34);padding:7px 15px;border-radius:99px;}
+  .price-urgency{text-align:center;color:#fdba74;font-size:.86rem;font-weight:700;margin:0 auto 30px;}
+  .toggle{display:flex;justify-content:center;margin-bottom:34px;}
+  .toggle-in{display:inline-flex;gap:4px;padding:4px;border-radius:99px;background:rgba(255,255,255,.06);border:1px solid var(--border);}
+  .toggle button{background:none;border:none;border-radius:99px;padding:9px 20px;cursor:pointer;
+    font-family:var(--f);font-size:.85rem;font-weight:700;color:var(--text2);}
+  .toggle button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);font-weight:800;}
+  .tiers{display:grid;grid-template-columns:1fr;gap:16px;}
+  @media (min-width:640px){ .tiers{grid-template-columns:repeat(2,1fr);} }
+  @media (min-width:1000px){ .tiers{grid-template-columns:repeat(4,1fr);} }
+  .tier{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:20px;padding:26px 22px;
+    background:linear-gradient(160deg,var(--ct,rgba(255,255,255,.05)),#0A0C16 62%);display:flex;flex-direction:column;}
+  .tier::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;
+    background:linear-gradient(90deg,transparent,var(--c,#818cf8),transparent);}
+  .tiers .tier:nth-child(1){--c:#818cf8;--ct:rgba(129,140,248,.14);}
+  .tiers .tier:nth-child(2){--c:#67e8f9;--ct:rgba(103,232,249,.13);}
+  .tiers .tier:nth-child(3){--c:#6ee7b7;--ct:rgba(110,231,183,.13);}
+  .tiers .tier:nth-child(4){--c:#fdba74;--ct:rgba(253,186,116,.12);}
+  .tier-name{font-size:.7rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--c,var(--accent));margin-bottom:4px;}
+  .tier-limit{font-size:.82rem;font-weight:600;color:var(--text2);margin-bottom:14px;}
+  /* The regular price: smaller, grey, struck through, sitting above the one
+     that is actually being offered. */
+  .tier-was{font-size:.95rem;font-weight:600;color:var(--text3);text-decoration:line-through;
+    text-decoration-thickness:1.5px;margin-bottom:2px;min-height:1.45em;}
+  .tier-now{display:flex;align-items:baseline;gap:5px;}
+  .tier-now b{font-size:2.3rem;font-weight:800;letter-spacing:-.03em;color:var(--c,var(--accent));line-height:1;}
+  .tier-now span{font-size:.85rem;font-weight:700;color:var(--text2);}
+  .tier-feat{list-style:none;margin:20px 0 0;padding-top:18px;border-top:1px solid var(--border);}
+  .tier-feat li{font-size:.86rem;color:var(--text2);font-weight:500;padding-left:24px;position:relative;margin-bottom:9px;}
+  .tier-feat li::before{content:'✓';position:absolute;left:0;color:var(--c,var(--green));font-weight:800;}
+  /* The shared feature set. Deliberately quieter than the tier cards: it is
+     reassurance under the decision, not a fifth thing to choose between. */
+  .incl{margin-top:26px;border:1px solid var(--border);border-radius:20px;padding:24px 22px;
+    background:rgba(255,255,255,.02);}
+  .incl-h{text-align:center;font-size:.7rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--text2);margin-bottom:18px;}
+  .incl-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr;gap:10px 26px;}
+  @media (min-width:640px){ .incl-list{grid-template-columns:repeat(2,1fr);} }
+  @media (min-width:1000px){ .incl-list{grid-template-columns:repeat(3,1fr);} }
+  .incl-list li{font-size:.86rem;color:var(--text2);font-weight:500;padding-left:24px;position:relative;}
+  .incl-list li::before{content:'✓';position:absolute;left:0;color:var(--green);font-weight:800;}
+  .price-foot{text-align:center;color:var(--text3);font-size:.78rem;font-weight:600;margin-top:30px;}
+
   /* ---------- final cta ---------- */
   .final{text-align:center;}
   .final h2{margin-bottom:14px;}
@@ -135,6 +181,7 @@
     <a class="brand" href="/">PayStamp</a>
     <div class="nav-links">
       <a class="hide-sm" href="#features">Features</a>
+      <a class="hide-sm" href="#pricing">Pricing</a>
       <a class="hide-sm" href="/help">Parent Guide</a>
       <a class="nav-cta" href="/app/">Open App</a>
     </div>
@@ -229,6 +276,28 @@
   </div>
 </section>
 
+<section id="pricing">
+  <div class="wrap">
+    <div class="sec-label">Pricing</div>
+    <h2>Simple pricing, one school at a time</h2>
+    <p class="sec-sub">Every plan is the complete app. The only difference is how many students you track. Cancel whenever you like.</p>
+    <div class="price-badge" id="price-badge" hidden><span>Founding Member Pricing — locked in for life</span></div>
+    <p class="price-urgency" id="price-urgency" hidden></p>
+    <div class="toggle">
+      <div class="toggle-in" role="group" aria-label="Billing period">
+        <button type="button" id="bill-monthly" aria-pressed="true">Monthly</button>
+        <button type="button" id="bill-annual" aria-pressed="false">Annual</button>
+      </div>
+    </div>
+    <div class="tiers" id="tiers"></div>
+    <div class="incl" id="incl">
+      <div class="incl-h">In every plan, at every price</div>
+      <ul class="incl-list" id="incl-list"></ul>
+    </div>
+    <p class="price-foot" id="price-foot"></p>
+  </div>
+</section>
+
 <section class="final">
   <div class="wrap">
     <h2>Ready when you are</h2>
@@ -252,6 +321,171 @@
     <div class="lang">Διαθέσιμο στα Ελληνικά και στα Αγγλικά</div>
   </div>
 </footer>
+
+<script>
+/* ===========================================================================
+   PRICING CONFIG
+   ---------------------------------------------------------------------------
+   Everything the pricing section shows is read from here. Nothing about the
+   founding offer is written into the markup, so turning it off is one value.
+
+   SHOW_FOUNDING_PRICING = false  keeps every founding price below intact but
+   displays the regular prices plainly: no strikethrough, no badge, no
+   spots-remaining line. Flip it back to true and the offer returns unchanged.
+   =========================================================================== */
+var SHOW_FOUNDING_PRICING = true;
+
+/* Shown as the urgency line under the section header. Set to 0 (or null) and
+   the line disappears without touching anything else. */
+var FOUNDING_SPOTS_REMAINING = 20;
+
+/* Every plan is the complete app — capacity is the only thing being sold, so
+   the feature set lives here once rather than being repeated down four cards.
+   Anything added to the product goes in this one list. */
+var INCLUDED_IN_EVERY_PLAN = [
+  "Full payment tracking — 12-month grid, partial payments, fee history",
+  "Pause months, levels and per-student fees",
+  "Business + Family + Student portals",
+  "Self-registration links with approval",
+  "One-tap reminders (WhatsApp/Viber/SMS/email)",
+  "Payment receipts in English and Greek",
+  "Groups & teachers with weekly timetable",
+  "Announcements feed, targeted or school-wide",
+  "Bulk student import",
+  "Export — summary, detailed, CSV",
+  "Branding — accent colors, school icon, card image",
+  "Dashboard filters, sort and bulk actions"
+];
+
+var PRICING_TIERS = [
+  /* limit    the headline capacity, shown under the tier name. This is the
+              only real difference between the plans.
+     features anything true of THIS plan alone; an empty array renders no list
+              at all. Priority support is the one thing that isn't universal,
+              because unlike a feature it costs more to actually deliver. */
+  { id:"starter",   name:"Starter",   limit:"Up to 25 students",
+    features:["Email support"],
+    monthly:{ regularPrice:12, foundingPrice:10 },
+    annual: { regularPrice:115, foundingPrice:96  } },
+  { id:"growth",    name:"Growth",    limit:"Up to 80 students",
+    features:["Email support"],
+    monthly:{ regularPrice:24, foundingPrice:20 },
+    annual: { regularPrice:230, foundingPrice:192 } },
+  { id:"pro",       name:"Pro",       limit:"Up to 200 students",
+    features:["Priority support"],
+    monthly:{ regularPrice:39, foundingPrice:35 },
+    annual: { regularPrice:374, foundingPrice:336 } },
+  { id:"unlimited", name:"Unlimited", limit:"Unlimited students",
+    features:["Priority support"],
+    monthly:{ regularPrice:59, foundingPrice:55 },
+    annual: { regularPrice:566, foundingPrice:528 } }
+];
+
+(function () {
+  var period = "monthly";                       // "monthly" | "annual"
+  var tiersEl   = document.getElementById("tiers");
+  var badgeEl   = document.getElementById("price-badge");
+  var urgencyEl = document.getElementById("price-urgency");
+  var footEl    = document.getElementById("price-foot");
+  var btnM      = document.getElementById("bill-monthly");
+  var btnA      = document.getElementById("bill-annual");
+  if (!tiersEl) return;
+
+  var euro = function (n) { return "\u20AC" + n; };
+
+  /* Rendered once: it does not vary by billing period or by the offer. */
+  (function () {
+    var list = document.getElementById("incl-list");
+    if (!list) return;
+    INCLUDED_IN_EVERY_PLAN.forEach(function (f) {
+      var li = document.createElement("li");
+      li.textContent = f;
+      list.appendChild(li);
+    });
+  })();
+
+  function render() {
+    var suffix = period === "monthly" ? "/mo" : "/year";
+
+    badgeEl.hidden = !SHOW_FOUNDING_PRICING;
+    var spots = SHOW_FOUNDING_PRICING && FOUNDING_SPOTS_REMAINING > 0;
+    urgencyEl.hidden = !spots;
+    if (spots) {
+      urgencyEl.textContent = "Limited to our first " + FOUNDING_SPOTS_REMAINING + " customers";
+    }
+    footEl.textContent = SHOW_FOUNDING_PRICING
+      ? "Founding prices stay at this rate for as long as your subscription runs."
+      : "";
+
+    tiersEl.innerHTML = "";
+    PRICING_TIERS.forEach(function (tier) {
+      var p = tier[period];
+      /* The founding price is the one being offered, so it takes the large
+         style. The regular price sits above it, struck through, only when the
+         offer is on — otherwise the regular price IS the price. */
+      var show = SHOW_FOUNDING_PRICING ? p.foundingPrice : p.regularPrice;
+
+      var el = document.createElement("div");
+      el.className = "tier";
+
+      var name = document.createElement("div");
+      name.className = "tier-name";
+      name.textContent = tier.name;
+      el.appendChild(name);
+
+      if (tier.limit) {
+        var lim = document.createElement("div");
+        lim.className = "tier-limit";
+        lim.textContent = tier.limit;
+        el.appendChild(lim);
+      }
+
+      var was = document.createElement("div");
+      was.className = "tier-was";
+      if (SHOW_FOUNDING_PRICING) {
+        was.textContent = euro(p.regularPrice) + suffix;
+        /* Read aloud as what it is, rather than as a second price. */
+        was.setAttribute("aria-label", "Regular price " + euro(p.regularPrice) + suffix);
+      } else {
+        was.setAttribute("aria-hidden", "true");   /* keeps the rows aligned */
+      }
+      el.appendChild(was);
+
+      var now = document.createElement("div");
+      now.className = "tier-now";
+      var b = document.createElement("b");
+      b.textContent = euro(show);
+      var sfx = document.createElement("span");
+      sfx.textContent = suffix;
+      now.appendChild(b); now.appendChild(sfx);
+      el.appendChild(now);
+
+      if (tier.features && tier.features.length) {
+        var ul = document.createElement("ul");
+        ul.className = "tier-feat";
+        tier.features.forEach(function (f) {
+          var li = document.createElement("li");
+          li.textContent = f;
+          ul.appendChild(li);
+        });
+        el.appendChild(ul);
+      }
+
+      tiersEl.appendChild(el);
+    });
+  }
+
+  function setPeriod(next) {
+    period = next;
+    btnM.setAttribute("aria-pressed", String(next === "monthly"));
+    btnA.setAttribute("aria-pressed", String(next === "annual"));
+    render();
+  }
+  btnM.addEventListener("click", function () { setPeriod("monthly"); });
+  btnA.addEventListener("click", function () { setPeriod("annual"); });
+  render();
+})();
+</script>
 
 </body>
 </html>

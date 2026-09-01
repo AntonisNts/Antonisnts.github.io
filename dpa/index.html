@@ -5,182 +5,44 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Data Processing Agreement — PayStamp</title>
 <style>html,body{margin:0;padding:0;background:#f7f8fa;}</style>
-<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
-<script>
-  // Force the classic JSX runtime (React.createElement via the React UMD
-  // global). Newer Babel defaults preset-react to the AUTOMATIC runtime, which
-  // injects an ESM import of react/jsx-runtime — illegal in a classic <script>
-  // ("Cannot use import statement outside a module") and blanks the page.
-  Babel.registerPreset("react-classic", { presets: [[Babel.availablePresets["react"], { runtime: "classic" }]] });
-</script>
 </head>
 <body>
-<div id="root"></div>
-<script type="text/babel" data-presets="react-classic">
-const { useMemo } = React;
-
-/**
- * LegalPage — renders a markdown legal document (Privacy, Terms, or DPA).
- *
- * Usage:
- *   <LegalPage title="Privacy Policy" markdown={privacyMarkdown} onBack={() => navigate("/")} />
- *
- * Pass the .md file content as a string in `markdown`. A tiny built-in parser
- * handles the subset of markdown these documents use (# headings, **bold**,
- * - bullets, paragraphs). No external markdown library required.
- */
-function LegalPage({ title, markdown, onBack, footer }) {
-  const blocks = useMemo(() => parseMarkdown(markdown), [markdown]);
-
-  return (
-    <div style={styles.page}>
-      <div style={styles.container}>
-        {onBack && (
-          <button onClick={onBack} style={styles.back}>
-            ← Back
-          </button>
-        )}
-        <article style={styles.article}>
-          {blocks.map((block, i) => renderBlock(block, i))}
-        </article>
-        {footer && <div style={styles.footer}>{footer}</div>}
-      </div>
+<div id="root">
+  <div style="min-height:100vh;background:#f7f8fa;padding:32px 16px;box-sizing:border-box">
+    <div style="max-width:720px;margin:0 auto">
+      <a href="/" style="background:none;border:none;color:#2563eb;font-size:15px;cursor:pointer;padding:4px 0;margin-bottom:16px;display:inline-block;text-decoration:none;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">← Back</a>
+      <article style="background:#ffffff;border-radius:12px;padding:40px 36px;box-shadow:0 1px 3px rgba(0,0,0,0.06);color:#1f2937;line-height:1.65;font-size:16px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+          <h1 style="font-size:26px;font-weight:700;margin:0 0 8px;color:#111827">Data Processing Agreement (DPA)</h1>
+          <p style="margin:0 0 14px"><strong>Last updated: 14 June 2026</strong></p>
+          <p style="margin:0 0 14px">This Data Processing Agreement ("DPA") forms part of the Terms of Service between <strong>Antonis Christodoulou, Cyprus</strong> ("the Processor") and the business using PayStamp ("the Controller"). It sets out how the Processor handles personal data on the Controller's behalf, in line with Article 28 of the GDPR.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">1. Roles</h2>
+          <p style="margin:0 0 14px">The Controller (the Business) determines the purposes and means of processing the personal data of its students and their parents. The Processor (PayStamp) processes that data only on the Controller's documented instructions, which include these Terms and the normal use of the Service.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">2. Subject matter and purpose</h2>
+          <p style="margin:0 0 14px">The Processor processes personal data solely to provide the PayStamp service: recording student enrolment and tracking confirmed cash payments, and optionally sending payment receipts on the Controller's behalf.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">3. Categories of data and data subjects</h2>
+          <ul style="margin:0 0 14px;padding-left:22px"><li style="margin:0 0 6px"><strong>Data subjects:</strong> students of the Business, and where recorded, their parents or guardians.</li><li style="margin:0 0 6px"><strong>Categories of data:</strong> names, enrolment and lesson details, enrolment/paused months, confirmed payment records, a contact identifier for receipts (where used), and language preference.</li><li style="margin:0 0 6px">No special-category data and no payment card or bank data are processed.</li></ul>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">4. Processor obligations</h2>
+          <p style="margin:0 0 14px">The Processor shall:</p>
+          <ul style="margin:0 0 14px;padding-left:22px"><li style="margin:0 0 6px">Process personal data only on the Controller's instructions.</li><li style="margin:0 0 6px">Ensure persons authorised to process the data are bound by confidentiality.</li><li style="margin:0 0 6px">Implement appropriate technical and organisational security measures (see Section 6).</li><li style="margin:0 0 6px">Not engage another sub-processor without the Controller's general authorisation (see Section 5).</li><li style="margin:0 0 6px">Assist the Controller, as far as reasonably possible, in responding to data subject requests and in meeting its security, breach-notification and impact-assessment obligations.</li><li style="margin:0 0 6px">On termination, delete or return the personal data at the Controller's choice, unless retention is required by law.</li><li style="margin:0 0 6px">Make available information needed to demonstrate compliance with Article 28.</li></ul>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">5. Sub-processors</h2>
+          <p style="margin:0 0 14px">The Controller authorises the Processor to use the following sub-processor:</p>
+          <ul style="margin:0 0 14px;padding-left:22px"><li style="margin:0 0 6px"><strong>Supabase</strong> — database hosting and authentication, hosted within the <strong>European Union (Frankfurt, Germany)</strong>.</li></ul>
+          <p style="margin:0 0 14px">The Processor will inform the Controller of any intended change to sub-processors and give the Controller the opportunity to object.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">6. Security measures</h2>
+          <p style="margin:0 0 14px">The Processor maintains measures including:</p>
+          <ul style="margin:0 0 14px;padding-left:22px"><li style="margin:0 0 6px">Encryption of data in transit (HTTPS/TLS).</li><li style="margin:0 0 6px">Access controls that logically isolate each Controller's data from other Businesses.</li><li style="margin:0 0 6px">Restricted administrative access to the underlying database.</li><li style="margin:0 0 6px">EU-based hosting with a reputable infrastructure provider.</li><li style="margin:0 0 6px">Regular review of access rules and security configuration.</li></ul>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">7. Personal data breaches</h2>
+          <p style="margin:0 0 14px">The Processor shall notify the Controller without undue delay after becoming aware of a personal data breach affecting the Controller's data, and provide information reasonably available to help the Controller meet its own notification obligations.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">8. International transfers</h2>
+          <p style="margin:0 0 14px">Personal data is stored and processed within the European Union. The Processor will not transfer the data outside the EU/EEA without an appropriate safeguard under the GDPR and notice to the Controller.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">9. Duration</h2>
+          <p style="margin:0 0 14px">This DPA applies for as long as the Processor processes personal data on the Controller's behalf under the Terms of Service.</p>
+          <h2 style="font-size:19px;font-weight:600;margin:28px 0 8px;color:#111827">10. Governing law</h2>
+          <p style="margin:0 0 14px">This DPA is governed by the laws of the <strong>Republic of Cyprus</strong>.</p>
+      </article>
+      <div style="text-align:center;padding:20px 4px 8px;font-size:14px;color:#6b7280"><span><a href="/privacy" style="color:#2563eb;text-decoration:none">Privacy Policy</a>   ·   <a href="/terms" style="color:#2563eb;text-decoration:none">Terms of Service</a></span></div>
     </div>
-  );
-}
-
-/* ---------- minimal markdown parsing ---------- */
-
-function parseMarkdown(md = "") {
-  const lines = md.replace(/\r\n/g, "\n").split("\n");
-  const blocks = [];
-  let paragraph = [];
-  let list = [];
-
-  const flushParagraph = () => {
-    if (paragraph.length) {
-      blocks.push({ type: "p", text: paragraph.join(" ") });
-      paragraph = [];
-    }
-  };
-  const flushList = () => {
-    if (list.length) {
-      blocks.push({ type: "ul", items: [...list] });
-      list = [];
-    }
-  };
-
-  for (const raw of lines) {
-    const line = raw.trimEnd();
-    if (!line.trim()) {
-      flushParagraph();
-      flushList();
-      continue;
-    }
-    if (line.startsWith("# ")) {
-      flushParagraph(); flushList();
-      blocks.push({ type: "h1", text: line.slice(2) });
-    } else if (line.startsWith("## ")) {
-      flushParagraph(); flushList();
-      blocks.push({ type: "h2", text: line.slice(3) });
-    } else if (line.startsWith("### ")) {
-      flushParagraph(); flushList();
-      blocks.push({ type: "h3", text: line.slice(4) });
-    } else if (/^[-*]\s+/.test(line)) {
-      flushParagraph();
-      list.push(line.replace(/^[-*]\s+/, ""));
-    } else {
-      flushList();
-      paragraph.push(line);
-    }
-  }
-  flushParagraph();
-  flushList();
-  return blocks;
-}
-
-// Inline **bold** -> <strong>, leaving the rest as text.
-function renderInline(text) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return <strong key={i}>{part.slice(2, -2)}</strong>;
-    }
-    return <span key={i}>{part}</span>;
-  });
-}
-
-function renderBlock(block, i) {
-  switch (block.type) {
-    case "h1":
-      return <h1 key={i} style={styles.h1}>{renderInline(block.text)}</h1>;
-    case "h2":
-      return <h2 key={i} style={styles.h2}>{renderInline(block.text)}</h2>;
-    case "h3":
-      return <h3 key={i} style={styles.h3}>{renderInline(block.text)}</h3>;
-    case "ul":
-      return (
-        <ul key={i} style={styles.ul}>
-          {block.items.map((item, j) => (
-            <li key={j} style={styles.li}>{renderInline(item)}</li>
-          ))}
-        </ul>
-      );
-    default:
-      return <p key={i} style={styles.p}>{renderInline(block.text)}</p>;
-  }
-}
-
-/* ---------- styles (inline so the component is drop-in) ---------- */
-
-const styles = {
-  page: {
-    minHeight: "100vh",
-    background: "#f7f8fa",
-    padding: "32px 16px",
-    boxSizing: "border-box",
-  },
-  container: {
-    maxWidth: 720,
-    margin: "0 auto",
-  },
-  back: {
-    background: "none",
-    border: "none",
-    color: "#2563eb",
-    fontSize: 15,
-    cursor: "pointer",
-    padding: "4px 0",
-    marginBottom: 16,
-  },
-  article: {
-    background: "#ffffff",
-    borderRadius: 12,
-    padding: "40px 36px",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-    color: "#1f2937",
-    lineHeight: 1.65,
-    fontSize: 16,
-    fontFamily:
-      "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-  },
-  h1: { fontSize: 26, fontWeight: 700, margin: "0 0 8px", color: "#111827" },
-  h2: { fontSize: 19, fontWeight: 600, margin: "28px 0 8px", color: "#111827" },
-  h3: { fontSize: 16, fontWeight: 600, margin: "20px 0 6px", color: "#111827" },
-  p: { margin: "0 0 14px" },
-  ul: { margin: "0 0 14px", paddingLeft: 22 },
-  li: { margin: "0 0 6px" },
-  footer: { textAlign: "center", padding: "20px 4px 8px", fontSize: 14, color: "#6b7280" },
-};
-
-
-const MARKDOWN = "# Data Processing Agreement (DPA)\n\n**Last updated: 14 June 2026**\n\nThis Data Processing Agreement (\"DPA\") forms part of the Terms of Service between **Antonis Christodoulou, Cyprus** (\"the Processor\") and the business using PayStamp (\"the Controller\"). It sets out how the Processor handles personal data on the Controller's behalf, in line with Article 28 of the GDPR.\n\n## 1. Roles\n\nThe Controller (the Business) determines the purposes and means of processing the personal data of its students and their parents. The Processor (PayStamp) processes that data only on the Controller's documented instructions, which include these Terms and the normal use of the Service.\n\n## 2. Subject matter and purpose\n\nThe Processor processes personal data solely to provide the PayStamp service: recording student enrolment and tracking confirmed cash payments, and optionally sending payment receipts on the Controller's behalf.\n\n## 3. Categories of data and data subjects\n\n- **Data subjects:** students of the Business, and where recorded, their parents or guardians.\n- **Categories of data:** names, enrolment and lesson details, enrolment/paused months, confirmed payment records, a contact identifier for receipts (where used), and language preference.\n- No special-category data and no payment card or bank data are processed.\n\n## 4. Processor obligations\n\nThe Processor shall:\n\n- Process personal data only on the Controller's instructions.\n- Ensure persons authorised to process the data are bound by confidentiality.\n- Implement appropriate technical and organisational security measures (see Section 6).\n- Not engage another sub-processor without the Controller's general authorisation (see Section 5).\n- Assist the Controller, as far as reasonably possible, in responding to data subject requests and in meeting its security, breach-notification and impact-assessment obligations.\n- On termination, delete or return the personal data at the Controller's choice, unless retention is required by law.\n- Make available information needed to demonstrate compliance with Article 28.\n\n## 5. Sub-processors\n\nThe Controller authorises the Processor to use the following sub-processor:\n\n- **Supabase** — database hosting and authentication, hosted within the **European Union (Frankfurt, Germany)**.\n\nThe Processor will inform the Controller of any intended change to sub-processors and give the Controller the opportunity to object.\n\n## 6. Security measures\n\nThe Processor maintains measures including:\n\n- Encryption of data in transit (HTTPS/TLS).\n- Access controls that logically isolate each Controller's data from other Businesses.\n- Restricted administrative access to the underlying database.\n- EU-based hosting with a reputable infrastructure provider.\n- Regular review of access rules and security configuration.\n\n## 7. Personal data breaches\n\nThe Processor shall notify the Controller without undue delay after becoming aware of a personal data breach affecting the Controller's data, and provide information reasonably available to help the Controller meet its own notification obligations.\n\n## 8. International transfers\n\nPersonal data is stored and processed within the European Union. The Processor will not transfer the data outside the EU/EEA without an appropriate safeguard under the GDPR and notice to the Controller.\n\n## 9. Duration\n\nThis DPA applies for as long as the Processor processes personal data on the Controller's behalf under the Terms of Service.\n\n## 10. Governing law\n\nThis DPA is governed by the laws of the **Republic of Cyprus**.\n";
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <LegalPage title="Data Processing Agreement" markdown={MARKDOWN} onBack={()=>{ window.location.href = "/"; }}
-    footer={<span><a href="/privacy" style={{color:"#2563eb",textDecoration:"none"}}>Privacy Policy</a>{"   \u00b7   "}<a href="/terms" style={{color:"#2563eb",textDecoration:"none"}}>Terms of Service</a></span>} />
-);
-</script>
+  </div>
+</div>
 </body>
 </html>
