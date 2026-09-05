@@ -1,0 +1,20 @@
+{
+  "name": "penalty-sums",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Penalty Sums — a maths penalty shootout minigame for the Questlings world.",
+  "scripts": {
+    "prep": "node tools/prep-assets.mjs",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0",
+    "pngjs": "^7.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21"
+  }
+}

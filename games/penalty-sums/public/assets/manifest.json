@@ -1,0 +1,92 @@
+{
+  "striker": {
+    "file": "striker.png",
+    "width": 288,
+    "height": 760,
+    "sourceWidth": 848,
+    "sourceHeight": 1264,
+    "trim": {
+      "x": 228,
+      "y": 129,
+      "w": 392,
+      "h": 1036
+    },
+    "scale": 0.7335907335907336,
+    "anchor": {
+      "x": 0.5,
+      "y": 1.0955598455598456
+    }
+  },
+  "keeper": {
+    "file": "keeper.png",
+    "width": 573,
+    "height": 700,
+    "sourceWidth": 848,
+    "sourceHeight": 1264,
+    "trim": {
+      "x": 11,
+      "y": 157,
+      "w": 807,
+      "h": 986
+    },
+    "scale": 0.7099391480730223,
+    "anchor": {
+      "x": 0.5117719950433705,
+      "y": 1.1227180527383367
+    }
+  },
+  "ball": {
+    "file": "ball.png",
+    "width": 254,
+    "height": 256,
+    "sourceWidth": 1024,
+    "sourceHeight": 1024,
+    "trim": {
+      "x": 93,
+      "y": 92,
+      "w": 839,
+      "h": 845
+    },
+    "scale": 0.3029585798816568,
+    "anchor": {
+      "x": 0.499404052443385,
+      "y": 0.4970414201183432
+    }
+  },
+  "goal": {
+    "file": "goal.png",
+    "width": 1146,
+    "height": 549,
+    "sourceWidth": 1376,
+    "sourceHeight": 768,
+    "trim": {
+      "x": 115,
+      "y": 129,
+      "w": 1146,
+      "h": 549
+    },
+    "scale": 1,
+    "anchor": {
+      "x": 0.5,
+      "y": 1.1639344262295082
+    }
+  },
+  "stadium": {
+    "file": "stadium.png",
+    "width": 1376,
+    "height": 768,
+    "sourceWidth": 1376,
+    "sourceHeight": 768,
+    "trim": {
+      "x": 0,
+      "y": 0,
+      "w": 1376,
+      "h": 768
+    },
+    "scale": 1,
+    "anchor": {
+      "x": 0.5,
+      "y": 0.5
+    }
+  }
+}
