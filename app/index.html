@@ -5,6 +5,19 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <meta name="theme-color" content="#000000" />
+<!-- Home-screen install. iOS reads the apple-* tags and ignores the manifest
+     for display mode; Android/Chrome reads the manifest. Both are needed.
+     status-bar-style is "black" rather than "black-translucent" on purpose:
+     translucent pushes the page under the status bar, and this layout has no
+     safe-area padding to give the topbar, so the clock would sit on top of it.
+     For the same reason the viewport deliberately does NOT set
+     viewport-fit=cover. -->
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black" />
+<meta name="apple-mobile-web-app-title" content="PayStamp" />
 <title>PayStamp</title>
 <script>
   // Password-recovery links can still land on the main page (emails sent
@@ -780,7 +793,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
         </div>
       </button>
       <div style={{textAlign:"center",marginTop:28,fontSize:".72rem",color:"var(--text2)"}}>
-        <a href="/privacy" style={{color:"var(--text2)"}}>Privacy Policy</a>{"  ·  "}<a href="/terms" style={{color:"var(--text2)"}}>Terms of Service</a>
+        <a href="/privacy" target="_blank" rel="noopener" style={{color:"var(--text2)"}}>Privacy Policy</a>{"  ·  "}<a href="/terms" target="_blank" rel="noopener" style={{color:"var(--text2)"}}>Terms of Service</a>
       </div>
     </div>
   );
@@ -817,7 +830,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
         <button onClick={onForgot} style={{background:"none",border:"none",color:"var(--text2)",fontFamily:"var(--f)",fontSize:".78rem",fontWeight:700,cursor:"pointer",padding:0}}>Forgot Password?</button>
         <button onClick={onRegister} style={{background:"none",border:"none",color:"var(--accent)",fontFamily:"var(--f)",fontSize:".82rem",fontWeight:800,cursor:"pointer",padding:0,letterSpacing:".1em",textTransform:"uppercase"}}>Register</button>
       </div>
-      <p style={{fontSize:".72rem",color:"var(--text2)",textAlign:"center",marginTop:18,lineHeight:1.5}}>By continuing, you acknowledge our <a href="/privacy" style={{color:"var(--accent)"}}>Privacy Policy</a> and <a href="/terms" style={{color:"var(--accent)"}}>Terms of Service</a>.</p>
+      <p style={{fontSize:".72rem",color:"var(--text2)",textAlign:"center",marginTop:18,lineHeight:1.5}}>By continuing, you acknowledge our <a href="/privacy" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Privacy Policy</a> and <a href="/terms" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Terms of Service</a>.</p>
     </div>
   );
 }  function PgForgot({ onBack }) {
@@ -1128,7 +1141,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
                 </div>
               );
             })}</div>
-         }       <div style={{textAlign:"center",padding:"22px 0 6px"}}><a href="/dpa" style={{color:"var(--text2)",fontSize:".7rem",textDecoration:"underline"}}>Data Processing Agreement</a></div>       </div>
+         }       <div style={{textAlign:"center",padding:"22px 0 6px"}}><a href="/dpa" target="_blank" rel="noopener" style={{color:"var(--text2)",fontSize:".7rem",textDecoration:"underline"}}>Data Processing Agreement</a></div>       </div>
       {delAsk && (
         <div onClick={()=>!deleting&&setDelAsk(false)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:300,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:380,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:18,padding:"22px 20px"}}>
@@ -1919,7 +1932,7 @@ function PgParentAuth({ onBack }) {
       <button className="tb-back" style={{marginBottom:16}} onClick={onBack}>← Back</button>
       <h1>Family Account</h1>
       <p>Log in to see all your students' cards in one place.</p>
-      <a href="/help" style={{display:"block",textAlign:"center",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:"11px",color:"var(--accent)",fontWeight:700,fontSize:".82rem",textDecoration:"none",marginBottom:18}}>📘 New here? Read the parent guide</a>
+      <a href="/help" target="_blank" rel="noopener" style={{display:"block",textAlign:"center",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:"11px",color:"var(--accent)",fontWeight:700,fontSize:".82rem",textDecoration:"none",marginBottom:18}}>📘 New here? Read the parent guide</a>
       <div style={{display:"flex",gap:8,marginBottom:18}}>
         {[["login","Log In"],["register","Sign Up"]].map(([v,l])=>(
           <button key={v} onClick={()=>{setTab(v);setErr("");setInfo("");}} style={{flex:1,padding:"10px",borderRadius:99,border:"1px solid "+(tab===v?"var(--accent)":"var(--border)"),background:tab===v?"var(--accent)":"rgba(255,255,255,.06)",color:tab===v?"var(--accent-ink)":"var(--text2)",fontFamily:"var(--f)",fontWeight:800,fontSize:".82rem",cursor:"pointer",textTransform:"uppercase",letterSpacing:".1em"}}>{l}</button>
@@ -1936,7 +1949,7 @@ function PgParentAuth({ onBack }) {
       {err && <div className="err">{err}</div>}
       {info && <div className="info-box" style={{marginBottom:12}}>{info}</div>}
       <button className="btn" onClick={go} disabled={busy}>{busy?"…":(tab==="login"?"Log In":"Create Account")}</button>
-      <p style={{fontSize:".72rem",color:"var(--text2)",textAlign:"center",marginTop:18,lineHeight:1.5}}>By continuing, you acknowledge our <a href="/privacy" style={{color:"var(--accent)"}}>Privacy Policy</a> and <a href="/terms" style={{color:"var(--accent)"}}>Terms of Service</a>.</p>
+      <p style={{fontSize:".72rem",color:"var(--text2)",textAlign:"center",marginTop:18,lineHeight:1.5}}>By continuing, you acknowledge our <a href="/privacy" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Privacy Policy</a> and <a href="/terms" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Terms of Service</a>.</p>
     </div>
   );
 }
