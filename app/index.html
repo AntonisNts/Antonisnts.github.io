@@ -906,12 +906,12 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
       <button className="scr-btn primary wide" style={{marginTop:8}} onClick={doCreate} disabled={busy}>{busy?"…":"Create Business"}</button>
     </div>
   );
-}  function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
+}  function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onName, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
       the two can never fall out of step. Grouped by what the owner is trying
       to do rather than by when each screen happened to be built. */
    const SET_GROUPS = [
      ["Students",      [["📅","Months","Manage active/inactive months",onMonths],["🎓","Levels","Edit student levels & fees",onLevels],["👥","Groups","Weekly schedule by group",onGroups],["🗂️","Manage","Create groups & assign teachers",onManage]]],
-     ["Appearance",    [["🎨","Colour","Pick your accent colour",onTheme],["🏫","Icon","Choose your school's icon",onIcon],["🖼️","Card","Choose card design",onCustomCard]]],
+     ["Appearance",    [["✏️","Name","Rename your school",onName],["🎨","Colour","Pick your accent colour",onTheme],["🏫","Icon","Choose your school's icon",onIcon],["🖼️","Card","Choose card design",onCustomCard]]],
      ["Communication", [["🔔","Remind","Send payment reminders",onRemind],["📣","Announcements","Post news to parents & students",onAnnouncements],["📝","Registration","Public sign-up links & requests",onRegistrations,pendingRegs]]],
      ["Data",          [["📤","Export","Download payment records",onExport]]],
    ];   const hasImg = !!biz.customCardImage;   const headerBg = hasImg ? "#000" : "linear-gradient(160deg,"+alphaHex(p.acc,.22)+" 0%,#131315 100%)";    const filtered = allCards     .filter(c=>{       if (levelFilter==="all") return true;       if (levelFilter==="none") return !c.level;       return c.level && c.level.id===levelFilter;     })     .filter(c=>!search||(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.shareCode||"").toLowerCase().includes(search.toLowerCase()))     .sort((a,b)=>{       if (sort==="owed") {         const oA=getStudentMonthStatus(a,biz,year).owedTotal;         const oB=getStudentMonthStatus(b,biz,year).owedTotal;         return oB-oA;       }       if (sort==="progress") { return monthsPaid(b.payments||{},year,inactive.concat(b.pausedMonths||[]),b.enrollmentStart)-monthsPaid(a.payments||{},year,inactive.concat(a.pausedMonths||[]),a.enrollmentStart); }       return (a.name||"").localeCompare(b.name||"");     });
@@ -1822,6 +1822,42 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
         </button>
       )}
       <button className="scr-btn primary wide" disabled={!dirty} onClick={()=>onSave(sel||null)}>Save Colour</button>
+    </div>
+  );
+}
+
+function PgName({ biz, onBack, onSave }) {
+  const [val, setVal] = useState(biz.name || "");
+  const p = bizPal(biz);
+  const trimmed = val.trim();
+  // biz_code is what identifies the school everywhere -- links, cards, the
+  // parent's saved code -- so renaming is purely cosmetic and safe.
+  const dirty = trimmed !== (biz.name || "").trim();
+  const tooLong = trimmed.length > 60;
+  const canSave = dirty && trimmed.length > 0 && !tooLong;
+  function save(){ if (canSave) onSave(trimmed); }
+  return (
+    <div className="reg-page scr" style={{"--accent":p.acc}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
+        <button className="tb-back" onClick={onBack}>&larr;</button>
+        <h2>School Name</h2>
+      </div>
+      <p>The name parents and students see on every card, receipt and registration page.</p>
+      {/* Judged where it is actually read, the same way Colour and Icon do it. */}
+      <div style={{borderRadius:22,overflow:"hidden",marginBottom:20,background:"linear-gradient(135deg,"+p.bg1+","+p.bg2+")",boxShadow:"0 8px 32px rgba(0,0,0,.4)"}}>
+        <div style={{padding:"18px 20px 20px"}}>
+          <div style={{fontSize:".68rem",fontWeight:800,color:p.acc,textTransform:"uppercase",letterSpacing:".1em",marginBottom:3}}>{p.icon} {biz.type}</div>
+          <div style={{fontSize:"1.2rem",fontWeight:800,color:"#fff",overflowWrap:"anywhere"}}>{trimmed || "Your school"}</div>
+          <div style={{fontSize:".78rem",color:"rgba(255,255,255,.5)",fontWeight:700,marginTop:2}}>{biz.bizCode}</div>
+        </div>
+      </div>
+      <div className="scr-lbl">School Name</div>
+      <input className="inp" value={val} maxLength={80} autoCapitalize="words"
+        placeholder="e.g. Aurora Music School"
+        onChange={e=>setVal(e.target.value)}
+        onKeyDown={e=>e.key==="Enter"&&save()} />
+      {tooLong && <div className="err" style={{marginTop:10}}>Keep it under 60 characters so it fits on the card.</div>}
+      <button className="scr-btn primary wide" style={{marginTop:18}} disabled={!canSave} onClick={save}>Save Name</button>
     </div>
   );
 }
@@ -4023,6 +4059,12 @@ async function doUpdateCard(updates){
     const { error } = await sb.from("businesses").update({accent}).eq("id",bizId);
     if(error){pop(error.message,"err");} else {pop(accent?"Colour saved!":"Back to your category colour");}
   }
+  async function doSaveName(name){
+    setDb(d=>({businesses:{...d.businesses,[bizId]:{...d.businesses[bizId],name}}}));
+    setView("dashboard");
+    const { error } = await sb.from("businesses").update({name}).eq("id",bizId);
+    if(error){pop(error.message,"err");} else {pop("Name saved!");}
+  }
   async function doSaveIcon(icon){
     setDb(d=>({businesses:{...d.businesses,[bizId]:{...d.businesses[bizId],icon}}}));
     setView("dashboard");
@@ -4079,7 +4121,7 @@ async function doUpdateCard(updates){
         {view==="register" && <PgRegister onBack={()=>setView("login")} onCreated={onRegistered} />}
         {view==="student" && <PgStudent onBack={()=>setView("landing")} />}
         {view==="parentAuth" && <PgParentAuth onBack={()=>setView("landing")} />}
-        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onIcon={()=>goView("icon")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} />}
+        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onIcon={()=>goView("icon")} onName={()=>goView("name")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} />}
         {view==="addCard" && biz && <PgAddCard biz={biz} onBack={()=>setView("dashboard")} onCreate={doAddCard} />}
         {view==="import" && biz && <PgImport biz={biz} onBack={()=>setView("dashboard")} onImport={doImportStudents} />}
         {view==="reveal" && revealCard && <PgReveal biz={biz} card={revealCard} onDone={()=>{setRevealCard(null);setView("dashboard");}} />}
@@ -4089,6 +4131,7 @@ async function doUpdateCard(updates){
         {view==="customCard" && biz && <PgCustomCard biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveCard} />}
         {view==="theme" && biz && <PgTheme biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveAccent} />}
         {view==="icon" && biz && <PgIcon biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveIcon} />}
+        {view==="name" && biz && <PgName biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveName} />}
         {view==="export" && biz && <PgExport biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="remind" && biz && <PgRemind biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="announcements" && biz && <PgAnnouncements biz={biz} onBack={()=>setView("dashboard")} />}
