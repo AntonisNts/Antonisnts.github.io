@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated: 14 June 2026**
+**Last updated: 13 September 2026**
 
 This Privacy Policy explains how PayStamp ("we", "us", "the Service"), operated by **Antonis Christodoulou, Cyprus** ("the Operator"), handles personal data when a lesson-based business (a "Business" — for example a swimming school, music school or sports club) uses PayStamp to manage student payment records.
 
@@ -40,7 +40,7 @@ We do not sell personal data and we do not share it for advertising.
 
 ## 5. How long we keep it
 
-Data is retained for as long as the Business keeps its account active and needs the records for administering its lessons. When a Business deletes a student record, or closes its account, the associated data is deleted. A Business can request deletion of its data at any time.
+Data is retained for as long as the Business keeps its account active and needs the records for administering its lessons. When a Business deletes a student record, or closes its account, the associated data is deleted within **30 days**, including from any backup copies, unless we are required by law to keep it. A Business can request deletion of its data at any time.
 
 ## 6. Your rights
 
@@ -50,7 +50,7 @@ You also have the right to lodge a complaint with the Cyprus data protection aut
 
 ## 7. Security
 
-We apply appropriate technical and organisational measures to protect the data, including encrypted connections, access controls that isolate each Business's data, EU-based hosting, and regular review of our security configuration. No system connected to the internet can be guaranteed to be completely secure, but we work to keep the risk low and to respond promptly to any issue.
+We apply appropriate technical and organisational measures to protect the data, including encrypted connections, access controls that isolate each Business's data, restricted administrative access to the underlying database, EU-based hosting, and regular review of our access rules and security configuration. No system connected to the internet can be guaranteed to be completely secure, but we work to keep the risk low and to respond promptly to any issue.
 
 ## 8. Changes to this policy
 
