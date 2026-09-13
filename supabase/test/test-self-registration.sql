@@ -130,9 +130,10 @@ select 'no-header path: 6 through, then blocked' as t,
   from (select public.submit_registration('opentoken','Rate','Limit') ->> 'error' as e
           from generate_series(1,8)) s;
 set role postgres;
-select 'no-header path falls back to the token bucket, not to no limit' as t,
-       bucket = 'token:opentoken' as pass, bucket as detail
-  from public.reg_attempts group by bucket;
+select 'no-header path still throttles: the link ceiling always applies' as t,
+       bool_or(bucket = 'link:opentoken') as pass,
+       string_agg(distinct bucket, ', ') as detail
+  from public.reg_attempts;
 set role anon;
 
 \echo '--- with an x-forwarded-for header present (the real request path) ---'
@@ -146,9 +147,35 @@ select 'ip path: 6 allowed then blocked' as t,
   from (select public.submit_registration('opentoken','IpA','One') ->> 'error' as e
           from generate_series(1,8)) s;
 set role postgres;
-select 'bucket is the first (client) IP, not the proxy chain' as t,
-       bucket = '203.0.113.9' as pass, bucket as detail
-  from public.reg_attempts group by bucket;
+select 'ip bucket is the first (client) IP, not the proxy chain' as t,
+       bool_or(bucket = 'ip:203.0.113.9')
+       and not bool_or(bucket like '%70.41.3.18%') as pass,
+       string_agg(distinct bucket, ', ') as detail
+  from public.reg_attempts;
+
+\echo '--- forging the header no longer lifts the ceiling (the bug this fixed) ---'
+set role postgres;
+delete from public.reg_attempts;
+delete from public.registration_requests where first_name = 'Forge';
+create temp table _forge(accepted int, limited int);
+do $forge$
+declare i int; e text; a int := 0; l int := 0;
+begin
+  for i in 1..45 loop
+    perform set_config('request.headers',
+      json_build_object('x-forwarded-for', '10.9.' || (i/250) || '.' || (i%250))::text, true);
+    e := public.submit_registration('opentoken','Forge','Test') ->> 'error';
+    if e = 'rate_limited' then l := l + 1; else a := a + 1; end if;
+  end loop;
+  insert into _forge values (a, l);
+end $forge$;
+select 'a rotating forged IP is capped by the link ceiling' as t,
+       limited > 0 and accepted <= 40 as pass,
+       'accepted=' || accepted || ' limited=' || limited as detail
+  from _forge;
+drop table _forge;
+delete from public.reg_attempts;
+delete from public.registration_requests where first_name = 'Forge';
 
 \echo '--- a different IP is a separate bucket ---'
 set role anon;
