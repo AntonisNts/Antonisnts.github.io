@@ -1,6 +1,6 @@
 # Data Processing Agreement (DPA)
 
-**Last updated: 14 June 2026**
+**Last updated: 13 September 2026**
 
 This Data Processing Agreement ("DPA") forms part of the Terms of Service between **Antonis Christodoulou, Cyprus** ("the Processor") and the business using PayStamp ("the Controller"). It sets out how the Processor handles personal data on the Controller's behalf, in line with Article 28 of the GDPR.
 
@@ -22,19 +22,22 @@ The Processor processes personal data solely to provide the PayStamp service: re
 
 The Processor shall:
 
-- Process personal data only on the Controller's instructions.
+- Process personal data only on the Controller's instructions. Where the Processor is required by law to process the data otherwise, it will inform the Controller before doing so, unless that law prohibits such notice on important grounds of public interest.
+- Immediately inform the Controller if, in the Processor's opinion, an instruction infringes the GDPR or other applicable data protection law.
 - Ensure persons authorised to process the data are bound by confidentiality.
 - Implement appropriate technical and organisational security measures (see Section 6).
 - Not engage another sub-processor without the Controller's general authorisation (see Section 5).
 - Assist the Controller, as far as reasonably possible, in responding to data subject requests and in meeting its security, breach-notification and impact-assessment obligations.
-- On termination, delete or return the personal data at the Controller's choice, unless retention is required by law.
-- Make available information needed to demonstrate compliance with Article 28.
+- On termination, delete or return the personal data at the Controller's choice. The Service's export function makes the Controller's records available at any time in spreadsheet form. Where deletion is chosen, or where no choice is made, the data is deleted within **30 days** of the account closing, including from any backup copies, unless retention is required by law.
+- Make available all information needed to demonstrate compliance with Article 28, and allow for and contribute to audits and inspections carried out by the Controller or an auditor it mandates.
 
 ## 5. Sub-processors
 
 The Controller authorises the Processor to use the following sub-processor:
 
 - **Supabase** — database hosting and authentication, hosted within the **European Union (Frankfurt, Germany)**.
+
+Any sub-processor is engaged under a contract imposing data protection obligations equivalent to those set out in this DPA. **The Processor remains fully liable to the Controller for the performance of a sub-processor's obligations.**
 
 The Processor will inform the Controller of any intended change to sub-processors and give the Controller the opportunity to object.
 
@@ -60,6 +63,10 @@ Personal data is stored and processed within the European Union. The Processor w
 
 This DPA applies for as long as the Processor processes personal data on the Controller's behalf under the Terms of Service.
 
-## 10. Governing law
+## 10. If the Service is discontinued
+
+If the Processor decides to stop operating PayStamp, it will give the Controller **at least 30 days' written notice** to the account's registered email address. During that period the Service's export function remains available so the Controller can take a copy of its records. Personal data is deleted within 30 days of the Service closing.
+
+## 11. Governing law
 
 This DPA is governed by the laws of the **Republic of Cyprus**.
