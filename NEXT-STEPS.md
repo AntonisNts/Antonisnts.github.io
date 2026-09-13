@@ -35,12 +35,6 @@ data. All three become real the day someone else's records are in there.
 
 ## Yours, whenever
 
-- **Secure password change** — one toggle in Supabase (Authentication → Sign In
-  / Providers → Email). With it off, anyone using a logged-in session can change
-  the password, however old that session is. With it on, a session older than 24
-  hours has to log in again first.
-- **The security audit page** — it is now out of date and says things that are
-  no longer true. Decide: refresh it, or delete it.
 - **Instagram account** — handle, bio, profile picture. Parked.
 - **The Greek ad** — waiting on your ElevenLabs audio. App screenshots are
   already captured.
@@ -58,7 +52,9 @@ data. All three become real the day someone else's records are in there.
 
 ## Done
 
-Registration spam limit · student limit per plan · family data export · school
+Secure password change and secure email change both on · security audit page
+refreshed (13 Sept: four findings moved, one withdrawn) · registration spam
+limit · student limit per plan · family data export · school
 rename · home-screen app icon · every screen on the shared skin · legal pages
 without a CDN dependency · capacity-only pricing · the audited feature list ·
 teachers/groups SQL recovered into the repo · browser test harness committed ·
