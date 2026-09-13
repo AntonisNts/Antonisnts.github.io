@@ -10,6 +10,16 @@ psql -q -d postgres -c "drop database if exists stampcard;"
 psql -q -d postgres -c "create database stampcard;"
 export PGDATABASE=stampcard
 
+# Supabase ships these roles; a bare cluster does not. Create them if missing
+# so the script works on a fresh Postgres as well as a warmed-up one.
+psql -q -d postgres <<'SQL'
+do $$ begin
+  if not exists (select 1 from pg_roles where rolname='anon')          then create role anon nologin;          end if;
+  if not exists (select 1 from pg_roles where rolname='authenticated') then create role authenticated nologin; end if;
+  if not exists (select 1 from pg_roles where rolname='service_role')  then create role service_role nologin;  end if;
+end $$;
+SQL
+
 psql -q -v ON_ERROR_STOP=1 <<'SQL'
 create schema if not exists auth;
 create schema if not exists storage;
@@ -25,41 +35,34 @@ grant usage on schema auth, storage to anon, authenticated, service_role;
 create extension if not exists pgcrypto;
 SQL
 
+# Every migration, in the order the live database received them. Order matters
+# in two places: groups/teachers has to precede self-registration (which reads
+# public.groups), and the three files that redefine get_my_cards /
+# get_student_card have to run oldest-first so icon-part-b wins.
+#
+# teachers/groups used to be inlined here as "the June migration that lives
+# only in the database, never committed" -- it is committed now, so the real
+# file is loaded instead. cards.group_name and cards.lesson_schedule come from
+# migration-flip-card.sql above it, which is why that file is not in it.
 for f in schema.sql migration-add-phone.sql migration-approval-gate.sql \
          migration-parent-portal.sql migration-child-grouping.sql \
          migration-plaintext-pins.sql migration-security-hardening.sql \
          migration-flip-card.sql migration-fee-history.sql \
          migration-paused-months.sql migration-enrollment-receipts.sql \
          migration-announcements.sql migration-announcement-reads.sql \
-         migration-delete-account.sql migration-business-accent.sql; do
-  psql -q -v ON_ERROR_STOP=1 -f "$S/$f" >/dev/null 2>&1 || { echo "FAILED: $f"; exit 1; }
+         migration-delete-account.sql migration-business-accent.sql \
+         migration-groups-teachers.sql migration-groups-teachers-grants.sql \
+         migration-self-registration.sql migration-registration-level.sql \
+         migration-announcement-targeting.sql \
+         migration-business-accent-part-b.sql \
+         migration-business-icon.sql migration-business-icon-part-b.sql \
+         migration-registration-throttle.sql; do
+  # Show the real error rather than swallowing it -- a silent "FAILED: x.sql"
+  # tells you nothing about which statement broke.
+  if ! psql -q -v ON_ERROR_STOP=1 -f "$S/$f" >/tmp/replica-$$.log 2>&1; then
+    echo "FAILED: $f"; sed 's/^/    /' /tmp/replica-$$.log | head -5; rm -f /tmp/replica-$$.log; exit 1
+  fi
 done
+rm -f /tmp/replica-$$.log
 
-# The June migration that lives only in the database, never committed.
-psql -q -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
-create table public.teachers (
-  id uuid primary key default gen_random_uuid(),
-  business_id uuid not null references public.businesses(id) on delete cascade,
-  name text not null, created_at timestamptz not null default now());
-create table public.groups (
-  id uuid primary key default gen_random_uuid(),
-  business_id uuid not null references public.businesses(id) on delete cascade,
-  name text not null, schedule jsonb not null default '[]'::jsonb,
-  teacher_id uuid references public.teachers(id) on delete set null,
-  created_at timestamptz not null default now());
-alter table public.cards add column if not exists group_id uuid references public.groups(id) on delete set null;
-alter table public.cards add column if not exists group_name text;
-alter table public.cards add column if not exists lesson_schedule jsonb not null default '[]'::jsonb;
-alter table public.groups enable row level security;
-alter table public.teachers enable row level security;
-create policy groups_all_own on public.groups for all
-  using (exists (select 1 from public.businesses b where b.id = groups.business_id and b.owner_id = auth.uid()))
-  with check (exists (select 1 from public.businesses b where b.id = business_id and b.owner_id = auth.uid()));
-create policy teachers_all_own on public.teachers for all
-  using (exists (select 1 from public.businesses b where b.id = teachers.business_id and b.owner_id = auth.uid()))
-  with check (exists (select 1 from public.businesses b where b.id = business_id and b.owner_id = auth.uid()));
-grant select, insert, update, delete on public.groups, public.teachers to authenticated;
-SQL
-
-psql -q -v ON_ERROR_STOP=1 -f "$S/migration-business-accent-part-b.sql" >/dev/null 2>&1 || { echo "FAILED: part-b"; exit 1; }
-echo "replica rebuilt"
+echo "replica rebuilt ($(ls "$S"/*.sql | wc -l) SQL files in supabase/, 24 applied)"
