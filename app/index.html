@@ -2463,6 +2463,27 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
 function PgParentSettings({ email, onBack, onDeleteAccount }) {
   const [ask, setAsk] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [dl, setDl] = useState("");           /* "", "working", or an error */
+
+  // GDPR portability: hand the family a machine-readable copy of everything
+  // held about them. The RPC scopes itself to auth.email(), so there is
+  // nothing to pass and nothing to get wrong here.
+  async function downloadData(){
+    setDl("working");
+    const { data, error } = await sb.rpc("export_my_family_data");
+    if (error || !data || data.error) { setDl(error ? error.message : "Could not build your file."); return; }
+    try {
+      const stamp = new Date().toISOString().slice(0,10);
+      const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
+      const url  = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "paystamp-my-data-"+stamp+".json";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 4000);
+      setDl("");
+    } catch(e){ setDl("Your browser blocked the download."); }
+  }
+
   return (
     <div className="page scr">
       <div className="topbar">
@@ -2477,6 +2498,16 @@ function PgParentSettings({ email, onBack, onDeleteAccount }) {
             <div style={{fontSize:".9rem",fontWeight:700,color:"var(--text)",overflowWrap:"anywhere"}}>{email}</div>
           </div>
         )}
+        <div className="wsec" style={{margin:"0 0 16px"}}>
+          <div className="ws-t">Your data</div>
+          <p style={{fontSize:".82rem",color:"var(--text2)",fontWeight:600,lineHeight:1.55,marginBottom:14}}>
+            Download a copy of everything PayStamp holds about your family &mdash; your students, their payment records and the announcements you were sent.
+          </p>
+          <button className="scr-btn wide" onClick={downloadData} disabled={dl==="working"}>
+            {dl==="working" ? "Preparing\u2026" : "Download my data"}
+          </button>
+          {dl && dl!=="working" && <div className="err" style={{marginTop:10}}>{dl}</div>}
+        </div>
         <div className="wsec" style={{margin:0,border:"1px solid rgba(239,68,68,.35)"}}>
           <div className="ws-t" style={{color:"var(--red)"}}>Danger Zone</div>
           <p style={{fontSize:".82rem",color:"var(--text2)",fontWeight:600,lineHeight:1.55,marginBottom:14}}>
