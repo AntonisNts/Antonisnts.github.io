@@ -449,7 +449,7 @@ function cardFee(card, biz) { return (card.level&&card.level.fee) ? card.level.f
    This is one skin they adopt a screen at a time, by adding scr to the page
    root. Tokens are the same values .dash-shell uses, so stepping from the
    dashboard into a screen it opened is not a change of surface. */
-.page.scr, .reg-page.scr{
+.page.scr, .reg-page.scr, .login-page.scr{
   --bg:#0B0B0C; --bg2:#161618; --bg3:rgba(255,255,255,.055);
   --border:rgba(255,255,255,.06); --elev:#1D1D20;
   --surface:linear-gradient(160deg,#1D1D20 0%,#141416 100%);
@@ -756,7 +756,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
     </div>
   ); }  function PgLanding({ onTeacher, onParent, onStudent }) {
   return (
-    <div className="login-page" style={{display:"flex",flexDirection:"column",justifyContent:"center",minHeight:"100vh",padding:"40px 24px"}}>
+    <div className="login-page scr" style={{display:"flex",flexDirection:"column",justifyContent:"center",minHeight:"100vh",padding:"40px 24px"}}>
       <div style={{textAlign:"center",marginBottom:40}}>
         <div style={{width:88,height:88,borderRadius:22,background:"linear-gradient(135deg,#818cf8 0%,#a78bfa 50%,#67e8f9 100%)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",boxShadow:"0 16px 48px rgba(129,140,248,.5)"}}>
           <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--accent-ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
@@ -812,7 +812,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
     onLogin();
   }
   return (
-    <div className="login-page">
+    <div className="login-page scr">
       <button className="tb-back" style={{marginBottom:20,fontSize:".85rem",fontWeight:700,color:"var(--text2)",background:"none",border:"none",padding:0,cursor:"pointer"}} onClick={onBack}>← Back</button>
       <h1>Admin Login</h1>
       <p>Log in to manage your academy.</p>
@@ -848,7 +848,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
     setSent(true);
   }
   return (
-    <div className="login-page">
+    <div className="login-page scr">
       <button className="tb-back" style={{marginBottom:16}} onClick={onBack}>← Back</button>
       <h1>Reset Password</h1>
       {!sent ? (
@@ -1746,7 +1746,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
   }
   if (step==="pin") {
     return (
-      <div className="login-page">
+      <div className="login-page scr">
         <button className="tb-back" style={{marginBottom:16}} onClick={()=>{setStep("code");setPin("");setErr("");}}>← Back</button>
         <h1>Enter PIN</h1>
         <p style={{marginBottom:20}}>Enter the PIN for code {code.trim().toUpperCase()}.</p>
@@ -1760,7 +1760,7 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
     );
   }
   return (
-    <div className="login-page">
+    <div className="login-page scr">
       <button className="tb-back" style={{marginBottom:16}} onClick={onBack}>← Back</button>
       <h1>My Card</h1>
       <p>Enter the unique code your business gave you.</p>
@@ -1964,7 +1964,7 @@ function PgParentAuth({ onBack }) {
     }
   }
   return (
-    <div className="login-page">
+    <div className="login-page scr">
       <button className="tb-back" style={{marginBottom:16}} onClick={onBack}>← Back</button>
       <h1>Family Account</h1>
       <p>Log in to see all your students' cards in one place.</p>
@@ -2507,7 +2507,7 @@ function PgParentSettings({ email, onBack, onDeleteAccount }) {
 
 function PgPending({ email, onLogout }) {
   return (
-    <div className="login-page" style={{display:"flex",flexDirection:"column",justifyContent:"center",minHeight:"100vh",textAlign:"center",padding:"40px 28px"}}>
+    <div className="login-page scr" style={{display:"flex",flexDirection:"column",justifyContent:"center",minHeight:"100vh",textAlign:"center",padding:"40px 28px"}}>
       <div style={{width:80,height:80,borderRadius:24,background:"rgba(255,255,255,.06)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"2.4rem",margin:"0 auto 22px"}}>⏳</div>
       <h1 style={{marginBottom:12}}>Pending approval</h1>
       <p style={{lineHeight:1.7,color:"var(--text2)",fontWeight:500}}>Your account is pending approval — you'll get access once it's approved.{email?(" Signed in as "+email+"."):""}</p>
@@ -2518,7 +2518,7 @@ function PgPending({ email, onLogout }) {
 
 function PgRejected({ onLogout }) {
   return (
-    <div className="login-page" style={{display:"flex",flexDirection:"column",justifyContent:"center",minHeight:"100vh",textAlign:"center",padding:"40px 28px"}}>
+    <div className="login-page scr" style={{display:"flex",flexDirection:"column",justifyContent:"center",minHeight:"100vh",textAlign:"center",padding:"40px 28px"}}>
       <div style={{width:80,height:80,borderRadius:24,background:"var(--bg2)",border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"2.2rem",margin:"0 auto 22px"}}>🔒</div>
       <h1 style={{marginBottom:12}}>Access not available</h1>
       <p style={{lineHeight:1.7,color:"var(--text2)",fontWeight:500}}>This account does not currently have access.</p>
