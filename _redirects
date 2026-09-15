@@ -1,0 +1,6 @@
+# Netlify (staging) only. GitHub Pages ignores this file and reaches the same
+# result through 404.html, which is why both exist.
+#
+# /stamp/TOKEN is the address printed on an NFC tag. There is no file at that
+# path, so without this rule Netlify would 404 before the page ever ran.
+/stamp/*  /stamp/index.html  200

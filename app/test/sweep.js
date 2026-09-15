@@ -1,5 +1,5 @@
 const { open } = require("./harness");
-const SETTINGS = ["Months","Levels","Groups","Manage","Colour","Icon","Card","Remind","Announcements","Registration","Export"];
+const SETTINGS = ["Months","Levels","Groups","Manage","Colour","Icon","Card","Remind","Announcements","Registration","Tap to Pay","Export"];
 let pass=0, fail=0;
 const ok=(n,c,d)=>{ c?(pass++,console.log("  ok   "+n)):(fail++,console.log("  FAIL "+n+(d?" — "+d:""))); };
 (async () => {

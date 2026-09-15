@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>PayStamp</title>
+<!--
+  The address an NFC tag holds and a QR code encodes.
+
+  It does nothing but hand the token to the app, because the app is where the
+  session already lives. Doing the confirmation here instead would mean a
+  second Supabase client, a second login screen and a second copy of the
+  payment rules, so this page is deliberately a doorway and not a room.
+
+  Two URL shapes reach here and both work:
+
+      /stamp/?t=TOKEN      served directly by this file
+      /stamp/TOKEN         no such file, so the site's 404.html rewrites it
+
+  The second is the nicer one to print on a tag, which is why 404.html exists.
+-->
+<style>
+  html,body{margin:0;padding:0;background:#05070C;color:#fff;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;}
+  .w{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;}
+  .c{max-width:340px;}
+  h1{font-size:1.1rem;font-weight:700;margin:0 0 8px;}
+  p{font-size:.9rem;line-height:1.6;color:rgba(255,255,255,.6);margin:0 0 20px;}
+  a.btn{display:inline-block;background:#818cf8;color:#08110B;text-decoration:none;
+    border-radius:12px;padding:14px 28px;font-weight:800;font-size:.95rem;}
+</style>
+</head>
+<body>
+<div class="w"><div class="c" id="c">
+  <h1>Opening PayStamp…</h1>
+  <p>One moment.</p>
+</div></div>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var token = q.get("t") || "";
+
+  // The path form, after 404.html has forwarded it here.
+  if (!token) {
+    var m = location.pathname.match(/^\/stamp\/([^\/?#]+)\/?$/);
+    if (m) token = decodeURIComponent(m[1]);
+  }
+
+  if (!token) {
+    document.getElementById("c").innerHTML =
+      '<h1>Nothing to confirm</h1>' +
+      '<p>This link is missing its code. Ask the school to check the tag.</p>' +
+      '<a class="btn" href="/app/">Open PayStamp</a>';
+    return;
+  }
+
+  var to = "/app/?stamp=" + encodeURIComponent(token);
+  var n = q.get("n");
+  if (n) to += "&n=" + encodeURIComponent(n);
+
+  // replace, not assign: the back button should return where the parent came
+  // from, not bounce them through the redirect again.
+  location.replace(to);
+})();
+</script>
+</body>
+</html>

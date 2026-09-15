@@ -22,10 +22,19 @@ npm install
 npx playwright install chromium
 ```
 
+If a browser is already on the machine but playwright wants a different build,
+point at it instead of downloading a second copy:
+
+```bash
+export PLAYWRIGHT_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome
+```
+
 ## Run
 
 ```bash
-node sweep.js
+node sweep.js     # every settings screen opens, on the skin, with no errors
+node stamp.js     # the Tap to Pay confirmation flow, both sides of it
+node routes.js    # /stamp/TOKEN and the 404 fallback that makes it work
 ```
 
 Opens every screen reachable from the settings sheet plus the dashboard and a
