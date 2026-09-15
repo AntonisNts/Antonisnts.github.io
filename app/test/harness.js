@@ -52,7 +52,7 @@ const FIXTURES = {
 
 // A chainable stand-in for the postgrest builder: every filter/modifier returns
 // itself, and awaiting it resolves with the table's fixture rows.
-function installMock(fixtures, session) {
+function installMock(fixtures, session, rpcExtra) {
   const make = (table) => {
     const box = { rows: (fixtures[table] || []).slice() };
     const b = {};
@@ -66,16 +66,28 @@ function installMock(fixtures, session) {
     b.then = (resolve) => resolve({ data: box.rows, error: null });
     return b;
   };
-  const RPC = {
+  const RPC = Object.assign({
     get_my_approval: "approved",
     get_my_cards: [],
     get_my_children: [],
     get_my_ann_reads: [],
     get_my_announcements: [],
+    // Tap to Pay. A fixed token so the QR and the tag address render the same
+    // way on every run; the real one is 24 random URL-safe characters.
+    stamp_token_get: { ok: true, token: "TEST-TOKEN-0123456789ab",
+                       created_at: "2026-09-01T00:00:00Z", require_pin: false, pin_set: false },
+  }, rpcExtra || {});
+
+  // A test that needs a call to answer differently the second time (spending a
+  // single-use session, say) sets an array; each call shifts one off.
+  const answer = (name) => {
+    const v = RPC[name];
+    if (Array.isArray(v) && v.__seq) return v.length > 1 ? v.shift() : v[0];
+    return v !== undefined ? v : [];
   };
   window.__MOCK_SB = {
     from: (t) => make(t),
-    rpc: (name) => ({ then: (r) => r({ data: RPC[name] !== undefined ? RPC[name] : [], error: null }) }),
+    rpc: (name, args) => ({ then: (r) => { window.__RPC_CALLS = (window.__RPC_CALLS||[]).concat([[name, args||null]]); return r({ data: answer(name), error: null }); } }),
     channel: () => ({ on: function () { return this; }, subscribe: function () { return this; } }),
     removeChannel: () => {},
     storage: { from: () => ({ upload: async () => ({ data: null, error: null }), getPublicUrl: () => ({ data: { publicUrl: "" } }) }) },
@@ -91,7 +103,12 @@ function installMock(fixtures, session) {
 
 async function open(opts) {
   opts = opts || {};
-  const browser = await chromium.launch();
+  // PLAYWRIGHT_CHROMIUM lets a machine that already has a browser point at it
+  // rather than downloading a second copy, which is the usual situation when
+  // the installed playwright and the preinstalled chromium are different
+  // builds. Unset, playwright resolves its own as before.
+  const exe = process.env.PLAYWRIGHT_CHROMIUM || "";
+  const browser = await chromium.launch(exe ? { executablePath: exe } : {});
   const page = await browser.newPage({ viewport: opts.viewport || { width: 430, height: 932 } });
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
@@ -100,13 +117,13 @@ async function open(opts) {
   const session = opts.signedOut ? null
     : { user: { id: "u1", email: "owner@aurora.example", user_metadata: { role: opts.role || "teacher" } }, access_token: "tok" };
   await page.addInitScript(
-    `(${installMock.toString()})(${JSON.stringify(opts.fixtures || FIXTURES)}, ${JSON.stringify(session)});`
+    `(${installMock.toString()})(${JSON.stringify(opts.fixtures || FIXTURES)}, ${JSON.stringify(session)}, ${JSON.stringify(opts.rpc || {})});`
   );
 
   // Swap only the client construction; every loader above it runs for real.
   const src = fs.readFileSync(opts.appPath || APP, "utf8")
     .replace("const sb = window.supabase.createClient(SB_URL, SB_KEY);", "const sb = window.__MOCK_SB;");
-  await page.route("**/app-under-test.html", (r) =>
+  await page.route(/app-under-test\.html/, (r) =>
     r.fulfill({ status: 200, contentType: "text/html", body: src }));
 
   // The app pulls React, Babel, Supabase and xlsx from unpkg/jsdelivr at run
@@ -132,7 +149,7 @@ async function open(opts) {
     });
   }
 
-  await page.goto("https://paystamp.app/app-under-test.html", { waitUntil: "domcontentloaded" });
+  await page.goto("https://paystamp.app/app-under-test.html" + (opts.query || ""), { waitUntil: "domcontentloaded" });
 
   await page.waitForSelector(".page, .dash-shell, .reg-page, .login-page, .landing, .hero", { timeout: 30000 });
   return { browser, page, errors };

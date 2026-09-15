@@ -56,10 +56,68 @@ const { useState, useEffect, useRef } = React;  const SK = "sc12"; try { ["sc1",
 const SB_KEY = "sb_publishable_AtGkcGeO4hAhtCZGmIBHyA_JZdRJBeI";
 const sb = window.supabase.createClient(SB_URL, SB_KEY);
 
+/* ---------------------------------------------------------------------------
+   A tap arriving from an NFC tag or a QR scan.
+
+   /stamp/ forwards here as ?stamp=TOKEN (plus &n=NONCE for a scan). Two things
+   happen at once and both matter:
+
+     - the token moves into sessionStorage, because the parent may not be
+       logged in yet and the login round-trip would otherwise lose it;
+     - it is stripped from the address bar, because a token left in the URL
+       gets re-fired by a refresh, by the back button, and by anyone the parent
+       later shares the link with.
+
+   sessionStorage rather than localStorage: a tap should not still be pending
+   in a tab opened tomorrow.
+--------------------------------------------------------------------------- */
+const STAMP_BOOT = (function () {
+  try {
+    const q = new URLSearchParams(location.search);
+    const t = q.get("stamp");
+    if (t) {
+      sessionStorage.setItem("stamp_token", t);
+      if (q.get("n")) sessionStorage.setItem("stamp_nonce", q.get("n"));
+      else sessionStorage.removeItem("stamp_nonce");
+      history.replaceState(null, "", location.pathname);
+    }
+    return sessionStorage.getItem("stamp_token") || null;
+  } catch (e) { return null; }
+})();
+function stampClear() {
+  try { sessionStorage.removeItem("stamp_token"); sessionStorage.removeItem("stamp_nonce"); } catch (e) {}
+}
+function stampNonceStored() {
+  try { return sessionStorage.getItem("stamp_nonce") || null; } catch (e) { return null; }
+}
+
+/* The QR's rotating code. Must produce byte-for-byte what
+   public.stamp_nonce_for() produces in the database -- pgcrypto's
+   hmac(bucket, token, 'sha256') keyed on the token, first ten hex characters.
+   Verified against the database rather than assumed. */
+async function stampNonce(token, bucket) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw", enc.encode(token), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(String(bucket)));
+  return Array.from(new Uint8Array(sig))
+    .map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 10);
+}
+const STAMP_BUCKET = () => Math.floor(Date.now() / 30000);
+
+/* How a payment came to be recorded. 'manual' is the dashboard; the rest are
+   the confirmation flow, and the DATABASE decides which of them applies --
+   never the browser. Read by the history list to mark the ones nobody typed. */
+const TRIGGER_LABEL = { nfc:"Tap", qr:"QR scan", stamp:"Stamp" };
+
 function bizFromRow(b, cardRows) {
   const cards = {};
   (cardRows||[]).forEach(c => { cards[c.id] = { id:c.id, name:c.name, level:c.level||null, shareCode:c.share_code, pin:c.pin, phone:c.phone||"", payments:c.payments||{}, history:c.history||[], groupId:c.group_id||null, groupName:c.group_name||"", lessonSchedule:c.lesson_schedule||[], enrollmentStart:c.enrollment_start_month||null, pausedMonths:c.paused_months||[], feeHistory:c.fee_history||[] }; });
-  return { id:b.id, bizCode:b.biz_code, name:b.name, type:b.type, accent:b.accent||null, icon:b.icon||null, fee:Number(b.fee), year:b.year, email:b.contact_email||"", inactiveMonths:b.inactive_months||[], levels:b.levels||[], customCardImage:b.custom_card_image||null, cards };
+  /* confirm_pin comes back in the row (this is the owner's own record) and is
+     deliberately NOT mapped through: nothing in the UI needs the value, only
+     whether one is set, and state that is never held cannot be leaked by a
+     future screen that renders the business object. */
+  return { id:b.id, bizCode:b.biz_code, name:b.name, type:b.type, accent:b.accent||null, icon:b.icon||null, fee:Number(b.fee), year:b.year, email:b.contact_email||"", inactiveMonths:b.inactive_months||[], levels:b.levels||[], customCardImage:b.custom_card_image||null, requirePinOnConfirm:!!b.require_pin_on_confirm, confirmPinSet:!!b.confirm_pin, cards };
 }
 // Resolve a card's effective group: prefer the real group (group_id -> groups
 // table) and fall back to the legacy free-text group_name / per-card schedule
@@ -906,13 +964,395 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
       <button className="scr-btn primary wide" style={{marginTop:8}} onClick={doCreate} disabled={busy}>{busy?"…":"Create Business"}</button>
     </div>
   );
-}  function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onName, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
+}
+
+/* ---------------------------------------------------------------------------
+   PgStampTag -- the owner's side: the tag's address, a QR of it, and the PIN.
+
+   The QR library is fetched only when this screen opens, and the screen works
+   without it. That is deliberate: the app already carries five CDN scripts it
+   cannot boot without, and a sixth that only one settings page needs has no
+   business being one of them. If the fetch fails the address is shown as text
+   and can still be copied.
+
+   The token is never sent anywhere to be turned into a picture. Rendering it
+   through one of the public QR-image services would hand the school's secret
+   to a third party for the sake of saving a script.
+--------------------------------------------------------------------------- */
+let _qrLib = null;
+function loadQrLib() {
+  if (_qrLib) return _qrLib;
+  _qrLib = new Promise((res, rej) => {
+    if (window.QRCode) return res(window.QRCode);
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js";
+    s.onload = () => res(window.QRCode);
+    s.onerror = () => rej(new Error("qr"));
+    document.head.appendChild(s);
+  });
+  return _qrLib;
+}
+
+function PgStampTag({ biz, onBack, onSaved }) {
+  const p = bizPal(biz);
+  const [tok, setTok]         = useState(null);
+  const [busy, setBusy]       = useState(true);
+  const [err, setErr]         = useState("");
+  const [note, setNote]       = useState("");
+  const [ask, setAsk]         = useState(null);       // 'rotate' | 'revoke'
+  const [qrFail, setQrFail]   = useState(false);
+  const [qrUrl, setQrUrl]     = useState("");
+  const [requirePin, setRequirePin] = useState(!!biz.requirePinOnConfirm);
+  const [pin, setPin]         = useState("");
+  const canvasRef = useRef(null);
+
+  const origin  = (location.origin && location.origin !== "null") ? location.origin : "https://paystamp.app";
+  const tagUrl  = tok ? origin + "/stamp/" + tok : "";
+
+  async function load() {
+    setBusy(true);
+    const { data: r, error } = await sb.rpc("stamp_token_get");
+    setBusy(false);
+    if (error)      { setErr(error.message); return; }
+    if (r && r.ok)  { setTok(r.token); setRequirePin(!!r.require_pin); }
+    else            { setErr("Could not load your tag."); }
+  }
+  useEffect(()=>{ load(); }, []);
+
+  /* The QR carries a code derived from the token and the current 30-second
+     window, so the picture changes twice a minute and the server can tell a
+     scan from a tap. Redrawing on a timer is the whole mechanism -- there is
+     no round trip, because both sides derive the same value independently. */
+  useEffect(() => {
+    if (!tok) return;
+    let live = true, timer = null;
+    async function draw() {
+      try {
+        const n   = await stampNonce(tok, STAMP_BUCKET());
+        const url = origin + "/stamp/" + tok + "?n=" + n;
+        if (!live) return;
+        setQrUrl(url);
+        const QR = await loadQrLib();
+        if (!live || !canvasRef.current) return;
+        await QR.toCanvas(canvasRef.current, url, { width: 232, margin: 1,
+          color: { dark: "#000000", light: "#ffffff" } });
+      } catch (e) { if (live) setQrFail(true); }
+    }
+    draw();
+    timer = setInterval(draw, 30000);
+    return () => { live = false; clearInterval(timer); };
+  }, [tok]);
+
+  async function doRotate() {
+    setAsk(null); setBusy(true);
+    const { data: r, error } = await sb.rpc("stamp_token_rotate");
+    setBusy(false);
+    if (error || !r || !r.ok) { setErr("Could not issue a new tag."); return; }
+    setTok(r.token); setNote("New code issued. Rewrite your tag with the new address.");
+  }
+  async function doRevoke() {
+    setAsk(null); setBusy(true);
+    const { error } = await sb.rpc("stamp_token_revoke");
+    setBusy(false);
+    if (error) { setErr("Could not switch it off."); return; }
+    setTok(null); setQrUrl(""); setNote("Switched off. Existing tags and QR codes no longer work.");
+  }
+  async function savePin(nextRequire) {
+    setErr(""); setNote("");
+    const { data: r, error } = await sb.rpc("set_confirm_settings",
+      { p_require: nextRequire, p_pin: pin ? pin : null });
+    if (error)                       { setErr(error.message); return; }
+    if (r.error === "pin_required")  { setErr("Set a PIN first, then switch this on."); return; }
+    if (r.error === "bad_pin")       { setErr("The PIN must be 4 to 8 digits."); return; }
+    if (r.error)                     { setErr("Could not save that."); return; }
+    setRequirePin(!!r.require_pin); setPin(""); setNote("Saved.");
+    onSaved && onSaved();
+  }
+  function copy() {
+    try { navigator.clipboard.writeText(tagUrl); setNote("Address copied."); }
+    catch (e) { setNote("Select the address above to copy it."); }
+  }
+
+  return (
+    <div className="reg-page scr" style={{"--accent":p.acc}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
+        <button className="tb-back" onClick={onBack}>←</button>
+        <h2>Tap to Pay</h2>
+      </div>
+      <p>A parent holds their phone against your tag, or scans this code, and confirms the cash they are handing you.</p>
+
+      {err  && <div className="err" style={{marginBottom:10}}>{err}</div>}
+      {note && <div className="info-box" style={{marginBottom:14}}>{note}</div>}
+
+      {busy && !tok ? <div className="empty">Loading…</div> : !tok ? (
+        <>
+          <div className="info-box" style={{marginBottom:16}}>Tap to Pay is switched off. Nobody can confirm a payment this way until you issue a new code.</div>
+          <button className="scr-btn primary wide" onClick={doRotate}>Issue a New Code</button>
+        </>
+      ) : (
+        <>
+          <div className="scr-card" style={{marginBottom:16,padding:16}}>
+            <div className="scr-lbl">Tag Address</div>
+            <div style={{fontSize:".78rem",fontWeight:700,color:"var(--accent)",wordBreak:"break-all",lineHeight:1.6,marginBottom:12}}>{tagUrl}</div>
+            <button className="scr-btn wide" onClick={copy}>Copy Address</button>
+            <div style={{fontSize:".72rem",color:"var(--text2)",lineHeight:1.6,marginTop:12}}>
+              Write this onto an NFC sticker with any tag-writing app. Keep it to yourself — anyone holding it can open a confirmation.
+            </div>
+          </div>
+
+          <div className="scr-card" style={{marginBottom:16,padding:16,textAlign:"center"}}>
+            <div className="scr-lbl" style={{textAlign:"left"}}>Scan Instead</div>
+            {qrFail ? (
+              <div style={{fontSize:".76rem",color:"var(--text2)",lineHeight:1.6,padding:"12px 0"}}>
+                The code image could not load. The address above still works — a parent can type it in.
+              </div>
+            ) : (
+              <div style={{background:"#fff",borderRadius:16,padding:12,display:"inline-block",margin:"6px 0 10px"}}>
+                <canvas ref={canvasRef} width={232} height={232} style={{display:"block",maxWidth:"100%"}} />
+              </div>
+            )}
+            <div style={{fontSize:".72rem",color:"var(--text2)",lineHeight:1.6}}>
+              This code changes every 30 seconds. Leave the screen open while parents scan it.
+            </div>
+          </div>
+
+          <div className="scr-card" style={{marginBottom:16,padding:16}}>
+            <div className="scr-lbl">Ask For My PIN</div>
+            <div style={{fontSize:".74rem",color:"var(--text2)",lineHeight:1.6,marginBottom:12}}>
+              With this on, nothing is recorded until you type your PIN on the parent's phone. Use it if you want every confirmation to happen in front of you.
+            </div>
+            <div className="ig" style={{marginBottom:10}}>
+              <label>{biz.confirmPinSet ? "New PIN (leave blank to keep)" : "PIN (4–8 digits)"}</label>
+              <input className="inp" type="password" inputMode="numeric" value={pin}
+                onChange={e=>{setPin(e.target.value);setErr("");}} placeholder="••••" />
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button className="scr-btn" style={{flex:1}} onClick={()=>savePin(requirePin)}>Save PIN</button>
+              <button className={"scr-btn"+(requirePin?" primary":"")} style={{flex:1}}
+                onClick={()=>savePin(!requirePin)}>{requirePin ? "Turn Off" : "Turn On"}</button>
+            </div>
+            <div style={{fontSize:".72rem",fontWeight:700,color:requirePin?"var(--green)":"var(--text2)",marginTop:10}}>
+              {requirePin ? "On — your PIN is required to confirm." : "Off — parents confirm on their own."}
+            </div>
+          </div>
+
+          {/* Both of these invalidate every tag already written, so neither
+              happens on a single tap. */}
+          <button className="scr-btn wide" onClick={()=>setAsk("rotate")}>Issue a New Code</button>
+          <button className="scr-btn danger wide" style={{marginTop:10}} onClick={()=>setAsk("revoke")}>Switch Tap to Pay Off</button>
+        </>
+      )}
+
+      {ask && (
+        <div onClick={()=>setAsk(null)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:300,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div onClick={e=>e.stopPropagation()} className="scr-card" style={{maxWidth:340,padding:22}}>
+            <div className="scr-card-t" style={{marginBottom:8}}>
+              {ask==="rotate" ? "Issue a new code?" : "Switch Tap to Pay off?"}
+            </div>
+            <div style={{fontSize:".82rem",color:"var(--text2)",lineHeight:1.6,marginBottom:18}}>
+              {ask==="rotate"
+                ? "Your current tag and QR code stop working immediately. You will need to rewrite the tag with the new address."
+                : "Every tag and QR code you have stops working. Payments already recorded are not affected."}
+            </div>
+            <button className={"scr-btn wide "+(ask==="rotate"?"primary":"danger")}
+              onClick={ask==="rotate"?doRotate:doRevoke}>
+              {ask==="rotate" ? "Issue New Code" : "Switch Off"}
+            </button>
+            <button className="scr-btn wide" style={{marginTop:10}} onClick={()=>setAsk(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   PgStamp -- what a parent sees after tapping the tag or scanning the QR.
+
+   Every decision worth making has already been made by the database. This
+   component asks stamp_begin what happened and renders one of its four
+   answers; it never works out for itself whether somebody is entitled to
+   confirm a payment, and it never computes the payment. The amount field is
+   a suggestion the server made and the parent may change; what that amount
+   buys is worked out again server-side when they confirm.
+
+   The 60-second clock is shown rather than hidden. A parent who watches it
+   run out is told to tap again, which is a better outcome than a silent
+   failure at the moment they press the button.
+--------------------------------------------------------------------------- */
+function PgStamp({ onDone }) {
+  const token = STAMP_BOOT;
+  const [phase, setPhase]   = useState("loading");  // loading|owner|nomatch|pick|saving|done|dead
+  const [data, setData]     = useState(null);
+  const [cardId, setCardId] = useState(null);
+  const [amount, setAmount] = useState("");
+  const [pin, setPin]       = useState("");
+  const [err, setErr]       = useState("");
+  const [left, setLeft]     = useState(60);
+  const [result, setResult] = useState(null);
+  const [undone, setUndone] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const { data: r, error } = await sb.rpc("stamp_begin", { p_token: token, p_nonce: stampNonceStored() });
+      if (!live) return;
+      if (error)               { setErr(error.message); setPhase("dead"); return; }
+      if (r && r.owner)        { setData(r); setPhase("owner"); return; }
+      if (!r || r.error)       { setPhase("nomatch"); return; }
+      setData(r);
+      const first = (r.students || [])[0];
+      if (first) { setCardId(first.card_id); setAmount(first.amount ? String(first.amount) : ""); }
+      setPhase("pick");
+    })();
+    return () => { live = false; };
+  }, []);
+
+  /* Counts down the session the server opened, from the server's own
+     expires_at rather than from 60 -- the round trip has already spent some
+     of it, and a clock that lies by two seconds is worse than none. */
+  useEffect(() => {
+    if (phase !== "pick" || !data || !data.expires_at) return;
+    const end = new Date(data.expires_at).getTime();
+    const tick = () => {
+      const s = Math.max(0, Math.round((end - Date.now()) / 1000));
+      setLeft(s);
+      if (s === 0) setPhase("dead");
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [phase, data]);
+
+  const students = (data && data.students) || [];
+  const student  = students.find(s => s.card_id === cardId) || students[0];
+
+  function finish() { stampClear(); onDone(); }
+
+  async function doConfirm() {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) { setErr("Enter the amount you are paying."); return; }
+    if (data.require_pin && !pin) { setErr("Ask the school to enter their PIN."); return; }
+    setErr(""); setPhase("saving");
+    const { data: r, error } = await sb.rpc("stamp_confirm", {
+      p_confirmation: data.confirmation, p_card_id: cardId, p_amount: amt,
+      p_pin: data.require_pin ? pin : null });
+    if (error)   { setErr(error.message); setPhase("pick"); return; }
+    if (r.error === "expired")      { setPhase("dead"); return; }
+    if (r.error === "bad_pin")      { setErr(r.burned ? "Too many wrong tries. Tap again to start over." : "That PIN is not right."); setPin(""); setPhase(r.burned ? "dead" : "pick"); return; }
+    if (r.error === "nothing_due")  { setErr((r.name||"This student")+" has nothing outstanding."); setPhase("dead"); return; }
+    if (r.error)                    { setErr("That did not go through. Please tap again."); setPhase("dead"); return; }
+    setResult(r); setPhase("done");
+  }
+
+  async function doUndo() {
+    const { data: r } = await sb.rpc("stamp_undo", { p_card_id: cardId, p_n: result.n });
+    if (r && r.ok) setUndone(true);
+    else setErr("That can no longer be undone here — ask the school.");
+  }
+
+  /* The school's own colour. `accent` off the wire is a theme NAME, so it has
+     to go through bizPal like everywhere else -- putting it straight into
+     --accent would set the property to an invalid colour, and the skin would
+     quietly fall back to the :root default instead of failing visibly. */
+  const acc = data ? bizPal({ type:data.type, accent:data.accent, icon:data.icon }).acc : null;
+  const wrap = (kids) => (
+    <div className="reg-page scr" style={acc ? {"--accent":acc} : undefined}>{kids}</div>
+  );
+
+  if (phase === "loading") return wrap(<div className="empty">Checking…</div>);
+
+  if (phase === "owner") return wrap(<>
+    <h2 style={{marginBottom:4}}>Your tag works</h2>
+    <p>This is {data.business_name}'s own device, so nothing has been recorded. Hand the tag to a parent and it will open their confirmation.</p>
+    <button className="scr-btn primary wide" onClick={finish}>Back to PayStamp</button>
+  </>);
+
+  if (phase === "nomatch") return wrap(<>
+    <h2 style={{marginBottom:4}}>Nothing to confirm</h2>
+    <p>We could not match this to a student on your account. If you have just linked your child, open PayStamp and try the tag again.</p>
+    <button className="scr-btn primary wide" onClick={finish}>Open PayStamp</button>
+  </>);
+
+  if (phase === "dead") return wrap(<>
+    <h2 style={{marginBottom:4}}>Please tap again</h2>
+    <p>{err || "That confirmation timed out. Hold your phone against the tag once more."}</p>
+    <button className="scr-btn primary wide" onClick={finish}>Done</button>
+  </>);
+
+  if (phase === "done") return wrap(<>
+    <div className="reveal-box">
+      <div className="rv-lbl">{undone ? "Undone" : "Payment recorded"}</div>
+      <div className="rv-val">{undone ? "—" : "€"+Number(result.amount).toFixed(2)}</div>
+      <div className="rv-sep" />
+      <div className="rv-lbl">{result.name}</div>
+      <div style={{fontSize:".85rem",fontWeight:700,color:"var(--text2)"}}>
+        {undone ? "Nothing was kept." : (result.months||[]).map(mi=>MFULL[mi]).join(", ")}
+      </div>
+    </div>
+    {err && <div className="err" style={{marginBottom:10}}>{err}</div>}
+    {!undone && <button className="scr-btn danger wide" onClick={doUndo}>Undo</button>}
+    <button className="scr-btn primary wide" style={{marginTop:10}} onClick={finish}>Done</button>
+  </>);
+
+  return wrap(<>
+    <h2 style={{marginBottom:4}}>{data.business_name}</h2>
+    <p>Confirm the cash payment you are handing over now.</p>
+
+    {students.length > 1 && (
+      <div className="ig">
+        <label>Student</label>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {students.map(s => (
+            <button key={s.card_id}
+              onClick={()=>{ setCardId(s.card_id); setAmount(s.amount ? String(s.amount) : ""); setErr(""); }}
+              className={"scr-chip"+(s.card_id===cardId?" on":"")}>{s.name}</button>
+          ))}
+        </div>
+      </div>
+    )}
+
+    <div className="scr-card" style={{marginBottom:14}}>
+      <div className="scr-card-t">{student ? student.name : ""}</div>
+      <div className="scr-card-s">{student && student.month
+        ? ("Next unpaid month: "+student.month)
+        : "Nothing currently outstanding"}</div>
+    </div>
+
+    <div className="ig">
+      <label>Amount</label>
+      <input className="inp" type="number" inputMode="decimal" value={amount}
+        onChange={e=>{setAmount(e.target.value);setErr("");}} placeholder="0" />
+    </div>
+
+    {data.require_pin && (
+      <div className="ig">
+        <label>School PIN</label>
+        <input className="inp" type="password" inputMode="numeric" value={pin}
+          onChange={e=>{setPin(e.target.value);setErr("");}} placeholder="Ask the school" />
+      </div>
+    )}
+
+    {err && <div className="err" style={{marginBottom:8}}>{err}</div>}
+
+    <button className="scr-btn primary wide" onClick={doConfirm} disabled={phase==="saving"}>
+      {phase==="saving" ? "…" : "Confirm Payment"}
+    </button>
+    <div style={{textAlign:"center",marginTop:12,fontSize:".72rem",fontWeight:700,color:left<=10?"var(--red)":"var(--text2)"}}>
+      {"Expires in "+left+"s"}
+    </div>
+    <button className="scr-btn wide" style={{marginTop:10}} onClick={finish}>Cancel</button>
+  </>);
+}
+
+function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onName, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded, onStampTag }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
       the two can never fall out of step. Grouped by what the owner is trying
       to do rather than by when each screen happened to be built. */
    const SET_GROUPS = [
      ["Students",      [["📅","Months","Manage active/inactive months",onMonths],["🎓","Levels","Edit student levels & fees",onLevels],["👥","Groups","Weekly schedule by group",onGroups],["🗂️","Manage","Create groups & assign teachers",onManage]]],
      ["Appearance",    [["✏️","Name","Rename your school",onName],["🎨","Colour","Pick your accent colour",onTheme],["🏫","Icon","Choose your school's icon",onIcon],["🖼️","Card","Choose card design",onCustomCard]]],
      ["Communication", [["🔔","Remind","Send payment reminders",onRemind],["📣","Announcements","Post news to parents & students",onAnnouncements],["📝","Registration","Public sign-up links & requests",onRegistrations,pendingRegs]]],
+     ["Payments",      [["📲","Tap to Pay","NFC tag & QR for confirmations",onStampTag]]],
      ["Data",          [["📤","Export","Download payment records",onExport]]],
    ];   const hasImg = !!biz.customCardImage;   const headerBg = hasImg ? "#000" : "linear-gradient(160deg,"+alphaHex(p.acc,.22)+" 0%,#131315 100%)";    const filtered = allCards     .filter(c=>{       if (levelFilter==="all") return true;       if (levelFilter==="none") return !c.level;       return c.level && c.level.id===levelFilter;     })     .filter(c=>!search||(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.shareCode||"").toLowerCase().includes(search.toLowerCase()))     .sort((a,b)=>{       if (sort==="owed") {         const oA=getStudentMonthStatus(a,biz,year).owedTotal;         const oB=getStudentMonthStatus(b,biz,year).owedTotal;         return oB-oA;       }       if (sort==="progress") { return monthsPaid(b.payments||{},year,inactive.concat(b.pausedMonths||[]),b.enrollmentStart)-monthsPaid(a.payments||{},year,inactive.concat(a.pausedMonths||[]),a.enrollmentStart); }       return (a.name||"").localeCompare(b.name||"");     });
 
@@ -1295,7 +1735,10 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
     const newPmts = {...snap};
     for (const b of bd) { newPmts[ymOf(year,b.mi)]={paid:b.full,partial:!b.full,amount:b.newTotal}; }
     const n = hist.length+1;
-    const entry = {n,amount:amt,date:new Date().toLocaleDateString("en-GB"),snapshot:{...snap},months:bd.map(b=>b.mi),receipt_sent_at:null};
+    /* Typed into the dashboard by the owner. The confirmation flow stamps
+       its own source; saying so here means "no trigger_source" never has to
+       be read as "we do not know". */
+    const entry = {n,amount:amt,date:new Date().toLocaleDateString("en-GB"),snapshot:{...snap},months:bd.map(b=>b.mi),receipt_sent_at:null,trigger_source:"manual"};
     onUpdate({payments:newPmts,history:[entry,...hist]});
     setAmount(""); setConfirm(null);
   }
@@ -1459,7 +1902,17 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
                     <div className="hi-amt">{"€"+h.amount.toFixed(2)}</div>
                     <div className="hi-lbl">{cm ? cm : ("Payment #"+h.n)}</div>
                   </div>
-                  <div className="hi-dt">{h.date}</div>
+                  <div style={{textAlign:"right"}}>
+                    <div className="hi-dt">{h.date}</div>
+                    {/* Anything the owner did not type carries its source. The
+                        badge is informational, not a warning, so it takes the
+                        accent rather than a status colour. */}
+                    {TRIGGER_LABEL[h.trigger_source] && (
+                      <div style={{display:"inline-block",marginTop:6,padding:"3px 9px",borderRadius:99,background:alphaHex(bizPal(biz).acc,.18),color:"var(--accent)",fontSize:".62rem",fontWeight:800,letterSpacing:".08em",textTransform:"uppercase"}}>
+                        {TRIGGER_LABEL[h.trigger_source]}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div style={{display:"flex",gap:6,marginTop:12}}>
                   {[["whatsapp","WhatsApp","#25D366","var(--accent-ink)"],["viber","Viber","#7360F2","#fff"],["sms","SMS","var(--accent)","var(--accent-ink)"]].map(([v,l,bg,ink])=>(
@@ -3734,6 +4187,11 @@ function App() {
   const [dashExpanded, setDashExpanded] = useState({});
   const [approval, setApproval] = useState(null);
   const [mode, setMode] = useState("teacher");
+  /* A tap waiting to be dealt with. Seeded from the URL at load, cleared when
+     the parent finishes or cancels. It outranks whatever view the app would
+     otherwise have chosen: somebody standing at the counter with their phone
+     against a tag is not there to browse. */
+  const [stampTok, setStampTok] = useState(STAMP_BOOT);
 
   const pop = (msg,type="ok")=>{setToast({msg,type});setTimeout(()=>setToast(null),2800);};
 
@@ -3807,6 +4265,13 @@ function App() {
       finally { setBizLoaded(true); }
     })();
   },[session]);
+
+  /* Tapped while logged out. The token is already in sessionStorage, so the
+     login round-trip cannot lose it and the tap resumes by itself the moment
+     a session appears. */
+  useEffect(()=>{
+    if (authReady && !session && stampTok) setView("parentAuth");
+  },[authReady, session, stampTok]);
 
   const biz = bizId ? db.businesses[bizId] : null;
   const card = biz && cardId ? biz.cards[cardId] : null;
@@ -4137,6 +4602,7 @@ async function doUpdateCard(updates){
       <div className={"app"+(view==="dashboard"?" app--wide":"")}>
         {!authReady ? <div className="empty" style={{paddingTop:80}}>Loading…</div>
          : session && !bizLoaded ? <div className="empty" style={{paddingTop:80}}>Loading…</div>
+         : session && stampTok ? <PgStamp onDone={()=>{ setStampTok(null); setView(mode==="parent"?"parentDash":"dashboard"); }} />
          : session && approval==="pending" ? <PgPending email={session.user&&session.user.email} onLogout={doLogout} />
          : session && approval==="rejected" ? <PgRejected onLogout={doLogout} />
          : session && mode==="parent" ? (view==="linkChild"
@@ -4151,8 +4617,9 @@ async function doUpdateCard(updates){
         {view==="forgot" && <PgForgot onBack={()=>setView("login")} />}
         {view==="register" && <PgRegister onBack={()=>setView("login")} onCreated={onRegistered} />}
         {view==="student" && <PgStudent onBack={()=>setView("landing")} />}
+        {view==="parentAuth" && stampTok && <div style={{padding:"18px 28px 0"}}><div className="info-box">Log in to confirm the payment. We will pick up where you left off.</div></div>}
         {view==="parentAuth" && <PgParentAuth onBack={()=>setView("landing")} />}
-        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onIcon={()=>goView("icon")} onName={()=>goView("name")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} />}
+        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onIcon={()=>goView("icon")} onName={()=>goView("name")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} onStampTag={()=>goView("stampTag")} />}
         {view==="addCard" && biz && <PgAddCard biz={biz} onBack={()=>setView("dashboard")} onCreate={doAddCard} />}
         {view==="import" && biz && <PgImport biz={biz} onBack={()=>setView("dashboard")} onImport={doImportStudents} />}
         {view==="reveal" && revealCard && <PgReveal biz={biz} card={revealCard} onDone={()=>{setRevealCard(null);setView("dashboard");}} />}
@@ -4163,6 +4630,7 @@ async function doUpdateCard(updates){
         {view==="theme" && biz && <PgTheme biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveAccent} />}
         {view==="icon" && biz && <PgIcon biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveIcon} />}
         {view==="name" && biz && <PgName biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveName} />}
+        {view==="stampTag" && biz && <PgStampTag biz={biz} onBack={()=>setView("dashboard")} onSaved={refresh} />}
         {view==="export" && biz && <PgExport biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="remind" && biz && <PgRemind biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="announcements" && biz && <PgAnnouncements biz={biz} onBack={()=>setView("dashboard")} />}

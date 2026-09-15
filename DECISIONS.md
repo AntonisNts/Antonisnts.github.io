@@ -130,3 +130,54 @@ assessment happened.
 
 **What changes it:** wanting something customer-facing, which would be a short
 security page on paystamp.app rather than a rewrite of the audit.
+
+---
+
+## Tap to Pay computes the payment in the database, not in the browser
+
+The parent's phone is what calls the confirmation functions, and a parent has
+no write access to `public.cards` — row-level security keeps that table to the
+owning school, which is the wall between one business and another.
+
+So `stamp_confirm` takes an amount and works out what it covers itself. It has
+no parameter that could carry a payments object. Had it accepted one, a single
+tap would have let a parent post a whole year as paid and the physical tag
+would have been protecting nothing.
+
+The cost is a second copy of `calcBreakdown`, in PL/pgSQL, which has to agree
+with the JavaScript one. `supabase/test/test-stamp-confirm.sql` pins the
+arithmetic so the two cannot drift apart unnoticed.
+
+**What changes it:** nothing short of parents getting write access to cards,
+which is not going to happen.
+
+---
+
+## The amount is the parent's to type, and no tag can fix that
+
+A parent could enter more than they are handing over. It is the one thing the
+design cannot prevent, because a sticker cannot see cash.
+
+Three things were done instead of pretending otherwise. Every triggered payment
+is labelled in the student's history, so it is visible rather than silent. Undo
+is offered for ten minutes. And `require_pin_on_confirm` exists for any school
+that wants confirmations to be impossible without the owner standing there —
+off by default, because most will not want the friction.
+
+**What changes it:** a school actually being defrauded this way, which would
+argue for the PIN becoming the default rather than for new machinery.
+
+---
+
+## /stamp/TOKEN works by way of the 404 page
+
+GitHub Pages serves files, not routes, and there is no file at `/stamp/TOKEN`.
+The nicer address survives because `404.html` rewrites it to `/stamp/?t=TOKEN`,
+and Netlify reaches the same place through `_redirects`.
+
+This is exactly the sort of arrangement that breaks quietly during some
+unrelated change, so `app/test/routes.js` drives both paths in a browser and
+also checks that an ordinary wrong address still gets a plain 404 rather than a
+blank React screen.
+
+**What changes it:** moving off Pages to something with real routing.
