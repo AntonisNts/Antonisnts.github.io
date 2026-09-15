@@ -231,6 +231,55 @@ const text = (page) => page.evaluate(() => document.body.innerText);
     await browser.close();
   }
 
+  // --- the student portal, which has no login at all ----------------------
+  {
+    const CARD = { business: { biz_code: "STAMP01", name: "Aurora Music School", type: "Music",
+                     fee: 45, year: 2026, inactive_months: [], levels: [], accent: "violet" },
+                   card: { name: "Elena Georgiou", share_code: "SC1001", payments: {}, history: [] },
+                   announcements: [] };
+    const { browser, page, errors } = await open({
+      query: "?stamptrigger=1", signedOut: true,
+      rpc: { get_student_card: CARD,
+             stamp_begin_geometry_student: Object.assign({}, SESSION, { trigger: "stamp" }),
+             stamp_confirm_student: { ok: true, n: 1, name: "Elena Georgiou", amount: 45, months: [2], trigger: "stamp" } } });
+    await page.waitForTimeout(500);
+
+    // Land on the student portal the way a student does: "Quick View" on the
+    // landing page, then the share code, then the PIN.
+    await page.getByText("Quick View", { exact: true }).first().click();
+    await page.waitForTimeout(500);
+    await page.locator("input").first().fill("SC1001");
+    await page.locator("button").filter({ hasText: /^(?!.*back).*$/i }).last().click();
+    await page.waitForTimeout(500);
+    await page.locator("input").first().fill("1001");
+    await page.locator("button").filter({ hasText: /^(?!.*back).*$/i }).last().click();
+    await page.waitForTimeout(800);
+    ok("the student card opens", /Elena Georgiou/i.test(await text(page)), (await text(page)).slice(0, 120));
+
+    await press(page, PADS, true);
+    const c = await page.evaluate(() => (window.__RPC_CALLS || [])
+      .filter(x => x[0] === "stamp_begin_geometry_student").map(x => x[1]));
+    ok("a press on the student card is sent, with the code and PIN it was opened with",
+       c.length === 1 && c[0].p_code === "SC1001" && c[0].p_pin === "1001",
+       JSON.stringify(c[0]));
+    ok("and the same normalised points as the family portal sends",
+       c.length === 1 && JSON.stringify(c[0].p_points) === JSON.stringify([[0,0],[0,60],[20,35],[60,0],[60,60]]),
+       JSON.stringify(c[0] && c[0].p_points));
+
+    ok("the confirmation opens over the card", /Confirm Payment/i.test(await text(page)));
+    await page.getByText("Confirm Payment").first().click();
+    await page.waitForTimeout(500);
+    ok("and records through the student-portal call, not the family one",
+       await page.evaluate(() => !!(window.__RPC_CALLS || []).find(x => x[0] === "stamp_confirm_student")
+                              && !(window.__RPC_CALLS || []).find(x => x[0] === "stamp_confirm")));
+    ok("reporting success", /Payment recorded/i.test(await text(page)));
+
+    await browser.close();
+    ok("no page errors in the student portal",
+       errors.filter(e => !/Failed to load resource|ERR_/.test(e)).length === 0,
+       errors.slice(0, 3).join(" | "));
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

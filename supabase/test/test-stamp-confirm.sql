@@ -357,7 +357,13 @@ select 'and cannot undo anything on a child that is not theirs' as t,
 -- counts every stamp function regardless of privilege, which is a test that
 -- cannot pass rather than one that cannot fail -- but the same shape written
 -- the other way round is the classic green-on-nothing bug.
-select 'anon cannot call any of the stamp functions' as t, count(*) = 0 as pass
+-- anon reaches exactly three functions, and only because the student portal
+-- has no login by design -- the same reason get_student_card is open. Named
+-- one by one so a fourth appearing is a failure rather than a footnote.
+select 'anon reaches only the three student-portal entry points' as t,
+       array_agg(p.proname order by p.proname) = array[
+         'stamp_begin_geometry_student','stamp_confirm_student','stamp_undo_student'
+       ]::name[] as pass
   from pg_proc p
  where (p.proname like 'stamp%' or p.proname = 'set_confirm_settings')
    and has_function_privilege('anon', p.oid, 'execute');
@@ -367,9 +373,12 @@ select 'anon cannot call any of the stamp functions' as t, count(*) = 0 as pass
 -- fix is to edit the number, which is no check at all.
 select 'exactly the intended entry points are reachable when logged in' as t,
        array_agg(p.proname order by p.proname) = array[
-         'set_confirm_settings','stamp_begin','stamp_begin_geometry','stamp_confirm',
+         'set_confirm_settings',
+         'stamp_begin','stamp_begin_geometry','stamp_begin_geometry_student',
+         'stamp_confirm','stamp_confirm_student',
          'stamp_geometry_clear','stamp_geometry_get','stamp_geometry_set',
-         'stamp_token_get','stamp_token_revoke','stamp_token_rotate','stamp_undo'
+         'stamp_token_get','stamp_token_revoke','stamp_token_rotate',
+         'stamp_undo','stamp_undo_student'
        ]::name[] as pass
   from pg_proc p
  where (p.proname like 'stamp%' or p.proname = 'set_confirm_settings')
@@ -380,7 +389,8 @@ select 'and the internals stay unreachable by name' as t,
   from pg_proc p
  where p.proname in ('stamp_calc_breakdown','stamp_fee_for_month','stamp_new_token_value',
                      'stamp_nonce_for','stamp_nonce_valid','stamp_geometry_match',
-                     'stamp_open_session')
+                     'stamp_open_session','stamp_apply_payment','stamp_student_card',
+                     'stamp_match_bounds')
    and (has_function_privilege('anon', p.oid, 'execute')
      or has_function_privilege('authenticated', p.oid, 'execute'));
 

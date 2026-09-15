@@ -254,3 +254,60 @@ the same silence.
 **What changes it:** real-device testing showing which of the two actually
 bites. Rotation invariance and scale invariance are both solvable, but solving
 either before knowing it is the problem is guesswork.
+
+---
+
+## The stamp matches at any angle, and the price was measuring the false-match rate
+
+Real-device testing found the stamp only matched when pressed at the angle it
+was calibrated at. Nobody presses a stamp that carefully and a competitor's
+does not ask them to, so that was not a limitation to document — it was the
+feature missing.
+
+The matcher now solves for a similarity transform (translation, rotation, and
+bounded scale) from every pair of points that could correspond. Allowing scale
+was the same fix, not scope creep: the pattern is in screen pixels, learned on
+the owner's phone and matched on a parent's, so the second recorded limitation
+went with the first.
+
+Making a matcher more willing to say yes is exactly where false positives come
+from, so the numbers were measured rather than argued about. Genuine presses of
+a realistic 200px stamp: 100% up to ±6px of noise. Twenty thousand random
+four-finger presses: none matched. A *different* five-pad stamp did match at
+16.6 against an 18px tolerance — which is what forced tolerance to become
+relative to the pattern's own size, since 18px on a small pattern is nearly a
+third of it. A near-straight line of contacts is refused outright, because
+under free rotation and scale one line fits any other and a hand resting on a
+phone is a line.
+
+**What changes it:** a school reporting misses. The per-school tolerance is the
+dial, and the collinearity floor is the thing not to loosen.
+
+---
+
+## The student portal needed a second identity, not a fix
+
+The trigger did nothing in the student portal, and that was never a bug: that
+portal has no login. It opens on a share code and a PIN, checked anonymously,
+so there is no `auth.email()` and no `card_links` row for the family path to
+stand on. It could not have worked as written.
+
+So there is a second way in, deliberately narrower. The session binds to the
+one card already on screen rather than to a person, so it cannot reach another
+student even at the same school. The code and PIN are re-checked in the
+database under the same rate limit the portal's own login uses, rather than
+trusted because the page says it checked them.
+
+The stamp is still what authorises the payment, exactly as in the family
+portal. The code and PIN identify the card and nothing more — the portal needed
+them to display it in the first place. Verified rather than asserted: with the
+right code and PIN and no stamp, or the wrong stamp, or random fingers, the
+answer is `no_match` and the card is untouched.
+
+An earlier draft of the documentation described this as the PIN gaining the
+power to record a payment. That reading was wrong and alarming, and it was the
+wording rather than the behaviour: a share code and PIN alone have exactly the
+access they always had.
+
+**What changes it:** a school wanting the student portal to stay read-only,
+which would be a per-business switch rather than a redesign.

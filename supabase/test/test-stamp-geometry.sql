@@ -43,17 +43,21 @@ $$;
 \echo
 \echo '=== A. the matcher itself ==='
 
-select 'an exact press matches with a score of zero' as t,
-       public.stamp_geometry_match(:'STAMP'::jsonb, :'STAMP'::jsonb, 18) = 0 as pass;
+-- "Essentially zero", not "exactly zero". Solving for rotation divides where
+-- the old translation-only matcher only subtracted, so a perfect fit now lands
+-- around 1e-16 instead of on 0. Asserting equality here tests the arithmetic's
+-- rounding, not whether the stamp matched.
+select 'an exact press matches with essentially no error' as t,
+       public.stamp_geometry_match(:'STAMP'::jsonb, :'STAMP'::jsonb, 18) < 0.01 as pass;
 
 select 'the same stamp pressed elsewhere on the screen still matches' as t,
        public.stamp_geometry_match(
          '[[0,0],[60,0],[0,60],[60,60],[20,35]]'::jsonb,
-         '[[500,300],[560,300],[500,360],[560,360],[520,335]]'::jsonb, 18) = 0 as pass;
+         '[[500,300],[560,300],[500,360],[560,360],[520,335]]'::jsonb, 18) < 0.01 as pass;
 
 select 'contact order does not matter' as t,
        public.stamp_geometry_match(
-         '[[0,0],[20,35],[60,60],[0,60],[60,0]]'::jsonb, :'STAMP'::jsonb, 18) = 0 as pass;
+         '[[0,0],[20,35],[60,60],[0,60],[60,0]]'::jsonb, :'STAMP'::jsonb, 18) < 0.01 as pass;
 
 select 'a sloppy press inside tolerance matches, and scores how sloppy' as t,
        public.stamp_geometry_match(
@@ -71,7 +75,7 @@ select 'a different stamp entirely does not match' as t,
 -- captured set is a subset and its leftmost point is not the stored leftmost.
 select 'four of the five pads still match, anchored anywhere in the stamp' as t,
        public.stamp_geometry_match(
-         '[[0,0],[60,0],[60,60],[20,35]]'::jsonb, :'STAMP'::jsonb, 18) = 0 as pass;
+         '[[0,0],[60,0],[60,60],[20,35]]'::jsonb, :'STAMP'::jsonb, 18) < 0.01 as pass;
 
 select 'a subset that does not start at the stored leftmost point still matches' as t,
        public.stamp_geometry_match(

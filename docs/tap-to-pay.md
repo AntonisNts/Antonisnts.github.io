@@ -150,14 +150,39 @@ flicker. That is deliberate: it means an ordinary fumble with five fingers on a
 phone is harmless, but it also means "nothing happened" is the only symptom you
 get when something is wrong. Check the calibration first.
 
-Two things are known not to work and are the first suspects:
+**Press it at any angle you like.** The pattern is recognised however the
+stamp is turned, and it copes with a parent's phone measuring the screen
+differently from yours. Both of those were limitations in the first version and
+both are gone.
 
-- **A rotated press.** The stamp is assumed to land roughly square to the
-  screen. Turn it forty-five degrees and it will not match.
-- **A very different phone.** The pattern is measured in screen pixels, and it
-  is learned on your phone but matched on theirs. iPhone to iPhone should be
-  close. A phone with a very different screen density may read the same
-  physical stamp at a different size and miss.
+What it still will not do:
+
+- **Recognise fewer than four pads.** If a pad does not make contact, nothing
+  happens.
+- **Tell two very similar stamps apart.** Only your own school's pattern is
+  ever compared against, so this can only matter to a parent with children at
+  two schools that both use PayStamp and both have near-identical stamps. If
+  that ever happens, neither is confirmed rather than the wrong one.
+
+### It works in both portals
+
+The **family portal** (a parent logged in) and the **Quick View** student
+portal (a code and PIN, no account) both accept a stamp press.
+
+**You still have to stamp the phone.** Exactly as in the family portal. The
+code and PIN are not a way in — they are only how the app knows which card is
+on the screen, which it already needed in order to show the card at all. On
+their own they record nothing:
+
+| What is tried | What happens |
+|---|---|
+| Right code and PIN, no stamp | nothing |
+| Right code and PIN, four random fingers | nothing |
+| Right code and PIN, a different school's stamp | nothing |
+| Right code and PIN, **your stamp** | the confirmation opens |
+
+In Quick View the confirmation is also locked to the one card already on the
+screen. It cannot reach another student, even at your own school.
 
 ### How much it protects
 
