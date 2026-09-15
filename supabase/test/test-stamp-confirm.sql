@@ -43,6 +43,26 @@ $$;
 
 
 \echo
+\echo '=== 0. pgcrypto is reachable from where these functions pin it ==='
+-- This project has been bitten twice now by a function pinned to
+-- `set search_path = public` calling something that lives in pgcrypto, which
+-- Supabase installs into its own `extensions` schema. It passes on a replica
+-- with pgcrypto in public and fails on the live project with "function does
+-- not exist". rebuild-replica.sh now puts pgcrypto where Supabase puts it, so
+-- these two assertions are the ones that would go red.
+
+select 'pgcrypto is NOT in public, the way the live project has it' as t,
+       n.nspname = 'extensions' as pass
+  from pg_extension e join pg_namespace n on n.oid = e.extnamespace
+ where e.extname = 'pgcrypto';
+
+select 'the token generator can still reach gen_random_bytes' as t,
+       length(public.stamp_new_token_value()) = 24 as pass;
+
+select 'and the QR nonce can still reach hmac' as t,
+       public.stamp_nonce_for('abc-TOKEN-123', 58123456) = '36d9aecb2e' as pass;
+
+\echo
 \echo '=== A. the token ==='
 select pg_temp.act_as('50000000-0000-0000-0000-00000000000a','stamp-owner-a@t.example');
 
