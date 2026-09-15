@@ -116,3 +116,54 @@ how it got there.
 Exactly where they always went. A tap writes the same payment, in the same
 shape, as typing the amount into the dashboard yourself — same months, same
 history, same receipts, same export. There is no separate ledger to reconcile.
+
+---
+
+## The stamp (not switched on)
+
+A third way in, built but dark. A rubber stamp with conductive pads is pressed
+against the parent's phone; the pattern its pads make identifies your school
+and opens the same confirmation a tag or a QR would.
+
+**It does nothing until a device opts in.** Open the app with
+`?stamptrigger=1` on the end of the address and that phone starts listening;
+`?stamptrigger=0` stops it. Nothing is enabled for anyone else, and nothing is
+enabled by default.
+
+### Teaching it your stamp
+
+With the flag on, **Settings → Payments → Stamp** appears. Press the stamp flat
+and firm on the target area. The pads it registers are drawn back so you can
+see the press was clean — if one pad missed, press again rather than saving it,
+because a bad pattern fails silently later on a parent's phone where nobody is
+watching.
+
+Between four and eight pads. Four is the floor because iOS reports at most five
+touches no matter how many pads you have, so the match is made on whatever
+subset arrives.
+
+### What to expect when you test it
+
+Press it on a parent's phone while they have the family portal open. A match
+opens their confirmation. **A non-match does nothing at all** — no message, no
+flicker. That is deliberate: it means an ordinary fumble with five fingers on a
+phone is harmless, but it also means "nothing happened" is the only symptom you
+get when something is wrong. Check the calibration first.
+
+Two things are known not to work and are the first suspects:
+
+- **A rotated press.** The stamp is assumed to land roughly square to the
+  screen. Turn it forty-five degrees and it will not match.
+- **A very different phone.** The pattern is measured in screen pixels, and it
+  is learned on your phone but matched on theirs. iPhone to iPhone should be
+  close. A phone with a very different screen density may read the same
+  physical stamp at a different size and miss.
+
+### How much it protects
+
+Less than the tag, and it is worth being blunt about that. A tag address is 24
+random characters. A stamp is five dots on a physical object that anyone can
+look at and, with enough patience, reproduce with their fingers. The matching
+happens on the server and only against schools that person is already a
+customer of, so nobody can use it to reach another school — but as a secret, a
+stamp is weak. If that matters to you, turn on **Ask For My PIN**.
