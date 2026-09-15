@@ -169,13 +169,20 @@ What it still will not do:
 The **family portal** (a parent logged in) and the **Quick View** student
 portal (a code and PIN, no account) both accept a stamp press.
 
-In Quick View the confirmation is locked to the one card already on screen —
-it cannot reach another student, even at your school. Worth knowing what that
-means for student PINs: they are deliberately shareable codes, and until now
-they only let someone *look* at a card. Together with a press of your physical
-stamp they now also permit recording a payment on that one card. The stamp is
-what authorises it, exactly as with the tag. If you would rather that were not
-possible without you, turn on **Ask For My PIN**.
+**You still have to stamp the phone.** Exactly as in the family portal. The
+code and PIN are not a way in — they are only how the app knows which card is
+on the screen, which it already needed in order to show the card at all. On
+their own they record nothing:
+
+| What is tried | What happens |
+|---|---|
+| Right code and PIN, no stamp | nothing |
+| Right code and PIN, four random fingers | nothing |
+| Right code and PIN, a different school's stamp | nothing |
+| Right code and PIN, **your stamp** | the confirmation opens |
+
+In Quick View the confirmation is also locked to the one card already on the
+screen. It cannot reach another student, even at your own school.
 
 ### How much it protects
 

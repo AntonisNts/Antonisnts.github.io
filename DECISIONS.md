@@ -298,12 +298,16 @@ student even at the same school. The code and PIN are re-checked in the
 database under the same rate limit the portal's own login uses, rather than
 trusted because the page says it checked them.
 
-This does change what a student PIN is worth. Those PINs are deliberately
-plain-text shareable codes and previously granted only viewing; now, together
-with a press of the school's physical stamp, they also permit recording a
-payment on that one card. That is the same premise as the rest of the feature —
-the physical object is the authorisation — and it is stated plainly in the
-owner documentation rather than left to be discovered.
+The stamp is still what authorises the payment, exactly as in the family
+portal. The code and PIN identify the card and nothing more — the portal needed
+them to display it in the first place. Verified rather than asserted: with the
+right code and PIN and no stamp, or the wrong stamp, or random fingers, the
+answer is `no_match` and the card is untouched.
+
+An earlier draft of the documentation described this as the PIN gaining the
+power to record a payment. That reading was wrong and alarming, and it was the
+wording rather than the behaviour: a share code and PIN alone have exactly the
+access they always had.
 
 **What changes it:** a school wanting the student portal to stay read-only,
 which would be a per-business switch rather than a redesign.
