@@ -181,3 +181,30 @@ also checks that an ordinary wrong address still gets a plain 404 rather than a
 blank React screen.
 
 **What changes it:** moving off Pages to something with real routing.
+
+---
+
+## The QR encoder is carried, not fetched
+
+The first version loaded `qrcode@1.5.3/build/qrcode.min.js` from a CDN. That
+path does not exist -- the package ships no `build/` directory at all, only a
+CommonJS `lib/browser.js` -- so it 404'd and the screen showed its fallback on
+the first real phone that opened it. The URL had been written from memory
+rather than checked.
+
+Replacing it with a different CDN URL would have been the same bet again, so
+the encoder (byte mode, EC level M, versions 1-10, about 250 lines) now lives
+in `app/index.html`. Three things follow from that and all of them are wanted:
+the screen needs no network beyond the app, the school's token is never sent
+anywhere to be drawn, and the code can actually be tested here.
+
+Testing it mattered more than expected. Two bugs turned up that were invisible
+in the rendered picture -- the format-info second copy written one cell too far
+so bit 7 landed on the dark module, and the format bits written LSB-first when
+placement wants MSB-first. In both cases the payload was byte-perfect and the
+code simply would not scan, because a decoder gives up before it reaches the
+data if it cannot read the format. `app/test/qr.js` pins both by decoding every
+version with a real decoder and diffing against a reference encoder.
+
+**What changes it:** needing a bigger version than 10, or a different EC level.
+Both are table additions, not a rewrite.

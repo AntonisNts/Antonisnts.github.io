@@ -979,18 +979,270 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
    through one of the public QR-image services would hand the school's secret
    to a third party for the sake of saving a script.
 --------------------------------------------------------------------------- */
-let _qrLib = null;
-function loadQrLib() {
-  if (_qrLib) return _qrLib;
-  _qrLib = new Promise((res, rej) => {
-    if (window.QRCode) return res(window.QRCode);
-    const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js";
-    s.onload = () => res(window.QRCode);
-    s.onerror = () => rej(new Error("qr"));
-    document.head.appendChild(s);
-  });
-  return _qrLib;
+/* ---------------------------------------------------------------------------
+   QR encoder -- byte mode, error-correction level M, versions 1 to 10.
+   Returns a square array of 0/1 rows, or null if the text will not fit.
+
+   Carried here rather than fetched because the first attempt fetched a CDN
+   path that does not exist (qrcode@1.5.3 ships no build/ directory at all),
+   and because the thing being encoded is the school's secret -- handing it to
+   a public QR-image service to be drawn would be worse than any dependency.
+   It also means the screen works with no network beyond the app itself.
+
+   Verified in app/test/qr.js: every version 1-10 is compared cell-for-cell
+   against a reference encoder and then read back with a real decoder. Two
+   bugs were found that way and neither was visible by looking at the picture
+   -- see the comments at the format-info placement below.
+--------------------------------------------------------------------------- */
+function qrMatrix(text) {
+  // --- the text as bytes (UTF-8) -------------------------------------------
+  const bytes = [];
+  for (const ch of unescape(encodeURIComponent(text))) bytes.push(ch.charCodeAt(0));
+
+  // Per version, EC level M: [data codewords, ec codewords per block,
+  // block count group 1, data per block group 1, block count g2, data per block g2]
+  const V = [
+    null,
+    [16,  10, 1, 16, 0, 0],
+    [28,  16, 1, 28, 0, 0],
+    [44,  26, 1, 44, 0, 0],
+    [64,  18, 2, 32, 0, 0],
+    [86,  24, 2, 43, 0, 0],
+    [108, 16, 4, 27, 0, 0],
+    [124, 18, 4, 31, 0, 0],
+    [154, 22, 2, 38, 2, 39],
+    [182, 22, 3, 36, 2, 37],
+    [216, 26, 4, 43, 1, 44],
+  ];
+  const ALIGN = [null, [], [6,18], [6,22], [6,26], [6,30], [6,34],
+                 [6,22,38], [6,24,42], [6,26,46], [6,28,50]];
+
+  // Smallest version that holds it.
+  let ver = 0;
+  for (let v = 1; v <= 10; v++) {
+    const countBits = v < 10 ? 8 : 16;
+    if (bytes.length * 8 + 4 + countBits <= V[v][0] * 8) { ver = v; break; }
+  }
+  if (!ver) return null;
+
+  const [dataCw, ecPerBlock, g1, g1cw, g2, g2cw] = V[ver];
+  const countBits = ver < 10 ? 8 : 16;
+
+  // --- bit stream ----------------------------------------------------------
+  const bits = [];
+  const push = (val, n) => { for (let i = n - 1; i >= 0; i--) bits.push((val >> i) & 1); };
+  push(0b0100, 4);              // byte mode
+  push(bytes.length, countBits);
+  for (const b of bytes) push(b, 8);
+  for (let i = 0; i < 4 && bits.length < dataCw * 8; i++) bits.push(0);   // terminator
+  while (bits.length % 8) bits.push(0);
+  const pad = [0xEC, 0x11];
+  for (let i = 0; bits.length < dataCw * 8; i++) push(pad[i % 2], 8);
+
+  const data = [];
+  for (let i = 0; i < bits.length; i += 8) {
+    let b = 0; for (let j = 0; j < 8; j++) b = (b << 1) | bits[i + j];
+    data.push(b);
+  }
+
+  // --- GF(256) for Reed-Solomon -------------------------------------------
+  const EXP = new Array(512), LOG = new Array(256);
+  for (let i = 0, x = 1; i < 255; i++) {
+    EXP[i] = x; LOG[x] = i;
+    x <<= 1; if (x & 0x100) x ^= 0x11D;
+  }
+  for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+  const mul = (a, b) => (a === 0 || b === 0) ? 0 : EXP[LOG[a] + LOG[b]];
+
+  function generator(n) {
+    let g = [1];
+    for (let i = 0; i < n; i++) {
+      const ng = new Array(g.length + 1).fill(0);
+      for (let j = 0; j < g.length; j++) {
+        ng[j] ^= g[j];
+        ng[j + 1] ^= mul(g[j], EXP[i]);
+      }
+      g = ng;
+    }
+    return g;
+  }
+  function ecFor(block, n) {
+    const g = generator(n);
+    const res = block.concat(new Array(n).fill(0));
+    for (let i = 0; i < block.length; i++) {
+      const c = res[i];
+      if (!c) continue;
+      for (let j = 0; j < g.length; j++) res[i + j] ^= mul(g[j], c);
+    }
+    return res.slice(block.length);
+  }
+
+  // --- split into blocks, compute EC, interleave ---------------------------
+  const dBlocks = [], eBlocks = [];
+  let p = 0;
+  for (let i = 0; i < g1; i++) { const b = data.slice(p, p + g1cw); p += g1cw; dBlocks.push(b); eBlocks.push(ecFor(b, ecPerBlock)); }
+  for (let i = 0; i < g2; i++) { const b = data.slice(p, p + g2cw); p += g2cw; dBlocks.push(b); eBlocks.push(ecFor(b, ecPerBlock)); }
+
+  const final = [];
+  const maxD = Math.max(g1cw, g2cw);
+  for (let i = 0; i < maxD; i++) for (const b of dBlocks) if (i < b.length) final.push(b[i]);
+  for (let i = 0; i < ecPerBlock; i++) for (const b of eBlocks) final.push(b[i]);
+
+  // --- matrix --------------------------------------------------------------
+  const size = 17 + ver * 4;
+  const m   = Array.from({length: size}, () => new Array(size).fill(null));
+  const res = Array.from({length: size}, () => new Array(size).fill(false)); // reserved
+
+  const setF = (r, c, v) => { m[r][c] = v; res[r][c] = true; };
+
+  function finder(r0, c0) {
+    for (let r = -1; r <= 7; r++) for (let c = -1; c <= 7; c++) {
+      const rr = r0 + r, cc = c0 + c;
+      if (rr < 0 || cc < 0 || rr >= size || cc >= size) continue;
+      const on = (r >= 0 && r <= 6 && (c === 0 || c === 6)) ||
+                 (c >= 0 && c <= 6 && (r === 0 || r === 6)) ||
+                 (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+      setF(rr, cc, on ? 1 : 0);
+    }
+  }
+  finder(0, 0); finder(0, size - 7); finder(size - 7, 0);
+
+  for (let i = 8; i < size - 8; i++) {           // timing
+    const v = i % 2 === 0 ? 1 : 0;
+    setF(6, i, v); setF(i, 6, v);
+  }
+
+  for (const r0 of ALIGN[ver]) for (const c0 of ALIGN[ver]) {
+    if ((r0 <= 8 && c0 <= 8) || (r0 <= 8 && c0 >= size - 9) || (r0 >= size - 9 && c0 <= 8)) continue;
+    for (let r = -2; r <= 2; r++) for (let c = -2; c <= 2; c++) {
+      const on = Math.max(Math.abs(r), Math.abs(c)) !== 1;
+      setF(r0 + r, c0 + c, on ? 1 : 0);
+    }
+  }
+
+  setF(size - 8, 8, 1);                          // dark module
+
+  // Reserve format areas (filled after masking).
+  for (let i = 0; i < 9; i++) { if (!res[8][i]) setF(8, i, 0); if (!res[i][8]) setF(i, 8, 0); }
+  for (let i = 0; i < 8; i++) { if (!res[8][size - 1 - i]) setF(8, size - 1 - i, 0);
+                                if (!res[size - 1 - i][8]) setF(size - 1 - i, 8, 0); }
+
+  // BCH long division, used for both the format and version strings.
+  function bchRemainder(v, poly, deg) {
+    let r = v << deg;
+    const polyDeg = 31 - Math.clz32(poly);
+    for (let i = 31 - Math.clz32(r); i >= polyDeg; i--) {
+      if (r & (1 << i)) r ^= poly << (i - polyDeg);
+    }
+    return r;
+  }
+
+  if (ver >= 7) {                                 // version info, BCH(18,6)
+    const vinfo = (ver << 12) | bchRemainder(ver, 0x1F25, 12);
+    for (let i = 0; i < 18; i++) {
+      const bit = (vinfo >> i) & 1;
+      setF(Math.floor(i / 3), size - 11 + (i % 3), bit);
+      setF(size - 11 + (i % 3), Math.floor(i / 3), bit);
+    }
+  }
+
+  // --- place data, zigzag from bottom-right --------------------------------
+  let bi = 0;
+  const bitAt = (i) => i < final.length * 8 ? (final[i >> 3] >> (7 - (i & 7))) & 1 : 0;
+  let upward = true;
+  for (let col = size - 1; col > 0; col -= 2) {
+    if (col === 6) col--;                         // skip the timing column
+    for (let i = 0; i < size; i++) {
+      const row = upward ? size - 1 - i : i;
+      for (let c = 0; c < 2; c++) {
+        const cc = col - c;
+        if (res[row][cc]) continue;
+        m[row][cc] = bitAt(bi++);
+      }
+    }
+    upward = !upward;
+  }
+
+  // --- masking -------------------------------------------------------------
+  const MASKS = [
+    (r, c) => (r + c) % 2 === 0,
+    (r, c) => r % 2 === 0,
+    (r, c) => c % 3 === 0,
+    (r, c) => (r + c) % 3 === 0,
+    (r, c) => (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0,
+    (r, c) => ((r * c) % 2) + ((r * c) % 3) === 0,
+    (r, c) => (((r * c) % 2) + ((r * c) % 3)) % 2 === 0,
+    (r, c) => (((r + c) % 2) + ((r * c) % 3)) % 2 === 0,
+  ];
+
+  function withMask(k) {
+    const g = m.map(row => row.slice());
+    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++)
+      if (!res[r][c] && MASKS[k](r, c)) g[r][c] ^= 1;
+
+    // format info: EC level M = 0b00, mask k
+    const fmt = (0b00 << 3) | k;
+    const bch = bchRemainder(fmt, 0x537, 10);
+    const info = ((fmt << 10) | bch) ^ 0b101010000010010;
+    // Placement runs MSB-first: cell (8,0) carries bit 14, not bit 0. Writing
+    // these the other way round produces a well-formed but unreadable code --
+    // the data decodes fine, the decoder just never gets far enough to try.
+    for (let i = 0; i < 15; i++) {
+      const bit = (info >> (14 - i)) & 1;
+      if (i < 6)       g[8][i] = bit;
+      else if (i < 8)  g[8][i + 1] = bit;
+      else if (i === 8) g[7][8] = bit;
+      else              g[14 - i][8] = bit;
+
+      // Bits 0-6 only: (size-8, 8) is the dark module, not a format cell.
+      // Writing bit 7 there shifts bits 7-14 by one and the code stops being
+      // readable at all -- which is exactly what happened.
+      if (i < 7)       g[size - 1 - i][8] = bit;
+      else             g[8][size - 15 + i] = bit;
+    }
+    g[size - 8][8] = 1;
+    return g;
+  }
+
+  function penalty(g) {
+    let p = 0;
+    // rule 1: runs of 5+
+    for (let i = 0; i < size; i++) {
+      for (const line of [g[i], g.map(r => r[i])]) {
+        let run = 1;
+        for (let j = 1; j < size; j++) {
+          if (line[j] === line[j - 1]) { run++; if (run === 5) p += 3; else if (run > 5) p++; }
+          else run = 1;
+        }
+      }
+    }
+    // rule 2: 2x2 blocks
+    for (let r = 0; r < size - 1; r++) for (let c = 0; c < size - 1; c++)
+      if (g[r][c] === g[r][c+1] && g[r][c] === g[r+1][c] && g[r][c] === g[r+1][c+1]) p += 3;
+    // rule 3: finder-like patterns
+    const pat1 = [1,0,1,1,1,0,1,0,0,0,0], pat2 = [0,0,0,0,1,0,1,1,1,0,1];
+    for (let i = 0; i < size; i++) {
+      for (const line of [g[i], g.map(r => r[i])]) {
+        for (let j = 0; j + 11 <= size; j++) {
+          const seg = line.slice(j, j + 11);
+          if (seg.every((v, k) => v === pat1[k]) || seg.every((v, k) => v === pat2[k])) p += 40;
+        }
+      }
+    }
+    // rule 4: dark ratio
+    let dark = 0;
+    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) dark += g[r][c];
+    const pct = dark * 100 / (size * size);
+    p += Math.floor(Math.abs(pct - 50) / 5) * 10;
+    return p;
+  }
+
+  let best = null, bestP = Infinity;
+  for (let k = 0; k < 8; k++) {
+    const g = withMask(k), pv = penalty(g);
+    if (pv < bestP) { bestP = pv; best = g; }
+  }
+  return best;
 }
 
 function PgStampTag({ biz, onBack, onSaved }) {
@@ -1032,10 +1284,21 @@ function PgStampTag({ biz, onBack, onSaved }) {
         const url = origin + "/stamp/" + tok + "?n=" + n;
         if (!live) return;
         setQrUrl(url);
-        const QR = await loadQrLib();
-        if (!live || !canvasRef.current) return;
-        await QR.toCanvas(canvasRef.current, url, { width: 232, margin: 1,
-          color: { dark: "#000000", light: "#ffffff" } });
+        const mx = qrMatrix(url);
+        const cv = canvasRef.current;
+        if (!live || !cv || !mx) throw new Error("qr");
+        // Drawn at whole-pixel module size with the quiet zone the spec wants;
+        // a fractional module size is what makes a hand-rolled QR fail to scan
+        // on a phone even though it looks right on a desktop screen.
+        const quiet = 4, mod = Math.max(2, Math.floor(232 / (mx.length + quiet * 2)));
+        const px = (mx.length + quiet * 2) * mod;
+        cv.width = px; cv.height = px;
+        const g = cv.getContext("2d");
+        g.fillStyle = "#ffffff"; g.fillRect(0, 0, px, px);
+        g.fillStyle = "#000000";
+        for (let r = 0; r < mx.length; r++) for (let c = 0; c < mx.length; c++)
+          if (mx[r][c]) g.fillRect((c + quiet) * mod, (r + quiet) * mod, mod, mod);
+        if (live) setQrFail(false);
       } catch (e) { if (live) setQrFail(true); }
     }
     draw();
@@ -1104,7 +1367,7 @@ function PgStampTag({ biz, onBack, onSaved }) {
             <div className="scr-lbl" style={{textAlign:"left"}}>Scan Instead</div>
             {qrFail ? (
               <div style={{fontSize:".76rem",color:"var(--text2)",lineHeight:1.6,padding:"12px 0"}}>
-                The code image could not load. The address above still works — a parent can type it in.
+                The code could not be drawn. The address above still works — a parent can type it in.
               </div>
             ) : (
               <div style={{background:"#fff",borderRadius:16,padding:12,display:"inline-block",margin:"6px 0 10px"}}>
