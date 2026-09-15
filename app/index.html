@@ -1648,7 +1648,13 @@ function PgStampTag({ biz, onBack, onSaved }) {
    run out is told to tap again, which is a better outcome than a silent
    failure at the moment they press the button.
 --------------------------------------------------------------------------- */
-function PgStamp({ onDone, preset }) {
+function PgStamp({ onDone, preset, studentAuth }) {
+  // `studentAuth` is a share code and PIN from the student portal, which has no
+  // login at all. When it is set the confirm and undo calls go to the
+  // student-portal functions instead; everything else on this screen -- the
+  // countdown, the amount, the PIN prompt, the success and the undo -- is the
+  // same code, because it is the same flow with a different way of proving
+  // who is holding the phone.
   const token = STAMP_BOOT;
   // `preset` is a session the stamp trigger already opened. Everything past
   // this point is identical either way -- the trigger reuses this screen and
@@ -1707,9 +1713,13 @@ function PgStamp({ onDone, preset }) {
     if (!amt || amt <= 0) { setErr("Enter the amount you are paying."); return; }
     if (data.require_pin && !pin) { setErr("Ask the school to enter their PIN."); return; }
     setErr(""); setPhase("saving");
-    const { data: r, error } = await sb.rpc("stamp_confirm", {
-      p_confirmation: data.confirmation, p_card_id: cardId, p_amount: amt,
-      p_pin: data.require_pin ? pin : null });
+    const { data: r, error } = studentAuth
+      ? await sb.rpc("stamp_confirm_student", {
+          p_confirmation: data.confirmation, p_code: studentAuth.code, p_pin: studentAuth.pin,
+          p_amount: amt, p_owner_pin: data.require_pin ? pin : null })
+      : await sb.rpc("stamp_confirm", {
+          p_confirmation: data.confirmation, p_card_id: cardId, p_amount: amt,
+          p_pin: data.require_pin ? pin : null });
     if (error)   { setErr(error.message); setPhase("pick"); return; }
     if (r.error === "expired")      { setPhase("dead"); return; }
     if (r.error === "bad_pin")      { setErr(r.burned ? "Too many wrong tries. Tap again to start over." : "That PIN is not right."); setPin(""); setPhase(r.burned ? "dead" : "pick"); return; }
@@ -1719,7 +1729,9 @@ function PgStamp({ onDone, preset }) {
   }
 
   async function doUndo() {
-    const { data: r } = await sb.rpc("stamp_undo", { p_card_id: cardId, p_n: result.n });
+    const { data: r } = studentAuth
+      ? await sb.rpc("stamp_undo_student", { p_code: studentAuth.code, p_pin: studentAuth.pin, p_n: result.n })
+      : await sb.rpc("stamp_undo", { p_card_id: cardId, p_n: result.n });
     if (r && r.ok) setUndone(true);
     else setErr("That can no longer be undone here — ask the school.");
   }
@@ -2561,6 +2573,11 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
   // the payment history pushed off the bottom of it. Collapsed to the newest
   // few, opened by a tap.
   const [annOpen, setAnnOpen] = useState(false);
+  /* A confirmation the stamp trigger opened on this card. The student portal
+     has no login, so the identity carried through is the share code and PIN
+     this screen already verified -- and the database re-checks them under the
+     same rate limit rather than taking this page's word for it. */
+  const [stampSess, setStampSess] = useState(null);
   function doCode() {
     if (!code.trim()) { setErr("Enter your code."); return; }
     setErr(""); setStep("pin");
@@ -2583,6 +2600,35 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
     let seenAt=""; try { seenAt = localStorage.getItem("ann_seen_stu_"+c.share_code)||""; } catch(e){}
     setFound({biz,card,announcements:data.announcements||[],seenAt}); setStep("view");
   }
+  /* The stamp trigger, on an open student card.
+     Only once the card is actually open: before that there is no code and PIN
+     to prove anything with, and a press would have nothing to match against. */
+  useEffect(() => {
+    if (!STAMP_TRIGGER) return;
+    if (step !== "view" || stampSess) return;
+    let alive = true, inFlight = false, cooldownUntil = 0;
+    const col = stampPressCollector(async (pts) => {
+      if (!alive || inFlight || Date.now() < cooldownUntil) return;
+      if (pts.length < 4) return;
+      inFlight = true;
+      try {
+        const { data: r } = await sb.rpc("stamp_begin_geometry_student", {
+          p_code: code.trim(), p_pin: pin, p_points: stampNormalise(pts) });
+        if (alive && r && r.ok) setStampSess(r);
+      } catch (e) { /* silent, as everywhere else */ }
+      inFlight = false;
+      cooldownUntil = Date.now() + 2500;
+    }, 90);
+    const h = (e) => col.handle(e);
+    document.addEventListener("touchstart", h, { passive: true });
+    return () => { alive = false; col.cancel(); document.removeEventListener("touchstart", h); };
+  }, [step, stampSess, code, pin]);
+
+  if (stampSess) return (
+    <PgStamp preset={stampSess} studentAuth={{ code: code.trim(), pin }}
+             onDone={()=>setStampSess(null)} />
+  );
+
   if (step==="view" && found) {
     const {biz,card} = found;
     const inactive = biz.inactiveMonths||[];

@@ -69,7 +69,8 @@ for f in schema.sql migration-add-phone.sql migration-approval-gate.sql \
          migration-business-icon.sql migration-business-icon-part-b.sql \
          migration-registration-throttle.sql migration-student-limit.sql \
          migration-family-export.sql migration-stamp-confirm.sql \
-         migration-stamp-geometry.sql; do
+         migration-stamp-geometry.sql migration-stamp-rotation.sql \
+         migration-stamp-student.sql; do
   # Show the real error rather than swallowing it -- a silent "FAILED: x.sql"
   # tells you nothing about which statement broke.
   if ! psql -q -v ON_ERROR_STOP=1 -f "$S/$f" >/tmp/replica-$$.log 2>&1; then

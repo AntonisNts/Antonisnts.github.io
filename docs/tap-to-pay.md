@@ -150,14 +150,32 @@ flicker. That is deliberate: it means an ordinary fumble with five fingers on a
 phone is harmless, but it also means "nothing happened" is the only symptom you
 get when something is wrong. Check the calibration first.
 
-Two things are known not to work and are the first suspects:
+**Press it at any angle you like.** The pattern is recognised however the
+stamp is turned, and it copes with a parent's phone measuring the screen
+differently from yours. Both of those were limitations in the first version and
+both are gone.
 
-- **A rotated press.** The stamp is assumed to land roughly square to the
-  screen. Turn it forty-five degrees and it will not match.
-- **A very different phone.** The pattern is measured in screen pixels, and it
-  is learned on your phone but matched on theirs. iPhone to iPhone should be
-  close. A phone with a very different screen density may read the same
-  physical stamp at a different size and miss.
+What it still will not do:
+
+- **Recognise fewer than four pads.** If a pad does not make contact, nothing
+  happens.
+- **Tell two very similar stamps apart.** Only your own school's pattern is
+  ever compared against, so this can only matter to a parent with children at
+  two schools that both use PayStamp and both have near-identical stamps. If
+  that ever happens, neither is confirmed rather than the wrong one.
+
+### It works in both portals
+
+The **family portal** (a parent logged in) and the **Quick View** student
+portal (a code and PIN, no account) both accept a stamp press.
+
+In Quick View the confirmation is locked to the one card already on screen —
+it cannot reach another student, even at your school. Worth knowing what that
+means for student PINs: they are deliberately shareable codes, and until now
+they only let someone *look* at a card. Together with a press of your physical
+stamp they now also permit recording a payment on that one card. The stamp is
+what authorises it, exactly as with the tag. If you would rather that were not
+possible without you, turn on **Ask For My PIN**.
 
 ### How much it protects
 
