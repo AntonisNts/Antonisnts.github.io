@@ -226,11 +226,22 @@ $$;
 
 -- URL-safe 24-character secret. base64 of 18 random bytes, with the two
 -- characters that would need escaping in a URL swapped out.
+--
+-- search_path includes `extensions` because gen_random_bytes belongs to
+-- pgcrypto, and Supabase installs pgcrypto into its own `extensions` schema
+-- rather than into public. Pinned to public alone this raises
+-- "function gen_random_bytes(integer) does not exist" on the live project
+-- while passing anywhere pgcrypto happens to sit in public. gen_random_uuid()
+-- is unaffected -- that one is core Postgres, not pgcrypto, which is why the
+-- tables built fine and only this failed.
+--
+-- A schema named in search_path that does not exist is ignored rather than an
+-- error, so this is correct on both layouts.
 create or replace function public.stamp_new_token_value()
 returns text
 language sql
 volatile
-set search_path = public
+set search_path = public, extensions
 as $$
   select replace(replace(encode(gen_random_bytes(18), 'base64'), '/', '_'), '+', '-');
 $$;
@@ -403,11 +414,12 @@ $$;
 --  One bucket of slack either side covers ordinary clock drift.
 -- ===========================================================================
 
+-- hmac() is pgcrypto too; same reason for `extensions` on the search_path.
 create or replace function public.stamp_nonce_for(p_token text, p_bucket bigint)
 returns text
 language sql
 immutable
-set search_path = public
+set search_path = public, extensions
 as $$
   select substring(encode(hmac(p_bucket::text, p_token, 'sha256'), 'hex') from 1 for 10);
 $$;

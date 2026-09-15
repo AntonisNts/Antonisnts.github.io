@@ -32,7 +32,17 @@ create function auth.uid() returns uuid language sql stable as $$
 create function auth.email() returns text language sql stable as $$
   select nullif(current_setting('request.jwt.claim.email', true), '') $$;
 grant usage on schema auth, storage to anon, authenticated, service_role;
-create extension if not exists pgcrypto;
+-- pgcrypto goes in its OWN schema, because that is where Supabase puts it.
+-- Installed into public instead, this replica silently accepts a function
+-- pinned to `set search_path = public` that calls gen_random_bytes() or
+-- hmac() -- and the live project then rejects it with "function does not
+-- exist". That is exactly how the Tap to Pay token generator reached
+-- production broken. Creating it here first means schema.sql's own
+-- `create extension if not exists pgcrypto` finds it already present and
+-- leaves it where it is.
+create schema if not exists extensions;
+grant usage on schema extensions to anon, authenticated, service_role;
+create extension if not exists pgcrypto with schema extensions;
 SQL
 
 # Every migration, in the order the live database received them. Order matters
