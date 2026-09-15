@@ -27,6 +27,33 @@ const ok=(n,c,d)=>{ c?(pass++,console.log("  ok   "+n)):(fail++,console.log("  F
     await page.waitForTimeout(400);
   }
 
+  // The QR actually drawn on the Tap to Pay screen. The matrix itself is
+  // covered in qr.js; what this adds is that it reaches the canvas at all --
+  // the first version of this screen showed the "could not load" fallback on a
+  // real phone and looked perfectly fine in every other test.
+  await page.locator(".dash-gear").first().click();
+  await page.waitForTimeout(350);
+  await page.locator(".set-ov").getByText("Tap to Pay", { exact: true }).locator("visible=true").first().click();
+  await page.waitForTimeout(700);
+  const qr = await page.evaluate(() => {
+    const cv = document.querySelector("canvas");
+    if (!cv || !cv.width) return { drawn: false, reason: "no canvas" };
+    const g = cv.getContext("2d");
+    const d = g.getImageData(0, 0, cv.width, cv.height).data;
+    let dark = 0;
+    for (let i = 0; i < d.length; i += 4) if (d[i] < 128) dark++;
+    return { drawn: true, w: cv.width, dark, total: d.length / 4,
+             fallback: /could not be drawn/i.test(document.body.innerText) };
+  });
+  ok("the QR canvas is drawn", qr.drawn, qr.reason);
+  ok("no fallback message is shown", qr.drawn && !qr.fallback);
+  // A blank or all-black canvas would still "draw". Real QRs land near 40-50%.
+  ok("the canvas holds a plausible QR, not a blank square",
+     qr.drawn && qr.dark / qr.total > 0.2 && qr.dark / qr.total < 0.7,
+     qr.drawn ? Math.round(qr.dark / qr.total * 100) + "% dark" : "");
+  await page.locator(".tb-back").first().click();
+  await page.waitForTimeout(400);
+
   // The card screen, reached from the student list.
   await page.locator("text=Elena Georgiou").locator("visible=true").first().click();
   await page.waitForTimeout(600);
