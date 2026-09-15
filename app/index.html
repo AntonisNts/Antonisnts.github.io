@@ -71,6 +71,66 @@ const sb = window.supabase.createClient(SB_URL, SB_KEY);
    sessionStorage rather than localStorage: a tap should not still be pending
    in a tab opened tomorrow.
 --------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------
+   The stamp trigger, off unless switched on.
+
+   A device opts in with ?stamptrigger=1 and stays opted in; ?stamptrigger=0
+   turns it off again. localStorage rather than a build constant so it can be
+   tried on one real phone without deploying anything, and read here BEFORE
+   STAMP_BOOT below, which clears the query string.
+
+   The flag only decides whether the page listens. It grants nothing: the match
+   itself happens in the database against geometries registered to schools the
+   caller is actually a customer of, so switching this on by hand buys an
+   attacker no more than an unregistered stamp already gets them -- nothing.
+--------------------------------------------------------------------------- */
+const STAMP_TRIGGER = (function () {
+  try {
+    const q = new URLSearchParams(location.search);
+    if (q.has("stamptrigger")) {
+      localStorage.setItem("ps_stamp_trigger", q.get("stamptrigger") === "0" ? "0" : "1");
+    }
+    return localStorage.getItem("ps_stamp_trigger") === "1";
+  } catch (e) { return false; }
+})();
+
+/* ---------------------------------------------------------------------------
+   Collecting one stamp press.
+
+   The pads do not all register in the same event. A stamp landing produces
+   several touchstart events in quick succession as the screen notices each
+   contact, so the first one may report a single touch. Taking that first count
+   would miss every press. Instead each event's touch list is kept if it is
+   larger than the last, and the press is only judged once they stop arriving.
+
+   iOS reports at most five touches however many pads there are, which is why
+   nothing here wants an exact count -- four is enough to try.
+--------------------------------------------------------------------------- */
+function stampPressCollector(onPress, settleMs) {
+  let best = null, timer = null;
+  function handle(e) {
+    const t = e.touches;
+    if (!t || t.length < 2) return;
+    if (!best || t.length > best.length) {
+      best = [];
+      for (let i = 0; i < t.length; i++) best.push([Math.round(t[i].clientX), Math.round(t[i].clientY)]);
+    }
+    clearTimeout(timer);
+    timer = setTimeout(() => { const b = best; best = null; if (b) onPress(b); }, settleMs || 90);
+  }
+  return { handle, cancel: () => { clearTimeout(timer); best = null; } };
+}
+
+/* Leftmost point to the origin, so where on the screen the stamp landed and
+   which pad touched down first both stop mattering. The database anchors the
+   stored geometry on every one of its points in turn, which is what lets a
+   four-touch capture match a five-pad stamp. */
+function stampNormalise(points) {
+  const p = points.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const ox = p[0][0], oy = p[0][1];
+  return p.map(q => [q[0] - ox, q[1] - oy]);
+}
+
 const STAMP_BOOT = (function () {
   try {
     const q = new URLSearchParams(location.search);
@@ -967,6 +1027,151 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
 }
 
 /* ---------------------------------------------------------------------------
+   PgStampCalibrate -- the owner registers what their stamp looks like.
+
+   They press it on the target area and the pattern is stored against their
+   business. Matching happens in the database, never here, so nothing on this
+   screen is security-relevant: it is a capture tool.
+
+   The captured points are drawn back at once. A stamp that landed at an angle,
+   or with a pad that did not make contact, produces a pattern the owner can
+   see is wrong and press again -- which matters, because a bad calibration
+   fails silently later on a parent's phone where nobody is watching.
+--------------------------------------------------------------------------- */
+function PgStampCalibrate({ biz, onBack }) {
+  const p = bizPal(biz);
+  const [saved, setSaved]   = useState(null);     // stored geometry
+  const [caught, setCaught] = useState(null);     // this session's capture
+  const [err, setErr]       = useState("");
+  const [note, setNote]     = useState("");
+  const [busy, setBusy]     = useState(true);
+  const padRef = useRef(null);
+
+  async function load() {
+    const { data: r, error } = await sb.rpc("stamp_geometry_get");
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
+    if (r && r.ok) setSaved(r.calibrated ? r : null);
+  }
+  useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    const el = padRef.current;
+    if (!el) return;
+    const col = stampPressCollector((pts) => {
+      setErr(""); setNote("");
+      if (pts.length < 4) {
+        setErr("Only " + pts.length + " pad" + (pts.length === 1 ? "" : "s") + " registered. Press the whole stamp down flat.");
+        setCaught(null);
+        return;
+      }
+      setCaught(stampNormalise(pts));
+    }, 120);
+    const h = (e) => { e.preventDefault(); col.handle(e); };
+    // Not passive: the page must not scroll or zoom under a five-finger press.
+    el.addEventListener("touchstart", h, { passive: false });
+    el.addEventListener("touchmove", h, { passive: false });
+    return () => { col.cancel(); el.removeEventListener("touchstart", h); el.removeEventListener("touchmove", h); };
+  }, []);
+
+  async function save() {
+    if (!caught) return;
+    setErr(""); setNote("");
+    const { data: r, error } = await sb.rpc("stamp_geometry_set", {
+      p_points: caught, p_tolerance: 18,
+      p_ratio: (window.devicePixelRatio || 1) });
+    if (error)                    { setErr(error.message); return; }
+    if (r.error === "bad_count")  { setErr("A stamp needs between 4 and 8 pads. That press had " + r.count + "."); return; }
+    if (r.error)                  { setErr("Could not save that pattern."); return; }
+    setNote("Saved. Test it by pressing the stamp on a parent's phone.");
+    setCaught(null);
+    load();
+  }
+
+  async function clear() {
+    const { error } = await sb.rpc("stamp_geometry_clear");
+    if (error) { setErr(error.message); return; }
+    setSaved(null); setCaught(null); setNote("Removed. The stamp no longer opens anything.");
+  }
+
+  // Drawn to fit whatever the points span, so a wide stamp and a small one
+  // both read clearly rather than one of them crowding a corner.
+  function plot(points, size) {
+    const xs = points.map(q => q[0]), ys = points.map(q => q[1]);
+    const w = Math.max(1, Math.max.apply(null, xs)), h = Math.max(1, Math.max.apply(null, ys));
+    const k = Math.min((size - 28) / w, (size - 28) / h, 3);
+    return (
+      <svg width={size} height={size} style={{display:"block"}}>
+        {points.map((q, i) => (
+          <circle key={i} cx={14 + q[0] * k} cy={14 + q[1] * k} r={7}
+                  fill={alphaHex(p.acc, .85)} stroke={p.acc} strokeWidth={1.5} />
+        ))}
+      </svg>
+    );
+  }
+
+  return (
+    <div className="reg-page scr" style={{"--accent":p.acc}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
+        <button className="tb-back" onClick={onBack}>←</button>
+        <h2>Stamp</h2>
+      </div>
+      <p>Press your stamp on the pad below so PayStamp learns its shape. After that, pressing it on a parent's phone opens their confirmation.</p>
+
+      {err  && <div className="err" style={{marginBottom:10}}>{err}</div>}
+      {note && <div className="info-box" style={{marginBottom:14}}>{note}</div>}
+
+      <div ref={padRef}
+        style={{height:300,borderRadius:22,border:"2px dashed "+alphaHex(p.acc,.55),
+                background:alphaHex(p.acc,.07),display:"flex",alignItems:"center",
+                justifyContent:"center",marginBottom:16,touchAction:"none",
+                userSelect:"none",WebkitUserSelect:"none",textAlign:"center",padding:16}}>
+        {caught
+          ? <div>{plot(caught, 220)}
+              <div style={{fontSize:".74rem",fontWeight:700,color:"var(--accent)",marginTop:6}}>
+                {caught.length + " pads registered"}
+              </div>
+            </div>
+          : <div style={{color:"var(--text2)",fontSize:".88rem",fontWeight:600,lineHeight:1.6}}>
+              Press the stamp here,<br />flat and firm
+            </div>}
+      </div>
+
+      {caught && <button className="scr-btn primary wide" onClick={save}>
+        {saved ? "Replace Saved Pattern" : "Save This Pattern"}
+      </button>}
+
+      <div className="scr-card" style={{marginTop:16,padding:16}}>
+        <div className="scr-lbl">Saved Pattern</div>
+        {busy ? <div style={{color:"var(--text2)",fontSize:".84rem"}}>Loading…</div>
+          : !saved ? <div style={{color:"var(--text2)",fontSize:".84rem",lineHeight:1.6}}>
+              Nothing saved yet. Until you save one, pressing a stamp on a parent's phone does nothing.
+            </div>
+          : <div style={{display:"flex",alignItems:"center",gap:16}}>
+              {plot(saved.points, 120)}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:".84rem",fontWeight:800,color:"var(--text)"}}>{saved.point_count} pads</div>
+                <div style={{fontSize:".72rem",color:"var(--text2)",marginTop:3}}>
+                  Saved {new Date(saved.updated_at).toLocaleDateString("en-GB")}
+                </div>
+              </div>
+            </div>}
+      </div>
+
+      {saved && <button className="scr-btn danger wide" style={{marginTop:12}} onClick={clear}>
+        Remove Saved Pattern
+      </button>}
+
+      <div style={{fontSize:".72rem",color:"var(--text2)",lineHeight:1.6,marginTop:16}}>
+        Phones differ in how finely they measure the screen, so a stamp learned
+        on this phone may not be recognised on a very different one. Test on a
+        parent's handset before relying on it.
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
    PgStampTag -- the owner's side: the tag's address, a QR of it, and the PIN.
 
    The QR library is fetched only when this screen opens, and the screen works
@@ -1443,12 +1648,16 @@ function PgStampTag({ biz, onBack, onSaved }) {
    run out is told to tap again, which is a better outcome than a silent
    failure at the moment they press the button.
 --------------------------------------------------------------------------- */
-function PgStamp({ onDone }) {
+function PgStamp({ onDone, preset }) {
   const token = STAMP_BOOT;
-  const [phase, setPhase]   = useState("loading");  // loading|owner|nomatch|pick|saving|done|dead
-  const [data, setData]     = useState(null);
-  const [cardId, setCardId] = useState(null);
-  const [amount, setAmount] = useState("");
+  // `preset` is a session the stamp trigger already opened. Everything past
+  // this point is identical either way -- the trigger reuses this screen and
+  // the confirm call rather than carrying its own copy of them.
+  const first0 = (preset && preset.students && preset.students[0]) || null;
+  const [phase, setPhase]   = useState(preset ? "pick" : "loading");  // loading|owner|nomatch|pick|saving|done|dead
+  const [data, setData]     = useState(preset || null);
+  const [cardId, setCardId] = useState(first0 ? first0.card_id : null);
+  const [amount, setAmount] = useState(first0 && first0.amount ? String(first0.amount) : "");
   const [pin, setPin]       = useState("");
   const [err, setErr]       = useState("");
   const [left, setLeft]     = useState(60);
@@ -1456,6 +1665,7 @@ function PgStamp({ onDone }) {
   const [undone, setUndone] = useState(false);
 
   useEffect(() => {
+    if (preset) return;                     // the session is already open
     let live = true;
     (async () => {
       const { data: r, error } = await sb.rpc("stamp_begin", { p_token: token, p_nonce: stampNonceStored() });
@@ -1608,14 +1818,17 @@ function PgStamp({ onDone }) {
   </>);
 }
 
-function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onName, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded, onStampTag }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
+function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onName, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded, onStampTag, onStampCal }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
       the two can never fall out of step. Grouped by what the owner is trying
       to do rather than by when each screen happened to be built. */
    const SET_GROUPS = [
      ["Students",      [["📅","Months","Manage active/inactive months",onMonths],["🎓","Levels","Edit student levels & fees",onLevels],["👥","Groups","Weekly schedule by group",onGroups],["🗂️","Manage","Create groups & assign teachers",onManage]]],
      ["Appearance",    [["✏️","Name","Rename your school",onName],["🎨","Colour","Pick your accent colour",onTheme],["🏫","Icon","Choose your school's icon",onIcon],["🖼️","Card","Choose card design",onCustomCard]]],
      ["Communication", [["🔔","Remind","Send payment reminders",onRemind],["📣","Announcements","Post news to parents & students",onAnnouncements],["📝","Registration","Public sign-up links & requests",onRegistrations,pendingRegs]]],
-     ["Payments",      [["📲","Tap to Pay","NFC tag & QR for confirmations",onStampTag]]],
+     /* The Stamp row appears only where the trigger is switched on. A school
+        that cannot use it should not be offered a calibration screen. */
+     ["Payments",      [["📲","Tap to Pay","NFC tag & QR for confirmations",onStampTag]]
+                        .concat(STAMP_TRIGGER ? [["🔘","Stamp","Teach PayStamp your rubber stamp",onStampCal]] : [])],
      ["Data",          [["📤","Export","Download payment records",onExport]]],
    ];   const hasImg = !!biz.customCardImage;   const headerBg = hasImg ? "#000" : "linear-gradient(160deg,"+alphaHex(p.acc,.22)+" 0%,#131315 100%)";    const filtered = allCards     .filter(c=>{       if (levelFilter==="all") return true;       if (levelFilter==="none") return !c.level;       return c.level && c.level.id===levelFilter;     })     .filter(c=>!search||(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.shareCode||"").toLowerCase().includes(search.toLowerCase()))     .sort((a,b)=>{       if (sort==="owed") {         const oA=getStudentMonthStatus(a,biz,year).owedTotal;         const oB=getStudentMonthStatus(b,biz,year).owedTotal;         return oB-oA;       }       if (sort==="progress") { return monthsPaid(b.payments||{},year,inactive.concat(b.pausedMonths||[]),b.enrollmentStart)-monthsPaid(a.payments||{},year,inactive.concat(a.pausedMonths||[]),a.enrollmentStart); }       return (a.name||"").localeCompare(b.name||"");     });
 
@@ -4455,6 +4668,10 @@ function App() {
      otherwise have chosen: somebody standing at the counter with their phone
      against a tag is not there to browse. */
   const [stampTok, setStampTok] = useState(STAMP_BOOT);
+  /* A confirmation the stamp trigger opened. Distinct from stampTok because
+     there is no token involved -- the database matched a geometry and handed
+     back a session directly. */
+  const [stampSession, setStampSession] = useState(null);
 
   const pop = (msg,type="ok")=>{setToast({msg,type});setTimeout(()=>setToast(null),2800);};
 
@@ -4528,6 +4745,45 @@ function App() {
       finally { setBizLoaded(true); }
     })();
   },[session]);
+
+  /* ---------------------------------------------------------------------
+     The stamp trigger: a global listener on the family portal.
+
+     Only on the family portal, because that is the screen a parent has open
+     when they are standing at the desk, and a school owner pressing their own
+     stamp on their own dashboard should not be doing anything.
+
+     The points go to the database raw and it decides whether they match. This
+     side never learns which school a press belongs to, or whether it was
+     close -- on anything other than a match it does nothing at all, with no
+     message, exactly as specified. A silent no-match is also what makes an
+     ordinary five-finger fumble on a phone harmless.
+  --------------------------------------------------------------------------- */
+  useEffect(() => {
+    if (!STAMP_TRIGGER) return;
+    if (!session || mode !== "parent") return;
+    if (stampTok || stampSession) return;      // already confirming something
+
+    let alive = true, inFlight = false, cooldownUntil = 0;
+    const col = stampPressCollector(async (pts) => {
+      if (!alive || inFlight || Date.now() < cooldownUntil) return;
+      if (pts.length < 4) return;              // four is the floor worth trying
+      inFlight = true;
+      try {
+        const { data: r } = await sb.rpc("stamp_begin_geometry",
+          { p_points: stampNormalise(pts) });
+        if (alive && r && r.ok) setStampSession(r);
+      } catch (e) { /* silent, by design */ }
+      inFlight = false;
+      // A stamp held down a moment too long fires twice otherwise, and the
+      // second press would burn a session nobody asked for.
+      cooldownUntil = Date.now() + 2500;
+    }, 90);
+
+    const h = (e) => col.handle(e);
+    document.addEventListener("touchstart", h, { passive: true });
+    return () => { alive = false; col.cancel(); document.removeEventListener("touchstart", h); };
+  }, [session, mode, stampTok, stampSession]);
 
   /* Tapped while logged out. The token is already in sessionStorage, so the
      login round-trip cannot lose it and the tap resumes by itself the moment
@@ -4865,6 +5121,7 @@ async function doUpdateCard(updates){
       <div className={"app"+(view==="dashboard"?" app--wide":"")}>
         {!authReady ? <div className="empty" style={{paddingTop:80}}>Loading…</div>
          : session && !bizLoaded ? <div className="empty" style={{paddingTop:80}}>Loading…</div>
+         : session && stampSession ? <PgStamp preset={stampSession} onDone={()=>setStampSession(null)} />
          : session && stampTok ? <PgStamp onDone={()=>{ setStampTok(null); setView(mode==="parent"?"parentDash":"dashboard"); }} />
          : session && approval==="pending" ? <PgPending email={session.user&&session.user.email} onLogout={doLogout} />
          : session && approval==="rejected" ? <PgRejected onLogout={doLogout} />
@@ -4882,7 +5139,7 @@ async function doUpdateCard(updates){
         {view==="student" && <PgStudent onBack={()=>setView("landing")} />}
         {view==="parentAuth" && stampTok && <div style={{padding:"18px 28px 0"}}><div className="info-box">Log in to confirm the payment. We will pick up where you left off.</div></div>}
         {view==="parentAuth" && <PgParentAuth onBack={()=>setView("landing")} />}
-        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onIcon={()=>goView("icon")} onName={()=>goView("name")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} onStampTag={()=>goView("stampTag")} />}
+        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onIcon={()=>goView("icon")} onName={()=>goView("name")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} onStampTag={()=>goView("stampTag")} onStampCal={()=>goView("stampCal")} />}
         {view==="addCard" && biz && <PgAddCard biz={biz} onBack={()=>setView("dashboard")} onCreate={doAddCard} />}
         {view==="import" && biz && <PgImport biz={biz} onBack={()=>setView("dashboard")} onImport={doImportStudents} />}
         {view==="reveal" && revealCard && <PgReveal biz={biz} card={revealCard} onDone={()=>{setRevealCard(null);setView("dashboard");}} />}
@@ -4894,6 +5151,7 @@ async function doUpdateCard(updates){
         {view==="icon" && biz && <PgIcon biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveIcon} />}
         {view==="name" && biz && <PgName biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveName} />}
         {view==="stampTag" && biz && <PgStampTag biz={biz} onBack={()=>setView("dashboard")} onSaved={refresh} />}
+        {view==="stampCal" && biz && <PgStampCalibrate biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="export" && biz && <PgExport biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="remind" && biz && <PgRemind biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="announcements" && biz && <PgAnnouncements biz={biz} onBack={()=>setView("dashboard")} />}

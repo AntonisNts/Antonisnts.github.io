@@ -36,6 +36,7 @@ node sweep.js     # every settings screen opens, on the skin, with no errors
 node stamp.js     # the Tap to Pay confirmation flow, both sides of it
 node routes.js    # /stamp/TOKEN and the 404 fallback that makes it work
 node qr.js        # the QR encoder, against a reference encoder and a decoder
+node stamptrigger.js  # the stamp trigger and its calibration screen
 ```
 
 `qr.js` needs no browser. It lifts `qrMatrix()` straight out of `app/index.html`

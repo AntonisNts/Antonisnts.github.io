@@ -362,10 +362,27 @@ select 'anon cannot call any of the stamp functions' as t, count(*) = 0 as pass
  where (p.proname like 'stamp%' or p.proname = 'set_confirm_settings')
    and has_function_privilege('anon', p.oid, 'execute');
 
-select 'but a logged-in caller can reach the seven public ones' as t, count(*) = 7 as pass
+-- Named rather than counted. A count breaks every time a function is added,
+-- which says nothing about whether the RIGHT ones are reachable -- and the
+-- fix is to edit the number, which is no check at all.
+select 'exactly the intended entry points are reachable when logged in' as t,
+       array_agg(p.proname order by p.proname) = array[
+         'set_confirm_settings','stamp_begin','stamp_begin_geometry','stamp_confirm',
+         'stamp_geometry_clear','stamp_geometry_get','stamp_geometry_set',
+         'stamp_token_get','stamp_token_revoke','stamp_token_rotate','stamp_undo'
+       ]::name[] as pass
   from pg_proc p
  where (p.proname like 'stamp%' or p.proname = 'set_confirm_settings')
    and has_function_privilege('authenticated', p.oid, 'execute');
+
+select 'and the internals stay unreachable by name' as t,
+       count(*) = 0 as pass
+  from pg_proc p
+ where p.proname in ('stamp_calc_breakdown','stamp_fee_for_month','stamp_new_token_value',
+                     'stamp_nonce_for','stamp_nonce_valid','stamp_geometry_match',
+                     'stamp_open_session')
+   and (has_function_privilege('anon', p.oid, 'execute')
+     or has_function_privilege('authenticated', p.oid, 'execute'));
 
 select 'the arithmetic helpers are not callable from outside at all' as t,
        count(*) = 0 as pass

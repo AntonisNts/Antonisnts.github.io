@@ -208,3 +208,49 @@ version with a real decoder and diffing against a reference encoder.
 
 **What changes it:** needing a bigger version than 10, or a different EC level.
 Both are table additions, not a rewrite.
+
+---
+
+## The stamp is matched in the database, not in the browser
+
+The page could have compared the pressed pattern against a geometry it had
+downloaded, and told the server which school matched. That would have been
+simpler and completely hollow: a parent could then open a confirmation from
+their sofa by posting a business id, and the physical stamp would be protecting
+nothing. It is the same trap as letting `stamp_confirm` accept a payments blob.
+
+So the browser sends raw points and learns only whether something matched. The
+comparison runs in `stamp_begin_geometry`, against geometries belonging to
+schools that caller is already a customer of — comparing against all of them
+would turn the endpoint into an oracle for reading other schools' patterns.
+
+`stamp_open_session` was extracted from `stamp_begin` for this rather than
+copied, so the tag, the QR and the stamp all open the same session the same
+way. It is granted to nobody: it takes a business id and opens a session
+against it with no checks of its own.
+
+**What changes it:** nothing. Client-side matching is not a cheaper version of
+this, it is a different and empty feature.
+
+---
+
+## The stamp is the weakest trigger, and that is inherent
+
+A tag address is 24 random characters. A stamp is five dots on a physical
+object, visible to anyone who looks at it and reproducible with five fingers.
+No amount of care in the matching changes that.
+
+It ships behind a per-device flag, off by default, for that reason as much as
+for testing. `require_pin_on_confirm` is the answer for any school that wants
+the guarantee.
+
+Two limits were left in deliberately rather than papered over: rotation is not
+handled, and the pattern is measured in screen pixels so a calibration learned
+on the owner's phone may not match on a very differently sized one. Both are
+recorded at the foot of `migration-stamp-geometry.sql` as the first things to
+check when a press does not register, because the symptom of every failure is
+the same silence.
+
+**What changes it:** real-device testing showing which of the two actually
+bites. Rotation invariance and scale invariance are both solvable, but solving
+either before knowing it is the problem is guesswork.
