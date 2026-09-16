@@ -1057,6 +1057,537 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
   );
 }
 
+/* ===========================================================================
+   SHOP MODULE — BEGIN
+   ---------------------------------------------------------------------------
+   Optional. Uniforms, shoes and accessories a school sells to its own
+   students, collected at the school.
+
+   Everything between these markers is the module. To remove it, delete this
+   block and every line marked "SHOP MODULE mount" — there are four, each one
+   whole line, so the removal is literally that grep.
+
+   What survives is two handler props on PgDashboard (onShopItems,
+   onShopOrders): a name in its signature that nothing reads, and an arrow at
+   its call site that nothing calls. Neither refers to anything the removal
+   deletes, so neither can break. app/test/shop.js performs the removal on a
+   copy and checks exactly that, so a fifth reference creeping in somewhere
+   unmarked fails there rather than in somebody's hands.
+
+   The database half is migration-shop.sql, which alters no existing table.
+=========================================================================== */
+
+/* How many orders are waiting on the owner, for the badge on the settings row.
+   A hook rather than state in App, so the settings row can ask for the number
+   on the same line it draws — and so removing the module takes the counter
+   with it instead of leaving an orphan behind. The dashboard unmounts whenever
+   a screen opens over it, so coming back re-counts. */
+function useShopPending() {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const { data: r } = await sb.rpc("shop_orders_queue");
+        if (alive) setN(r && r.ok
+          ? (r.orders || []).filter(o => o.status === "new" || o.payment_status === "claimed").length
+          : 0);
+      } catch (e) { /* module's SQL not run yet — no badge, no noise */ }
+    })();
+    return () => { alive = false; };
+  }, []);
+  return n;
+}
+
+/* The owner's side: what is for sale, and the switch. */
+function PgShopItems({ biz, onBack }) {
+  const p = bizPal(biz);
+  const [items, setItems]   = useState([]);
+  const [enabled, setEnabled] = useState(false);
+  const [busy, setBusy]     = useState(true);
+  const [err, setErr]       = useState("");
+  const [note, setNote]     = useState("");
+  const [edit, setEdit]     = useState(null);   // the item being written
+
+  async function load() {
+    const { data: r, error } = await sb.rpc("shop_items_list");
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
+    if (r && r.ok) { setItems(r.items || []); setEnabled(!!r.enabled); }
+  }
+  useEffect(() => { load(); }, []);
+
+  async function toggle() {
+    setErr(""); setNote("");
+    const { data: r, error } = await sb.rpc("shop_settings_set", { p_enabled: !enabled });
+    if (error) { setErr(error.message); return; }
+    if (r.error) { setErr("Could not change that."); return; }
+    setEnabled(!!r.enabled);
+    setNote(r.enabled
+      ? "Shop is on. Parents will see it next time they open PayStamp."
+      : "Shop is off. It has gone from your parents' portal — nothing you have sold is deleted.");
+  }
+
+  async function save() {
+    const e = edit;
+    setErr(""); setNote("");
+    const price = parseFloat(e.price);
+    if (!e.name || !e.name.trim()) { setErr("Give the item a name."); return; }
+    if (isNaN(price) || price < 0)  { setErr("Give the item a price."); return; }
+    const sizes = (e.sizesText || "").split(",").map(x => x.trim()).filter(Boolean);
+    const stock = e.stockText === "" || e.stockText == null ? null : parseInt(e.stockText, 10);
+    if (stock !== null && (isNaN(stock) || stock < 0)) { setErr("Stock must be a whole number, or blank."); return; }
+
+    const { data: r, error } = await sb.rpc("shop_item_save", {
+      p_id: e.id || null, p_name: e.name.trim(), p_description: e.description || null,
+      p_price: price, p_sizes: sizes, p_stock: stock, p_image_url: e.image_url || null });
+    if (error)                  { setErr(error.message); return; }
+    if (r.error === "bad_image"){ setErr("A picture link has to start with https://"); return; }
+    if (r.error)                { setErr("Could not save that item."); return; }
+    setEdit(null); setNote("Saved."); load();
+  }
+
+  async function archive(it) {
+    const { error } = await sb.rpc("shop_item_archive", { p_id: it.id, p_archived: !it.archived });
+    if (error) { setErr(error.message); return; }
+    load();
+  }
+
+  const blank = { id:null, name:"", description:"", price:"", sizesText:"", stockText:"", image_url:"" };
+
+  return (
+    <div className="reg-page scr" style={{"--accent":p.acc}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
+        <button className="tb-back" onClick={onBack}>←</button>
+        <h2>Shop</h2>
+      </div>
+      <p>Sell uniforms, shoes and accessories to your own students. Parents order here and collect at the school — nothing is posted, and nobody outside your school sees any of it.</p>
+
+      {err  && <div className="err" style={{marginBottom:10}}>{err}</div>}
+      {note && <div className="info-box" style={{marginBottom:14}}>{note}</div>}
+
+      <div className="scr-card" style={{marginBottom:16,padding:16}}>
+        <div className="scr-lbl">Shop</div>
+        <div style={{fontSize:".78rem",color:"var(--text2)",lineHeight:1.6,marginBottom:12}}>
+          {enabled
+            ? "On. Parents of your students can see the items below and place orders."
+            : "Off. Your parents see nothing at all — no section, no heading."}
+        </div>
+        <button className={"scr-btn wide"+(enabled?" danger":" primary")} onClick={toggle}>
+          {enabled ? "Switch Shop Off" : "Switch Shop On"}
+        </button>
+      </div>
+
+      {busy ? <div className="empty">Loading…</div> : <>
+        {items.length === 0 && !edit && <div className="empty">Nothing for sale yet.</div>}
+
+        {items.map(it => (
+          <div key={it.id} className="scr-card" style={{marginBottom:10,padding:16,
+                opacity: it.archived ? .55 : 1}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
+              <div style={{minWidth:0}}>
+                <div className="scr-card-t">{it.name}{it.archived ? " · archived" : ""}</div>
+                {it.description && <div className="scr-card-s">{it.description}</div>}
+                <div style={{fontSize:".72rem",color:"var(--text2)",marginTop:4}}>
+                  {(it.sizes || []).length ? "Sizes: " + it.sizes.join(", ") : "No sizes"}
+                  {" · "}
+                  {/* null and 0 are different things and must read differently:
+                      "not counting" versus "counted, none left". */}
+                  {it.stock == null ? "stock not counted"
+                    : it.stock === 0 ? "out of stock" : (it.stock + " in stock")}
+                </div>
+              </div>
+              <div style={{fontSize:"1rem",fontWeight:800,color:"var(--accent)",flexShrink:0}}>
+                {"€"+Number(it.price).toFixed(2)}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:12}}>
+              <button className="scr-btn" style={{flex:1}} onClick={()=>setEdit({
+                id:it.id, name:it.name, description:it.description||"", price:String(it.price),
+                sizesText:(it.sizes||[]).join(", "),
+                stockText: it.stock == null ? "" : String(it.stock),
+                image_url: it.image_url||"" })}>Edit</button>
+              <button className="scr-btn" style={{flex:1}} onClick={()=>archive(it)}>
+                {it.archived ? "Restore" : "Archive"}
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {!edit && <button className="scr-btn primary wide" style={{marginTop:6}}
+          onClick={()=>setEdit(blank)}>+ Add Item</button>}
+      </>}
+
+      {edit && (
+        <div className="scr-card" style={{marginTop:14,padding:16}}>
+          <div className="scr-lbl">{edit.id ? "Edit Item" : "New Item"}</div>
+          <div className="ig"><label>Name</label>
+            <input className="inp" placeholder="e.g. School Jumper" value={edit.name}
+              onChange={e=>setEdit(x=>({...x,name:e.target.value}))} /></div>
+          <div className="ig"><label>Description (optional)</label>
+            <input className="inp" placeholder="e.g. Navy, embroidered" value={edit.description}
+              onChange={e=>setEdit(x=>({...x,description:e.target.value}))} /></div>
+          <div className="ig"><label>Price</label>
+            <input className="inp" type="number" inputMode="decimal" placeholder="0" value={edit.price}
+              onChange={e=>setEdit(x=>({...x,price:e.target.value}))} /></div>
+          <div className="ig"><label>Sizes (optional, comma separated)</label>
+            <input className="inp" placeholder="S, M, L" value={edit.sizesText}
+              onChange={e=>setEdit(x=>({...x,sizesText:e.target.value}))} /></div>
+          <div className="ig"><label>Stock (optional — leave blank not to count)</label>
+            <input className="inp" type="number" inputMode="numeric" placeholder="not counted" value={edit.stockText}
+              onChange={e=>setEdit(x=>({...x,stockText:e.target.value}))} /></div>
+          <div className="ig"><label>Picture Link (optional)</label>
+            <input className="inp" type="url" placeholder="https://…" value={edit.image_url}
+              onChange={e=>setEdit(x=>({...x,image_url:e.target.value}))} /></div>
+          <button className="scr-btn primary wide" onClick={save}>Save Item</button>
+          <button className="scr-btn wide" style={{marginTop:10}} onClick={()=>{setEdit(null);setErr("");}}>Cancel</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/* The owner's side: orders waiting on them. */
+function PgShopOrders({ biz, onBack, onChanged }) {
+  const p = bizPal(biz);
+  const [q, setQ]       = useState(null);
+  const [busy, setBusy] = useState(true);
+  const [err, setErr]   = useState("");
+  const [note, setNote] = useState("");
+
+  async function load() {
+    const { data: r, error } = await sb.rpc("shop_orders_queue");
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
+    if (r && r.ok) setQ(r);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function call(fn, args, ok) {
+    setErr(""); setNote(""); setBusy(true);
+    const { data: r, error } = await sb.rpc(fn, args);
+    setBusy(false);
+    if (error)   { setErr(error.message); return; }
+    if (r.error) { setErr(r.error === "already_paid" ? "That one is already marked paid." : "Could not do that."); load(); return; }
+    setNote(ok); onChanged && onChanged(); load();
+  }
+
+  const orders = (q && q.orders) || [];
+  const NEXT = { new:"ready", ready:"collected" };
+
+  return (
+    <div className="reg-page scr" style={{"--accent":p.acc}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
+        <button className="tb-back" onClick={onBack}>←</button>
+        <h2>Shop Orders</h2>
+      </div>
+      <p>What your students have ordered. This is kit, kept apart from lesson fees — nothing here appears in what a student owes for the month.</p>
+
+      {err  && <div className="err" style={{marginBottom:10}}>{err}</div>}
+      {note && <div className="info-box" style={{marginBottom:14}}>{note}</div>}
+
+      {q && (
+        <div className="scr-card" style={{marginBottom:16,padding:16,textAlign:"center"}}>
+          <div style={{fontSize:".6rem",fontWeight:700,color:"var(--text2)",textTransform:"uppercase",letterSpacing:".14em"}}>Owed For Kit</div>
+          <div style={{fontSize:"1.4rem",fontWeight:800,color:"var(--owed)",marginTop:4}}>
+            {"€"+Number(q.owed || 0).toFixed(2)}
+          </div>
+          <div style={{fontSize:".68rem",color:"var(--text3)",marginTop:4}}>separate from lesson fees</div>
+        </div>
+      )}
+
+      {busy && !q ? <div className="empty">Loading…</div>
+       : orders.length === 0 ? <div className="empty">No orders.</div>
+       : orders.map(o => (
+        <div key={o.id} className="scr-card" style={{marginBottom:10,padding:16,
+              opacity: (o.status==="collected"||o.status==="cancelled") ? .6 : 1}}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
+            <div style={{minWidth:0}}>
+              <div className="scr-card-t">{o.student}</div>
+              {(o.lines||[]).map((l,i)=>(
+                <div key={i} className="scr-card-s">
+                  {l.qty + " × " + l.name + (l.size ? " (" + l.size + ")" : "")}
+                </div>
+              ))}
+              {o.note && <div style={{fontSize:".72rem",color:"var(--text2)",marginTop:4,fontStyle:"italic"}}>{o.note}</div>}
+              {o.payment_status === "claimed" && (
+                <div style={{fontSize:".72rem",color:"var(--partial)",marginTop:6,lineHeight:1.5}}>
+                  {"Says they paid €" + Number(o.claim_amount||0).toFixed(2)
+                    + (o.claim_date ? " on " + new Date(o.claim_date).toLocaleDateString("en-GB") : "")
+                    + (o.claim_ref ? " · " + o.claim_ref : "")}
+                </div>
+              )}
+            </div>
+            <div style={{textAlign:"right",flexShrink:0}}>
+              <div style={{fontSize:"1.05rem",fontWeight:800,color:"var(--accent)"}}>{"€"+Number(o.total).toFixed(2)}</div>
+              <div style={{fontSize:".62rem",fontWeight:800,letterSpacing:".06em",textTransform:"uppercase",marginTop:6,
+                    color: o.payment_status==="paid" ? "var(--green)"
+                         : o.payment_status==="claimed" ? "var(--partial)" : "var(--owed)"}}>
+                {o.payment_status === "paid" ? ("Paid" + (o.paid_via ? " · " + o.paid_via : ""))
+                  : o.payment_status === "claimed" ? "Says paid" : "Unpaid"}
+              </div>
+              <div style={{fontSize:".62rem",fontWeight:700,color:"var(--text2)",marginTop:4,textTransform:"uppercase",letterSpacing:".06em"}}>{o.status}</div>
+            </div>
+          </div>
+
+          <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
+            {NEXT[o.status] && <button className="scr-btn primary" style={{flex:"1 1 45%"}} disabled={busy}
+              onClick={()=>call("shop_order_set_status",{p_order_id:o.id,p_status:NEXT[o.status]},
+                "Marked " + NEXT[o.status] + ".")}>
+              {"Mark " + NEXT[o.status]}
+            </button>}
+            {o.payment_status !== "paid" && <button className="scr-btn primary" style={{flex:"1 1 45%"}} disabled={busy}
+              onClick={()=>call("shop_order_mark_paid_owner",
+                {p_order_id:o.id, p_via: o.payment_status === "claimed" ? "link" : "manual"},
+                "Marked paid.")}>
+              {o.payment_status === "claimed" ? "Confirm Payment" : "Mark Paid"}
+            </button>}
+            {o.payment_status === "paid" && <button className="scr-btn" style={{flex:"1 1 45%"}} disabled={busy}
+              onClick={()=>call("shop_order_unmark_paid",{p_order_id:o.id},"Set back to unpaid.")}>
+              Undo Paid
+            </button>}
+            {o.status !== "cancelled" && o.status !== "collected" &&
+              <button className="scr-btn danger" style={{flex:"1 1 45%"}} disabled={busy}
+                onClick={()=>call("shop_order_set_status",{p_order_id:o.id,p_status:"cancelled"},
+                  "Cancelled. Any counted stock has gone back.")}>
+                Cancel
+              </button>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+/* The parent's side. Renders nothing at all unless a school they deal with
+   has the shop switched on — which is what "off leaves no trace" means. */
+function ShopPanel({ accent }) {
+  const [cat, setCat]       = useState(null);
+  const [orders, setOrders] = useState([]);
+  const [open, setOpen]     = useState(null);   // {card_id, item, size, qty}
+  const [err, setErr]       = useState("");
+  const [note, setNote]     = useState("");
+  const [busy, setBusy]     = useState(false);
+  /* The school's payment link, if they publish one. Read, never owned: the
+     module asks for it and carries on without it, so neither feature has to
+     be removed with the other. */
+  const [links, setLinks]   = useState({});
+  const [claim, setClaim]   = useState(null);   // {order_id, opened, form, ...}
+
+  async function load() {
+    try {
+      const { data: c } = await sb.rpc("shop_catalogue_mine");
+      setCat(c || []);
+      const { data: o } = await sb.rpc("shop_orders_mine");
+      setOrders(o || []);
+    } catch (e) { setCat([]); }
+    try {
+      const { data: l } = await sb.rpc("payment_links_mine");
+      const m = {}; (l || []).forEach(x => { m[x.card_id] = x; }); setLinks(m);
+    } catch (e) { setLinks({}); }
+  }
+  useEffect(() => { load(); }, []);
+
+  /* Telling the school you paid for kit. It settles nothing: the order goes to
+     'claimed', which is not 'paid', and the school's kit-owed total does not
+     move until they confirm it against their statement. */
+  async function sendClaim(o) {
+    const amt = parseFloat(claim.amount);
+    if (!amt || amt <= 0) { setClaim(c => ({...c, err:"How much did you pay?"})); return; }
+    setClaim(c => ({...c, err:"", busy:true}));
+    const { data: r, error } = await sb.rpc("shop_order_claim_paid", {
+      p_order_id: o.id, p_amount: amt, p_paid_on: claim.when,
+      p_reference: (claim.ref || "").trim() || null });
+    if (error || (r && r.error)) {
+      setClaim(c => ({...c, busy:false,
+        err: (r && r.error === "bad_date") ? "That date is not one we can use — check the day."
+           : "That did not go through. Try again."}));
+      return;
+    }
+    setClaim(null);
+    setNote("Told the school. They will confirm it once they have checked.");
+    load();
+  }
+
+  async function place() {
+    const o = open;
+    if (o.item.sizes && o.item.sizes.length && !o.size) { setErr("Choose a size."); return; }
+    setErr(""); setBusy(true);
+    const { data: r, error } = await sb.rpc("shop_order_place", {
+      p_card_id: o.card_id,
+      p_lines: [{ item_id: o.item.id, size: o.size || null, qty: o.qty }],
+      p_note: null });
+    setBusy(false);
+    if (error)                      { setErr(error.message); return; }
+    if (r.error === "out_of_stock") { setErr("That has just sold out."); load(); return; }
+    if (r.error === "shop_off")     { setErr("The shop is closed."); load(); return; }
+    if (r.error)                    { setErr("Could not place that order."); return; }
+    setOpen(null);
+    setNote("Ordered. The school will let you know when it is ready to collect.");
+    load();
+  }
+
+  if (!cat || cat.length === 0) return null;   // no shop, no section
+
+  return (
+    <div style={{marginTop:18}}>
+      <div className="sec-row"><div className="sec-title">Shop</div></div>
+      {note && <div className="info-box" style={{margin:"8px 0"}}>{note}</div>}
+
+      {cat.map(school => (
+        <div key={school.card_id} style={{marginBottom:14}}>
+          <div style={{fontSize:".72rem",color:"var(--fam-t3)",fontWeight:700,
+                textTransform:"uppercase",letterSpacing:".1em",margin:"6px 0 8px"}}>
+            {school.student}
+          </div>
+
+          {(school.items || []).length === 0
+            ? <div style={{fontSize:".8rem",color:"var(--fam-t3)"}}>Nothing for sale just now.</div>
+            : school.items.map(it => (
+            <div key={it.id} className="scr-card" style={{marginBottom:8,padding:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
+                <div style={{minWidth:0}}>
+                  <div className="scr-card-t">{it.name}</div>
+                  {it.description && <div className="scr-card-s">{it.description}</div>}
+                </div>
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  <div style={{fontSize:"1rem",fontWeight:800,color:"var(--accent)"}}>{"€"+Number(it.price).toFixed(2)}</div>
+                  {it.out_of_stock && <div style={{fontSize:".62rem",fontWeight:800,color:"var(--owed)",
+                        textTransform:"uppercase",letterSpacing:".06em",marginTop:4}}>Out of stock</div>}
+                </div>
+              </div>
+              {!it.out_of_stock && (
+                <button className="scr-btn wide" style={{marginTop:10}}
+                  onClick={()=>{setErr("");setNote("");setOpen({card_id:school.card_id,item:it,size:null,qty:1});}}>
+                  Order
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
+
+      {orders.length > 0 && (
+        <div className="scr-card" style={{padding:14,marginTop:6}}>
+          <div className="scr-lbl">Your Orders</div>
+          {orders.map(o => (
+            <div key={o.id} style={{padding:"6px 0"}}>
+              <div style={{display:"flex",justifyContent:"space-between",gap:10,
+                    fontSize:".8rem",color:"var(--text2)"}}>
+                <span style={{minWidth:0}}>
+                  {(o.lines||[]).map(l => l.qty + " × " + l.name + (l.size ? " (" + l.size + ")" : "")).join(", ")}
+                </span>
+                <span style={{flexShrink:0,textAlign:"right"}}>
+                  {"€"+Number(o.total).toFixed(2)}
+                  <span style={{display:"block",fontSize:".62rem",fontWeight:800,textTransform:"uppercase",
+                        letterSpacing:".06em",
+                        color: o.status==="collected" ? "var(--green)"
+                             : o.status==="cancelled" ? "var(--red)" : "var(--partial)"}}>
+                    {o.status === "ready" ? "Ready to collect" : o.status}
+                    {o.payment_status === "paid" ? " · paid" : ""}
+                  </span>
+                </span>
+              </div>
+
+              {/* Claimed is not paid, and has to read that way here too. */}
+              {o.payment_status === "claimed" && (
+                <div style={{fontSize:".74rem",color:"var(--partial)",lineHeight:1.6,marginTop:4}}>
+                  {"You told the school you paid €" + Number(o.claim_amount||0).toFixed(2) + ". "}
+                  <strong style={{color:"var(--text)"}}>Not marked paid yet</strong>
+                  {" — they will confirm it against their statement."}
+                </div>
+              )}
+
+              {/* Same two steps as the fee side: the link opens first, and only
+                  then is there anything to claim. */}
+              {o.payment_status === "unpaid" && o.status !== "cancelled" && links[o.card_id] && (
+                <div style={{marginTop:6}}>
+                  <a href={links[o.card_id].link} target="_blank" rel="noopener noreferrer"
+                     onClick={()=>setClaim({order_id:o.id, opened:true, form:false, amount:String(Number(o.total).toFixed(2)),
+                       when:new Date().toISOString().slice(0,10), ref:"", err:"", busy:false})}
+                     style={{fontSize:".74rem",color:"var(--accent)",fontWeight:700,textDecoration:"none"}}>
+                    {"Pay online" + (links[o.card_id].name ? " · " + links[o.card_id].name : "")}
+                  </a>
+                  {claim && claim.order_id === o.id && claim.opened && !claim.form && (
+                    <button className="scr-btn wide" style={{marginTop:8}}
+                      onClick={()=>setClaim(c=>({...c, form:true}))}>I've paid</button>
+                  )}
+                  {claim && claim.order_id === o.id && claim.form && (
+                    <div style={{marginTop:8}}>
+                      <div className="ig"><label>Amount Paid</label>
+                        <input className="inp" type="number" inputMode="decimal" value={claim.amount}
+                          onChange={e=>setClaim(c=>({...c,amount:e.target.value,err:""}))} /></div>
+                      <div className="ig"><label>Date Paid</label>
+                        <input className="inp" type="date" value={claim.when}
+                          max={new Date().toISOString().slice(0,10)}
+                          onChange={e=>setClaim(c=>({...c,when:e.target.value,err:""}))} /></div>
+                      <div className="ig"><label>Reference (optional)</label>
+                        <input className="inp" placeholder="Helps the school find it" value={claim.ref}
+                          onChange={e=>setClaim(c=>({...c,ref:e.target.value,err:""}))} /></div>
+                      {claim.err && <div className="err" style={{marginBottom:8}}>{claim.err}</div>}
+                      <button className="scr-btn primary wide" disabled={claim.busy}
+                        onClick={()=>sendClaim(o)}>{claim.busy ? "…" : "Tell The School"}</button>
+                      <div style={{fontSize:".72rem",color:"var(--text2)",lineHeight:1.6,marginTop:8}}>
+                        This tells the school — it does not mark anything paid.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {open && (
+        <div onClick={()=>setOpen(null)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:300,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div onClick={e=>e.stopPropagation()} className="scr-card" style={{maxWidth:360,padding:22,width:"100%"}}>
+            <div className="scr-card-t" style={{marginBottom:4}}>{open.item.name}</div>
+            <div className="scr-card-s" style={{marginBottom:14}}>{"€"+Number(open.item.price).toFixed(2)+" each"}</div>
+
+            {(open.item.sizes || []).length > 0 && (
+              <div className="ig">
+                <label>Size</label>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {open.item.sizes.map(sz => (
+                    <button key={sz} className={"scr-chip"+(open.size===sz?" on":"")}
+                      onClick={()=>{setOpen(o=>({...o,size:sz}));setErr("");}}>{sz}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="ig">
+              <label>How Many</label>
+              <input className="inp" type="number" inputMode="numeric" min="1" max="50" value={open.qty}
+                onChange={e=>setOpen(o=>({...o,qty:Math.max(1,Math.min(50,parseInt(e.target.value,10)||1))}))} />
+            </div>
+
+            <div style={{fontSize:".9rem",fontWeight:800,marginBottom:12}}>
+              {"Total €" + (Number(open.item.price) * open.qty).toFixed(2)}
+            </div>
+            {err && <div className="err" style={{marginBottom:8}}>{err}</div>}
+
+            <button className="scr-btn primary wide" onClick={place} disabled={busy}>
+              {busy ? "…" : "Place Order"}
+            </button>
+            <div style={{fontSize:".72rem",color:"var(--text2)",lineHeight:1.6,marginTop:10}}>
+              You collect this at the school. Pay the school as you normally would — this is separate from your lesson fees.
+            </div>
+            <button className="scr-btn wide" style={{marginTop:10}} onClick={()=>setOpen(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ===========================================================================
+   SHOP MODULE — END
+=========================================================================== */
+
 /* ---------------------------------------------------------------------------
    PayOnline -- the parent's half, shared by both portals.
 
@@ -2200,7 +2731,7 @@ function PgStamp({ onDone, preset, studentAuth }) {
   </>);
 }
 
-function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onName, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded, onStampTag, onStampCal, onPayLink, onPayQueue, pendingPays }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
+function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onName, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded, onStampTag, onStampCal, onPayLink, onPayQueue, pendingPays, onShopItems, onShopOrders }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
       the two can never fall out of step. Grouped by what the owner is trying
       to do rather than by when each screen happened to be built. */
    const SET_GROUPS = [
@@ -2214,6 +2745,7 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
                         ["🔘","Stamp","Teach PayStamp your rubber stamp",onStampCal],
                         ["🔗","Payment Link","Where parents pay you online",onPayLink],
                         ["📥","Pending Payments","Online payments waiting on you",onPayQueue,pendingPays]]],
+     ["Shop", [["👕","Items","What your school sells",onShopItems],["📦","Shop Orders","Kit ordered by your students",onShopOrders,useShopPending()]]],  /* SHOP MODULE mount */
      ["Data",          [["📤","Export","Download payment records",onExport]]],
    ];   const hasImg = !!biz.customCardImage;   const headerBg = hasImg ? "#000" : "linear-gradient(160deg,"+alphaHex(p.acc,.22)+" 0%,#131315 100%)";    const filtered = allCards     .filter(c=>{       if (levelFilter==="all") return true;       if (levelFilter==="none") return !c.level;       return c.level && c.level.id===levelFilter;     })     .filter(c=>!search||(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.shareCode||"").toLowerCase().includes(search.toLowerCase()))     .sort((a,b)=>{       if (sort==="owed") {         const oA=getStudentMonthStatus(a,biz,year).owedTotal;         const oB=getStudentMonthStatus(b,biz,year).owedTotal;         return oB-oA;       }       if (sort==="progress") { return monthsPaid(b.payments||{},year,inactive.concat(b.pausedMonths||[]),b.enrollmentStart)-monthsPaid(a.payments||{},year,inactive.concat(a.pausedMonths||[]),a.enrollmentStart); }       return (a.name||"").localeCompare(b.name||"");     });
 
@@ -3825,6 +4357,8 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
           </div>
         )}
 
+        <ShopPanel />{/* SHOP MODULE mount */}
+
         {/* Was "Cards" beside a button labelled "Children" — two words for the
             same thing, and the heading used app jargon no parent uses. */}
         <div className="sec-row">
@@ -5176,6 +5710,7 @@ function App() {
     } catch (e) { setPendingPays(0); }
   }
 
+
   const pop = (msg,type="ok")=>{setToast({msg,type});setTimeout(()=>setToast(null),2800);};
 
   useEffect(()=>{
@@ -5304,7 +5839,7 @@ function App() {
     if (authReady && !session && stampTok) setView("parentAuth");
   },[authReady, session, stampTok]);
 
-  useEffect(() => { if (session && bizId) loadPendingPays(); }, [session, bizId]);
+  useEffect(() => { if (session && bizId) { loadPendingPays(); } }, [session, bizId]);
 
   const biz = bizId ? db.businesses[bizId] : null;
   const card = biz && cardId ? biz.cards[cardId] : null;
@@ -5653,7 +6188,7 @@ async function doUpdateCard(updates){
         {view==="student" && <PgStudent onBack={()=>setView("landing")} />}
         {view==="parentAuth" && stampTok && <div style={{padding:"18px 28px 0"}}><div className="info-box">Log in to confirm the payment. We will pick up where you left off.</div></div>}
         {view==="parentAuth" && <PgParentAuth onBack={()=>setView("landing")} />}
-        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onIcon={()=>goView("icon")} onName={()=>goView("name")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} onStampTag={()=>goView("stampTag")} onStampCal={()=>goView("stampCal")} onPayLink={()=>goView("payLink")} onPayQueue={()=>goView("payQueue")} pendingPays={pendingPays} />}
+        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onIcon={()=>goView("icon")} onName={()=>goView("name")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} onStampTag={()=>goView("stampTag")} onStampCal={()=>goView("stampCal")} onPayLink={()=>goView("payLink")} onPayQueue={()=>goView("payQueue")} pendingPays={pendingPays} onShopItems={()=>goView("shopItems")} onShopOrders={()=>goView("shopOrders")} />}
         {view==="addCard" && biz && <PgAddCard biz={biz} onBack={()=>setView("dashboard")} onCreate={doAddCard} />}
         {view==="import" && biz && <PgImport biz={biz} onBack={()=>setView("dashboard")} onImport={doImportStudents} />}
         {view==="reveal" && revealCard && <PgReveal biz={biz} card={revealCard} onDone={()=>{setRevealCard(null);setView("dashboard");}} />}
@@ -5668,6 +6203,8 @@ async function doUpdateCard(updates){
         {view==="stampCal" && biz && <PgStampCalibrate biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="payLink" && biz && <PgPayLink biz={biz} onBack={()=>setView("dashboard")} onSaved={refresh} />}
         {view==="payQueue" && biz && <PgPayQueue biz={biz} onBack={()=>setView("dashboard")} onChanged={()=>{refresh();loadPendingPays();}} />}
+        {view==="shopItems"  && biz && <PgShopItems  biz={biz} onBack={()=>setView("dashboard")} />}{/* SHOP MODULE mount */}
+        {view==="shopOrders" && biz && <PgShopOrders biz={biz} onBack={()=>setView("dashboard")} />}{/* SHOP MODULE mount */}
         {view==="export" && biz && <PgExport biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="remind" && biz && <PgRemind biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="announcements" && biz && <PgAnnouncements biz={biz} onBack={()=>setView("dashboard")} />}
