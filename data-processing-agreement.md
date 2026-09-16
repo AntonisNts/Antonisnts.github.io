@@ -1,6 +1,6 @@
 # Data Processing Agreement (DPA)
 
-**Last updated: 13 September 2026**
+**Last updated: 16 September 2026**
 
 This Data Processing Agreement ("DPA") forms part of the Terms of Service between **Antonis Christodoulou, Cyprus** ("the Processor") and the business using PayStamp ("the Controller"). It sets out how the Processor handles personal data on the Controller's behalf, in line with Article 28 of the GDPR.
 
@@ -15,7 +15,7 @@ The Processor processes personal data solely to provide the PayStamp service: re
 ## 3. Categories of data and data subjects
 
 - **Data subjects:** students of the Business, and where recorded, their parents or guardians.
-- **Categories of data:** names, enrolment and lesson details, enrolment/paused months, confirmed payment records, a contact identifier for receipts (where used), and language preference.
+- **Categories of data:** names, enrolment and lesson details, enrolment/paused months, confirmed payment records, unconfirmed notes from a parent that they have paid (amount, date and any reference given), a contact identifier for receipts (where used), and language preference.
 - No special-category data and no payment card or bank data are processed.
 
 ## 4. Processor obligations

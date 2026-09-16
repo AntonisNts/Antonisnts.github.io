@@ -1,12 +1,14 @@
 # Terms of Service
 
-**Last updated: 13 September 2026**
+**Last updated: 16 September 2026**
 
 These Terms of Service ("Terms") govern your use of PayStamp ("the Service"), operated by **Antonis Christodoulou, Cyprus** ("we", "us", "the Operator"). By creating an account or using the Service, you ("the Business") agree to these Terms. If you do not agree, do not use the Service.
 
 ## 1. What PayStamp is
 
-PayStamp is a web application that lets lesson-based businesses (such as swimming schools, music schools and sports clubs) record student enrolment and track which students have paid for lessons. Payments themselves are handled in cash directly between you and your customers. PayStamp only records that a payment has been confirmed by you.
+PayStamp is a web application that lets lesson-based businesses (such as swimming schools, music schools and sports clubs) record student enrolment and track which students have paid for lessons.
+
+**PayStamp never holds, transfers or processes money.** Payment reaches you directly — in cash, or through a payment page you publish yourself. If you choose to publish such a link, the arrangement is between you, your customer and that provider; PayStamp takes no part in the transaction and does not see it. A parent may tell PayStamp they have paid, but nothing is recorded as paid until you confirm it.
 
 ## 2. Your account
 
