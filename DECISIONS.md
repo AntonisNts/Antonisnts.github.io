@@ -311,3 +311,31 @@ access they always had.
 
 **What changes it:** a school wanting the student portal to stay read-only,
 which would be a per-business switch rather than a redesign.
+
+---
+
+## The stamp switches itself on when a school calibrates
+
+It shipped behind a per-device flag: a phone only listened after being opened
+once with `?stamptrigger=1`. That was the right thing to build it behind and
+the wrong thing to run it on. A parent at the desk has their own phone, that
+phone has never seen the flag, and nobody pastes a URL with a queue behind
+them — the feature would have worked only for the person who built it.
+
+So the default is now a question rather than a flag. The app asks once, when it
+loads, whether any school this person deals with has a stamp registered, and
+only then attaches a listener. Calibrating is the switch; removing the
+calibration is the off switch. Cached for the life of the page, because the
+listener runs on every touch and the question must not.
+
+Two functions rather than one, because the portals prove identity differently —
+an account in the family portal, a share code and PIN in Quick View. Both
+return a single boolean and never the pattern.
+
+The flag survives as a manual override (`?stamptrigger=0` to silence a device,
+`?stamptrigger=1` to force it on before calibrating), which costs nothing and
+is occasionally what you want.
+
+**What changes it:** a school wanting the stamp off while keeping its
+calibration, which would be a switch on the calibration screen rather than a
+change to how the question is asked.

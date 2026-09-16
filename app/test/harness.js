@@ -76,6 +76,10 @@ function installMock(fixtures, session, rpcExtra) {
     // way on every run; the real one is 24 random URL-safe characters.
     stamp_token_get: { ok: true, token: "TEST-TOKEN-0123456789ab",
                        created_at: "2026-09-01T00:00:00Z", require_pin: false, pin_set: false },
+    // The stamp is off unless the school has calibrated one. Tests that want a
+    // listening phone override these to { active: true }.
+    stamp_trigger_active: { active: false },
+    stamp_trigger_active_student: { active: false },
   }, rpcExtra || {});
 
   // A test that needs a call to answer differently the second time (spending a

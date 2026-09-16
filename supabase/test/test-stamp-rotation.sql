@@ -227,3 +227,52 @@ select 'five wrong PINs lock the code out' as t, count(*) = 5 as pass
 select 'after which even the right PIN gets nothing' as t,
        public.stamp_begin_geometry_student('ROTOTH','9876',
          pg_temp.press(:'STAMP'::jsonb, 0, 1, 0, 0, 0))->>'error' = 'no_match' as pass;
+
+
+\echo
+\echo '=== G. the stamp switches itself on when a school calibrates ==='
+-- The per-device flag is gone as a default. What decides whether a phone
+-- listens is whether the school has a stamp registered, so these are the
+-- assertions that say a parent needs to do nothing at all.
+
+select pg_temp.act_as('70000000-0000-0000-0000-00000000000a','rot-owner@t.example');
+select public.stamp_geometry_clear() is not null as _setup;
+
+select pg_temp.act_as('70000000-0000-0000-0000-0000000000c0','rot-parent@t.example');
+select 'with no stamp registered, a parent''s phone does not listen' as t,
+       (public.stamp_trigger_active()->>'active')::boolean = false as pass;
+
+select pg_temp.act_as(null,null);
+select 'nor does an open student card' as t,
+       (public.stamp_trigger_active_student('ROTREA','4321')->>'active')::boolean = false as pass;
+
+select pg_temp.act_as('70000000-0000-0000-0000-00000000000a','rot-owner@t.example');
+select public.stamp_geometry_set(:'STAMP'::jsonb, 18) is not null as _setup;
+
+select pg_temp.act_as('70000000-0000-0000-0000-0000000000c0','rot-parent@t.example');
+select 'the moment the school calibrates, the parent''s phone listens' as t,
+       (public.stamp_trigger_active()->>'active')::boolean as pass;
+
+select pg_temp.act_as(null,null);
+select 'and so does the student card' as t,
+       (public.stamp_trigger_active_student('ROTREA','4321')->>'active')::boolean as pass;
+
+select 'a logged-out visitor is told no' as t,
+       (public.stamp_trigger_active()->>'active')::boolean = false as pass;
+
+select 'a wrong PIN is told no rather than the truth' as t,
+       (public.stamp_trigger_active_student('ROTREA','0000')->>'active')::boolean = false as pass;
+
+select pg_temp.act_as('60000000-0000-0000-0000-0000000000d0','someone-else@t.example');
+select 'somebody with no children anywhere is told no' as t,
+       (public.stamp_trigger_active()->>'active')::boolean = false as pass;
+
+select 'neither call ever returns the pattern itself' as t,
+       not (public.stamp_trigger_active() ? 'points')
+   and not (public.stamp_trigger_active_student('ROTREA','4321') ? 'points') as pass;
+
+select 'anon may ask about a card it holds, but not the account question' as t,
+       has_function_privilege('anon', p1.oid, 'execute')
+   and not has_function_privilege('anon', p2.oid, 'execute') as pass
+  from pg_proc p1, pg_proc p2
+ where p1.proname = 'stamp_trigger_active_student' and p2.proname = 'stamp_trigger_active';

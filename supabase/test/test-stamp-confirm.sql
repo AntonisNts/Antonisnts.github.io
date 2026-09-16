@@ -362,7 +362,8 @@ select 'and cannot undo anything on a child that is not theirs' as t,
 -- one by one so a fourth appearing is a failure rather than a footnote.
 select 'anon reaches only the three student-portal entry points' as t,
        array_agg(p.proname order by p.proname) = array[
-         'stamp_begin_geometry_student','stamp_confirm_student','stamp_undo_student'
+         'stamp_begin_geometry_student','stamp_confirm_student',
+         'stamp_trigger_active_student','stamp_undo_student'
        ]::name[] as pass
   from pg_proc p
  where (p.proname like 'stamp%' or p.proname = 'set_confirm_settings')
@@ -378,6 +379,7 @@ select 'exactly the intended entry points are reachable when logged in' as t,
          'stamp_confirm','stamp_confirm_student',
          'stamp_geometry_clear','stamp_geometry_get','stamp_geometry_set',
          'stamp_token_get','stamp_token_revoke','stamp_token_rotate',
+         'stamp_trigger_active','stamp_trigger_active_student',
          'stamp_undo','stamp_undo_student'
        ]::name[] as pass
   from pg_proc p
