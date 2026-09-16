@@ -22,11 +22,26 @@ npm install
 npx playwright install chromium
 ```
 
+If a browser is already on the machine but playwright wants a different build,
+point at it instead of downloading a second copy:
+
+```bash
+export PLAYWRIGHT_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome
+```
+
 ## Run
 
 ```bash
-node sweep.js
+node sweep.js     # every settings screen opens, on the skin, with no errors
+node stamp.js     # the Tap to Pay confirmation flow, both sides of it
+node routes.js    # /stamp/TOKEN and the 404 fallback that makes it work
+node qr.js        # the QR encoder, against a reference encoder and a decoder
+node stamptrigger.js  # the stamp trigger and its calibration screen
+node paylink.js   # the payment link, and that a claim never looks like a payment
 ```
+
+`qr.js` needs no browser. It lifts `qrMatrix()` straight out of `app/index.html`
+rather than importing a copy, so what it checks is what ships.
 
 Opens every screen reachable from the settings sheet plus the dashboard and a
 student card, and checks:

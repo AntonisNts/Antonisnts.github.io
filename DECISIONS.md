@@ -150,3 +150,276 @@ say so.
 **What changes it:** a customer whose own compliance policy demands a
 countersigned agreement before they will start — sign the PDF, don't rebuild the
 mechanism.
+
+---
+
+## Tap to Pay computes the payment in the database, not in the browser
+
+The parent's phone is what calls the confirmation functions, and a parent has
+no write access to `public.cards` — row-level security keeps that table to the
+owning school, which is the wall between one business and another.
+
+So `stamp_confirm` takes an amount and works out what it covers itself. It has
+no parameter that could carry a payments object. Had it accepted one, a single
+tap would have let a parent post a whole year as paid and the physical tag
+would have been protecting nothing.
+
+The cost is a second copy of `calcBreakdown`, in PL/pgSQL, which has to agree
+with the JavaScript one. `supabase/test/test-stamp-confirm.sql` pins the
+arithmetic so the two cannot drift apart unnoticed.
+
+**What changes it:** nothing short of parents getting write access to cards,
+which is not going to happen.
+
+---
+
+## The amount is the parent's to type, and no tag can fix that
+
+A parent could enter more than they are handing over. It is the one thing the
+design cannot prevent, because a sticker cannot see cash.
+
+Three things were done instead of pretending otherwise. Every triggered payment
+is labelled in the student's history, so it is visible rather than silent. Undo
+is offered for ten minutes. And `require_pin_on_confirm` exists for any school
+that wants confirmations to be impossible without the owner standing there —
+off by default, because most will not want the friction.
+
+**What changes it:** a school actually being defrauded this way, which would
+argue for the PIN becoming the default rather than for new machinery.
+
+---
+
+## /stamp/TOKEN works by way of the 404 page
+
+GitHub Pages serves files, not routes, and there is no file at `/stamp/TOKEN`.
+The nicer address survives because `404.html` rewrites it to `/stamp/?t=TOKEN`,
+and Netlify reaches the same place through `_redirects`.
+
+This is exactly the sort of arrangement that breaks quietly during some
+unrelated change, so `app/test/routes.js` drives both paths in a browser and
+also checks that an ordinary wrong address still gets a plain 404 rather than a
+blank React screen.
+
+**What changes it:** moving off Pages to something with real routing.
+
+---
+
+## The QR encoder is carried, not fetched
+
+The first version loaded `qrcode@1.5.3/build/qrcode.min.js` from a CDN. That
+path does not exist -- the package ships no `build/` directory at all, only a
+CommonJS `lib/browser.js` -- so it 404'd and the screen showed its fallback on
+the first real phone that opened it. The URL had been written from memory
+rather than checked.
+
+Replacing it with a different CDN URL would have been the same bet again, so
+the encoder (byte mode, EC level M, versions 1-10, about 250 lines) now lives
+in `app/index.html`. Three things follow from that and all of them are wanted:
+the screen needs no network beyond the app, the school's token is never sent
+anywhere to be drawn, and the code can actually be tested here.
+
+Testing it mattered more than expected. Two bugs turned up that were invisible
+in the rendered picture -- the format-info second copy written one cell too far
+so bit 7 landed on the dark module, and the format bits written LSB-first when
+placement wants MSB-first. In both cases the payload was byte-perfect and the
+code simply would not scan, because a decoder gives up before it reaches the
+data if it cannot read the format. `app/test/qr.js` pins both by decoding every
+version with a real decoder and diffing against a reference encoder.
+
+**What changes it:** needing a bigger version than 10, or a different EC level.
+Both are table additions, not a rewrite.
+
+---
+
+## The stamp is matched in the database, not in the browser
+
+The page could have compared the pressed pattern against a geometry it had
+downloaded, and told the server which school matched. That would have been
+simpler and completely hollow: a parent could then open a confirmation from
+their sofa by posting a business id, and the physical stamp would be protecting
+nothing. It is the same trap as letting `stamp_confirm` accept a payments blob.
+
+So the browser sends raw points and learns only whether something matched. The
+comparison runs in `stamp_begin_geometry`, against geometries belonging to
+schools that caller is already a customer of — comparing against all of them
+would turn the endpoint into an oracle for reading other schools' patterns.
+
+`stamp_open_session` was extracted from `stamp_begin` for this rather than
+copied, so the tag, the QR and the stamp all open the same session the same
+way. It is granted to nobody: it takes a business id and opens a session
+against it with no checks of its own.
+
+**What changes it:** nothing. Client-side matching is not a cheaper version of
+this, it is a different and empty feature.
+
+---
+
+## The stamp is the weakest trigger, and that is inherent
+
+A tag address is 24 random characters. A stamp is five dots on a physical
+object, visible to anyone who looks at it and reproducible with five fingers.
+No amount of care in the matching changes that.
+
+It ships behind a per-device flag, off by default, for that reason as much as
+for testing. `require_pin_on_confirm` is the answer for any school that wants
+the guarantee.
+
+Two limits were left in deliberately rather than papered over: rotation is not
+handled, and the pattern is measured in screen pixels so a calibration learned
+on the owner's phone may not match on a very differently sized one. Both are
+recorded at the foot of `migration-stamp-geometry.sql` as the first things to
+check when a press does not register, because the symptom of every failure is
+the same silence.
+
+**What changes it:** real-device testing showing which of the two actually
+bites. Rotation invariance and scale invariance are both solvable, but solving
+either before knowing it is the problem is guesswork.
+
+---
+
+## The stamp matches at any angle, and the price was measuring the false-match rate
+
+Real-device testing found the stamp only matched when pressed at the angle it
+was calibrated at. Nobody presses a stamp that carefully and a competitor's
+does not ask them to, so that was not a limitation to document — it was the
+feature missing.
+
+The matcher now solves for a similarity transform (translation, rotation, and
+bounded scale) from every pair of points that could correspond. Allowing scale
+was the same fix, not scope creep: the pattern is in screen pixels, learned on
+the owner's phone and matched on a parent's, so the second recorded limitation
+went with the first.
+
+Making a matcher more willing to say yes is exactly where false positives come
+from, so the numbers were measured rather than argued about. Genuine presses of
+a realistic 200px stamp: 100% up to ±6px of noise. Twenty thousand random
+four-finger presses: none matched. A *different* five-pad stamp did match at
+16.6 against an 18px tolerance — which is what forced tolerance to become
+relative to the pattern's own size, since 18px on a small pattern is nearly a
+third of it. A near-straight line of contacts is refused outright, because
+under free rotation and scale one line fits any other and a hand resting on a
+phone is a line.
+
+**What changes it:** a school reporting misses. The per-school tolerance is the
+dial, and the collinearity floor is the thing not to loosen.
+
+---
+
+## The student portal needed a second identity, not a fix
+
+The trigger did nothing in the student portal, and that was never a bug: that
+portal has no login. It opens on a share code and a PIN, checked anonymously,
+so there is no `auth.email()` and no `card_links` row for the family path to
+stand on. It could not have worked as written.
+
+So there is a second way in, deliberately narrower. The session binds to the
+one card already on screen rather than to a person, so it cannot reach another
+student even at the same school. The code and PIN are re-checked in the
+database under the same rate limit the portal's own login uses, rather than
+trusted because the page says it checked them.
+
+The stamp is still what authorises the payment, exactly as in the family
+portal. The code and PIN identify the card and nothing more — the portal needed
+them to display it in the first place. Verified rather than asserted: with the
+right code and PIN and no stamp, or the wrong stamp, or random fingers, the
+answer is `no_match` and the card is untouched.
+
+An earlier draft of the documentation described this as the PIN gaining the
+power to record a payment. That reading was wrong and alarming, and it was the
+wording rather than the behaviour: a share code and PIN alone have exactly the
+access they always had.
+
+**What changes it:** a school wanting the student portal to stay read-only,
+which would be a per-business switch rather than a redesign.
+
+---
+
+## The stamp switches itself on when a school calibrates
+
+It shipped behind a per-device flag: a phone only listened after being opened
+once with `?stamptrigger=1`. That was the right thing to build it behind and
+the wrong thing to run it on. A parent at the desk has their own phone, that
+phone has never seen the flag, and nobody pastes a URL with a queue behind
+them — the feature would have worked only for the person who built it.
+
+So the default is now a question rather than a flag. The app asks once, when it
+loads, whether any school this person deals with has a stamp registered, and
+only then attaches a listener. Calibrating is the switch; removing the
+calibration is the off switch. Cached for the life of the page, because the
+listener runs on every touch and the question must not.
+
+Two functions rather than one, because the portals prove identity differently —
+an account in the family portal, a share code and PIN in Quick View. Both
+return a single boolean and never the pattern.
+
+The flag survives as a manual override (`?stamptrigger=0` to silence a device,
+`?stamptrigger=1` to force it on before calibrating), which costs nothing and
+is occasionally what you want.
+
+**What changes it:** a school wanting the stamp off while keeping its
+calibration, which would be a switch on the calibration screen rather than a
+change to how the question is asked.
+
+---
+
+## A pending claim is not a payment, and that is enforced by where it lives
+
+The whole online-payment flow turns on one property: a parent saying they have
+paid must not move a balance. Not the card, not the school's totals, not any
+overdue figure.
+
+It holds because claims live in their own table and nothing in that path writes
+to `cards.payments`. The only thing that moves money is the school confirming,
+and that calls `stamp_apply_payment` — the same writer the tag, the QR and the
+stamp use, not a copy. A link payment therefore lands on a card identically to
+every other kind, with the same breakdown, history entry and undo snapshot.
+
+That is a property of the system rather than of any one function, so the test
+asserts it by photographing the card and the school's owed total before and
+after raising a claim and comparing them, rather than by reading the code and
+believing it. The browser suite does the same for what the parent is shown,
+because "Awaiting confirmation" read as "done" would be the failure that
+matters most and it is a wording failure, not a code one.
+
+**What changes it:** a card processor confirming automatically, which would
+skip the queue but still go through the same writer.
+
+---
+
+## The payment URL is a CHECK constraint, not validation in a function
+
+Who may set it is RLS, which was already there. What may be set is a database
+constraint: `https://` only, no `javascript:`, no `data:`, no plain http.
+
+Put in a function, that rule would hold only for callers who went through the
+function — and the app writes this column directly, because RLS plus a
+column-level grant already says who may. A constraint holds on every path,
+including a hand-written UPDATE in the SQL editor.
+
+It matters more than it looks: this link is shown to parents and leads to a
+page where they type card details.
+
+**What changes it:** nothing. Validation that can be bypassed is decoration.
+
+---
+
+## The test rig counts a NULL verdict as a failure
+
+Every SQL suite reports a `pass` column of `t` or `f`. A verdict that comes
+back NULL — because the expression referenced something an earlier statement
+failed to create — is neither, and the counter ignored it. Such an assertion
+does not pass and does not fail; it is simply absent, and the totals look
+merely smaller rather than wrong.
+
+That hid a broken fixture through most of one suite, and it had been hiding a
+real product bug for longer: `stamp_begin_geometry`'s "this is the school's own
+device" branch sat inside a loop over the caller's linked children, and an
+owner has none, so it never ran. An owner pressing their own stamp got silence.
+The assertion covering it had been returning NULL, invisibly, since it was
+written.
+
+`run-tests.sh` now counts NULL verdicts as failures and prints any SQL errors
+from the run.
+
+**What changes it:** nothing. This is the third time in this project that a
+test which could not fail was mistaken for one that passed.

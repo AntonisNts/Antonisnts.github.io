@@ -56,10 +56,155 @@ const { useState, useEffect, useRef } = React;  const SK = "sc12"; try { ["sc1",
 const SB_KEY = "sb_publishable_AtGkcGeO4hAhtCZGmIBHyA_JZdRJBeI";
 const sb = window.supabase.createClient(SB_URL, SB_KEY);
 
+/* ---------------------------------------------------------------------------
+   A tap arriving from an NFC tag or a QR scan.
+
+   /stamp/ forwards here as ?stamp=TOKEN (plus &n=NONCE for a scan). Two things
+   happen at once and both matter:
+
+     - the token moves into sessionStorage, because the parent may not be
+       logged in yet and the login round-trip would otherwise lose it;
+     - it is stripped from the address bar, because a token left in the URL
+       gets re-fired by a refresh, by the back button, and by anyone the parent
+       later shares the link with.
+
+   sessionStorage rather than localStorage: a tap should not still be pending
+   in a tab opened tomorrow.
+--------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------
+   Whether this device listens for a stamp.
+
+   It shipped as a per-device flag, which was right for building it and wrong
+   for using it: a parent at the desk has their own phone, that phone has never
+   seen the flag, and nobody is pasting a URL with a queue behind them.
+
+   So the default is now "ask". The app puts one question to the database when
+   it loads -- does any school this person deals with have a stamp registered?
+   -- and only listens if the answer is yes. A school that has not calibrated
+   one has no parents listening and no wasted calls, which is the property the
+   flag was really there to provide.
+
+   The flag survives as an override, because being able to switch a thing off
+   by hand is worth keeping:
+
+       ?stamptrigger=0   never listen on this device
+       ?stamptrigger=1   always listen, even before calibrating
+       (unset)           ask, which is what everyone gets
+
+   Returns "0", "1", or null for ask.
+--------------------------------------------------------------------------- */
+const STAMP_PREF = (function () {
+  try {
+    const q = new URLSearchParams(location.search);
+    if (q.has("stamptrigger")) {
+      localStorage.setItem("ps_stamp_trigger", q.get("stamptrigger") === "0" ? "0" : "1");
+    }
+    return localStorage.getItem("ps_stamp_trigger");
+  } catch (e) { return null; }
+})();
+
+/* Asked ONCE and remembered for the life of the page. The listener runs on
+   every touch; this must not. Resolves to true/false without ever throwing,
+   because a failure here should leave the stamp quiet rather than break a
+   portal that works perfectly well without it. */
+let _stampActive = null;
+function stampTriggerActive(rpc, args) {
+  if (STAMP_PREF === "0") return Promise.resolve(false);
+  if (STAMP_PREF === "1") return Promise.resolve(true);
+  if (_stampActive) return _stampActive;
+  // Promise.resolve() first: the Supabase builder is a thenable, not a real
+  // Promise, so .catch() is not necessarily on it. Chaining straight onto the
+  // builder threw a TypeError and took the whole portal down with it.
+  _stampActive = Promise.resolve(sb.rpc(rpc, args || {}))
+    .then(({ data }) => !!(data && data.active))
+    .catch(() => false);
+  return _stampActive;
+}
+
+/* ---------------------------------------------------------------------------
+   Collecting one stamp press.
+
+   The pads do not all register in the same event. A stamp landing produces
+   several touchstart events in quick succession as the screen notices each
+   contact, so the first one may report a single touch. Taking that first count
+   would miss every press. Instead each event's touch list is kept if it is
+   larger than the last, and the press is only judged once they stop arriving.
+
+   iOS reports at most five touches however many pads there are, which is why
+   nothing here wants an exact count -- four is enough to try.
+--------------------------------------------------------------------------- */
+function stampPressCollector(onPress, settleMs) {
+  let best = null, timer = null;
+  function handle(e) {
+    const t = e.touches;
+    if (!t || t.length < 2) return;
+    if (!best || t.length > best.length) {
+      best = [];
+      for (let i = 0; i < t.length; i++) best.push([Math.round(t[i].clientX), Math.round(t[i].clientY)]);
+    }
+    clearTimeout(timer);
+    timer = setTimeout(() => { const b = best; best = null; if (b) onPress(b); }, settleMs || 90);
+  }
+  return { handle, cancel: () => { clearTimeout(timer); best = null; } };
+}
+
+/* Leftmost point to the origin, so where on the screen the stamp landed and
+   which pad touched down first both stop mattering. The database anchors the
+   stored geometry on every one of its points in turn, which is what lets a
+   four-touch capture match a five-pad stamp. */
+function stampNormalise(points) {
+  const p = points.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const ox = p[0][0], oy = p[0][1];
+  return p.map(q => [q[0] - ox, q[1] - oy]);
+}
+
+const STAMP_BOOT = (function () {
+  try {
+    const q = new URLSearchParams(location.search);
+    const t = q.get("stamp");
+    if (t) {
+      sessionStorage.setItem("stamp_token", t);
+      if (q.get("n")) sessionStorage.setItem("stamp_nonce", q.get("n"));
+      else sessionStorage.removeItem("stamp_nonce");
+      history.replaceState(null, "", location.pathname);
+    }
+    return sessionStorage.getItem("stamp_token") || null;
+  } catch (e) { return null; }
+})();
+function stampClear() {
+  try { sessionStorage.removeItem("stamp_token"); sessionStorage.removeItem("stamp_nonce"); } catch (e) {}
+}
+function stampNonceStored() {
+  try { return sessionStorage.getItem("stamp_nonce") || null; } catch (e) { return null; }
+}
+
+/* The QR's rotating code. Must produce byte-for-byte what
+   public.stamp_nonce_for() produces in the database -- pgcrypto's
+   hmac(bucket, token, 'sha256') keyed on the token, first ten hex characters.
+   Verified against the database rather than assumed. */
+async function stampNonce(token, bucket) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw", enc.encode(token), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(String(bucket)));
+  return Array.from(new Uint8Array(sig))
+    .map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 10);
+}
+const STAMP_BUCKET = () => Math.floor(Date.now() / 30000);
+
+/* How a payment came to be recorded. 'manual' is the dashboard; the rest are
+   the confirmation flow, and the DATABASE decides which of them applies --
+   never the browser. Read by the history list to mark the ones nobody typed. */
+const TRIGGER_LABEL = { nfc:"Tap", qr:"QR scan", stamp:"Stamp", link:"Paid online" };
+
 function bizFromRow(b, cardRows) {
   const cards = {};
   (cardRows||[]).forEach(c => { cards[c.id] = { id:c.id, name:c.name, level:c.level||null, shareCode:c.share_code, pin:c.pin, phone:c.phone||"", payments:c.payments||{}, history:c.history||[], groupId:c.group_id||null, groupName:c.group_name||"", lessonSchedule:c.lesson_schedule||[], enrollmentStart:c.enrollment_start_month||null, pausedMonths:c.paused_months||[], feeHistory:c.fee_history||[] }; });
-  return { id:b.id, bizCode:b.biz_code, name:b.name, type:b.type, accent:b.accent||null, icon:b.icon||null, fee:Number(b.fee), year:b.year, email:b.contact_email||"", inactiveMonths:b.inactive_months||[], levels:b.levels||[], customCardImage:b.custom_card_image||null, cards };
+  /* confirm_pin comes back in the row (this is the owner's own record) and is
+     deliberately NOT mapped through: nothing in the UI needs the value, only
+     whether one is set, and state that is never held cannot be leaked by a
+     future screen that renders the business object. */
+  return { id:b.id, bizCode:b.biz_code, name:b.name, type:b.type, accent:b.accent||null, icon:b.icon||null, fee:Number(b.fee), year:b.year, email:b.contact_email||"", inactiveMonths:b.inactive_months||[], levels:b.levels||[], customCardImage:b.custom_card_image||null, requirePinOnConfirm:!!b.require_pin_on_confirm, confirmPinSet:!!b.confirm_pin, paymentLink:b.payment_link||"", paymentLinkName:b.payment_link_name||"", cards };
 }
 // Resolve a card's effective group: prefer the real group (group_id -> groups
 // table) and fall back to the legacy free-text group_name / per-card schedule
@@ -910,13 +1055,1165 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
       <p style={{fontSize:".72rem",color:"var(--text2)",textAlign:"center",marginTop:18,lineHeight:1.5}}>By creating your business you agree to our <a href="/terms" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Terms of Service</a>, the <a href="/dpa" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Data Processing Agreement</a> and our <a href="/privacy" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Privacy Policy</a>.</p>
     </div>
   );
-}  function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onName, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
+}
+
+/* ---------------------------------------------------------------------------
+   PayOnline -- the parent's half, shared by both portals.
+
+   Deliberately two steps. The link opens first; only afterwards is there
+   anything to claim, because claiming before paying is the mistake this whole
+   flow exists to make awkward.
+
+   The wording is the load-bearing part. "Awaiting confirmation" has to read as
+   NOT PAID, because it is: the card behind this panel still shows the month
+   owing, and a parent who reads this as done will be surprised later.
+--------------------------------------------------------------------------- */
+function PayOnline({ link, linkName, cardId, claims, onClaim, accent }) {
+  const [opened, setOpened] = useState(false);
+  const [form, setForm]     = useState(false);
+  const [amount, setAmount] = useState("");
+  const [when, setWhen]     = useState(new Date().toISOString().slice(0,10));
+  const [ref, setRef]       = useState("");
+  const [err, setErr]       = useState("");
+  const [busy, setBusy]     = useState(false);
+
+  // cardId null means the caller has already narrowed these to one card, which
+  // is the student portal's situation: it only ever shows one.
+  const mine    = cardId === null ? (claims || []) : (claims || []).filter(c => c.card_id === cardId);
+  const pending = mine.find(c => c.status === "pending");
+  const decided = mine.find(c => c.status !== "pending");
+
+  async function submit() {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) { setErr("How much did you pay?"); return; }
+    setErr(""); setBusy(true);
+    const r = await onClaim({ card_id: cardId, amount: amt, paid_on: when, reference: ref.trim() || null });
+    setBusy(false);
+    if (r && r.error === "already_pending") { setErr("You have already told the school about a payment for this student."); return; }
+    if (r && r.error === "bad_date")        { setErr("That date is not one we can use — check the day."); return; }
+    if (r && r.error === "no_link")         { setErr("The school is not taking online payments just now."); return; }
+    if (r && r.error)                       { setErr("That did not go through. Try again."); return; }
+    setForm(false); setAmount(""); setRef("");
+  }
+
+  if (pending) return (
+    <div className="scr-card" style={{marginTop:12,padding:16,borderColor:"var(--partial)"}}>
+      <div style={{fontSize:".78rem",fontWeight:800,color:"var(--partial)",letterSpacing:".04em",textTransform:"uppercase"}}>
+        Awaiting confirmation
+      </div>
+      <div style={{fontSize:".82rem",color:"var(--text2)",lineHeight:1.6,marginTop:8}}>
+        {"You told the school you paid €" + Number(pending.amount).toFixed(2)
+          + " on " + new Date(pending.paid_on).toLocaleDateString("en-GB") + "."}
+        {" "}<strong style={{color:"var(--text)"}}>This is not recorded as paid yet</strong>
+        {" — the months below stay as they are until the school checks their statement and confirms."}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="scr-card" style={{marginTop:12,padding:16}}>
+      {decided && (
+        <div style={{fontSize:".8rem",lineHeight:1.6,marginBottom:12,
+              color: decided.status === "confirmed" ? "var(--green)" : "var(--red)"}}>
+          {decided.status === "confirmed"
+            ? ("✓ Your payment of €" + Number(decided.amount).toFixed(2) + " was confirmed.")
+            : ("Your payment of €" + Number(decided.amount).toFixed(2) + " was not confirmed."
+               + (decided.note ? " " + decided.note : ""))}
+        </div>
+      )}
+
+      <div className="scr-lbl">Pay Online</div>
+      <div style={{fontSize:".78rem",color:"var(--text2)",lineHeight:1.6,marginBottom:12}}>
+        {linkName ? ("Pay through " + linkName + ", then come back and tell the school.")
+                  : "Pay through the school's payment page, then come back and tell the school."}
+      </div>
+
+      <a href={link} target="_blank" rel="noopener noreferrer"
+         onClick={()=>setOpened(true)}
+         className="scr-btn primary wide"
+         style={{display:"block",textAlign:"center",textDecoration:"none",boxSizing:"border-box"}}>
+        Pay Online
+      </a>
+
+      {/* Only after the link has been opened. Offering "I've paid" to somebody
+          who has not been anywhere is inviting the claim this queue exists to
+          scrutinise. */}
+      {opened && !form && (
+        <button className="scr-btn wide" style={{marginTop:10}} onClick={()=>setForm(true)}>
+          I've paid
+        </button>
+      )}
+
+      {form && (
+        <div style={{marginTop:14}}>
+          <div className="ig">
+            <label>Amount Paid</label>
+            <input className="inp" type="number" inputMode="decimal" placeholder="0"
+              value={amount} onChange={e=>{setAmount(e.target.value);setErr("");}} />
+          </div>
+          <div className="ig">
+            <label>Date Paid</label>
+            <input className="inp" type="date" value={when}
+              max={new Date().toISOString().slice(0,10)}
+              onChange={e=>{setWhen(e.target.value);setErr("");}} />
+          </div>
+          <div className="ig">
+            <label>Reference Or Last 4 Digits (optional)</label>
+            <input className="inp" placeholder="Helps the school find it"
+              value={ref} onChange={e=>{setRef(e.target.value);setErr("");}} />
+          </div>
+          {err && <div className="err" style={{marginBottom:8}}>{err}</div>}
+          <button className="scr-btn primary wide" onClick={submit} disabled={busy}>
+            {busy ? "…" : "Tell The School"}
+          </button>
+          <div style={{fontSize:".72rem",color:"var(--text2)",lineHeight:1.6,marginTop:10}}>
+            This does not mark anything paid. The school confirms it against their statement first.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   PgPayLink -- where the school takes money.
+
+   Saved with a plain UPDATE rather than through a function, because the two
+   things that matter are already enforced by the database: RLS restricts the
+   row to its owner, and a CHECK constraint restricts the value to an https
+   URL. A function in between would add a third place for those rules to live
+   and a third place for them to drift.
+
+   Which means the error a bad URL produces is a constraint violation, and it
+   is caught and translated here rather than shown raw.
+--------------------------------------------------------------------------- */
+function PgPayLink({ biz, onBack, onSaved }) {
+  const p = bizPal(biz);
+  const [url, setUrl]   = useState(biz.paymentLink || "");
+  const [name, setName] = useState(biz.paymentLinkName || "");
+  const [err, setErr]   = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function save(clear) {
+    setErr(""); setNote(""); setBusy(true);
+    const link = clear ? null : url.trim();
+    if (link && !/^https:\/\//i.test(link)) {
+      setBusy(false);
+      setErr("The address has to start with https:// — a payment page should never be plain http.");
+      return;
+    }
+    const { error } = await sb.from("businesses")
+      .update({ payment_link: link, payment_link_name: clear ? null : (name.trim() || null) })
+      .eq("id", biz.id);
+    setBusy(false);
+    if (error) {
+      setErr(/check constraint|violates/i.test(error.message)
+        ? "That does not look like a web address. Paste the whole link, starting with https://"
+        : error.message);
+      return;
+    }
+    if (clear) { setUrl(""); setName(""); setNote("Removed. Parents will not see a Pay online button."); }
+    else setNote("Saved. Parents will see a Pay online button on their child's card.");
+    onSaved && onSaved();
+  }
+
+  return (
+    <div className="reg-page scr" style={{"--accent":p.acc}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
+        <button className="tb-back" onClick={onBack}>←</button>
+        <h2>Payment Link</h2>
+      </div>
+      <p>Paste the link parents should use to pay you — Revolut, Viva, your bank, anything. PayStamp does not touch the money; it only sends them there.</p>
+
+      {err  && <div className="err" style={{marginBottom:10}}>{err}</div>}
+      {note && <div className="info-box" style={{marginBottom:14}}>{note}</div>}
+
+      <div className="ig">
+        <label>Payment Address</label>
+        <input className="inp" type="url" inputMode="url" autoCapitalize="off" autoCorrect="off"
+          placeholder="https://revolut.me/yourname" value={url}
+          onChange={e=>{setUrl(e.target.value);setErr("");}} />
+      </div>
+      <div className="ig">
+        <label>Shown To Parents As</label>
+        <input className="inp" placeholder="e.g. Revolut — Maria" value={name}
+          onChange={e=>{setName(e.target.value);setErr("");}} />
+      </div>
+
+      <button className="scr-btn primary wide" onClick={()=>save(false)} disabled={busy||!url.trim()}>
+        {busy ? "…" : "Save Link"}
+      </button>
+      {biz.paymentLink && <button className="scr-btn danger wide" style={{marginTop:10}}
+        onClick={()=>save(true)} disabled={busy}>Remove Link</button>}
+
+      <div style={{fontSize:".72rem",color:"var(--text2)",lineHeight:1.6,marginTop:16}}>
+        A parent who pays this way tells PayStamp they have. That does not mark
+        anything paid — it lands in Pending Payments for you to check against
+        your statement first.
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   PgPayQueue -- claims waiting on the school.
+
+   Nothing on this screen has moved any money yet. Confirming is the only
+   action that does, and it runs the same breakdown the tag, the QR and the
+   stamp run, so a link payment lands on a card exactly the way they do.
+--------------------------------------------------------------------------- */
+function PgPayQueue({ biz, onBack, onChanged }) {
+  const p = bizPal(biz);
+  const [q, setQ]       = useState(null);
+  const [busy, setBusy] = useState(true);
+  const [err, setErr]   = useState("");
+  const [note, setNote] = useState("");
+  const [rejecting, setRejecting] = useState(null);
+  const [why, setWhy]   = useState("");
+
+  async function load() {
+    const { data: r, error } = await sb.rpc("payment_claims_queue");
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
+    if (r && r.ok) setQ(r); else setErr("Could not load the queue.");
+  }
+  useEffect(()=>{ load(); }, []);
+
+  async function confirm(c) {
+    setErr(""); setNote(""); setBusy(true);
+    const { data: r, error } = await sb.rpc("payment_claim_confirm", { p_id: c.id });
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
+    if (r.error === "already_decided") { setNote("Somebody already dealt with that one."); load(); return; }
+    if (r.error) { setErr("Could not confirm that."); return; }
+    setNote(r.nothing_due
+      ? (r.name + " had nothing outstanding, so the payment was not applied to a month.")
+      : ("€" + Number(r.amount).toFixed(2) + " recorded for " + r.name + " — "
+         + (r.months||[]).map(mi=>MFULL[mi]).join(", ")));
+    onChanged && onChanged();
+    load();
+  }
+
+  async function reject() {
+    const c = rejecting; setRejecting(null);
+    setErr(""); setNote(""); setBusy(true);
+    const { data: r, error } = await sb.rpc("payment_claim_reject", { p_id: c.id, p_note: why.trim() || null });
+    setBusy(false); setWhy("");
+    if (error) { setErr(error.message); return; }
+    if (r.error) { setErr("Could not reject that."); return; }
+    setNote("Turned down. " + c.name + "'s family will see it and the reason.");
+    load();
+  }
+
+  const pending = (q && q.pending) || [];
+  const recent  = (q && q.recent)  || [];
+
+  return (
+    <div className="reg-page scr" style={{"--accent":p.acc}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
+        <button className="tb-back" onClick={onBack}>←</button>
+        <h2>Pending Payments</h2>
+      </div>
+      <p>Parents who say they have paid online. Nothing here has changed a balance — check it against your statement, then confirm.</p>
+
+      {err  && <div className="err" style={{marginBottom:10}}>{err}</div>}
+      {note && <div className="info-box" style={{marginBottom:14}}>{note}</div>}
+
+      {busy && !q ? <div className="empty">Loading…</div>
+       : pending.length === 0 ? <div className="empty">Nothing waiting.</div>
+       : pending.map(c => (
+        <div key={c.id} className="scr-card" style={{marginBottom:10,padding:16,
+              border:"1px solid "+(c.stale ? "var(--partial)" : "var(--border)")}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
+            <div style={{minWidth:0}}>
+              <div className="scr-card-t">{c.name}</div>
+              <div className="scr-card-s">
+                {"Says they paid on " + new Date(c.paid_on).toLocaleDateString("en-GB")}
+              </div>
+              {c.reference && <div style={{fontSize:".74rem",color:"var(--text2)",marginTop:4}}>
+                {"Reference: " + c.reference}
+              </div>}
+              <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:4}}>
+                {c.claimed_by.indexOf("student:") === 0 ? "From the student portal" : c.claimed_by}
+              </div>
+            </div>
+            <div style={{textAlign:"right",flexShrink:0}}>
+              <div style={{fontSize:"1.1rem",fontWeight:800,color:"var(--accent)"}}>
+                {"€"+Number(c.amount).toFixed(2)}
+              </div>
+              {/* Flagged rather than hidden, so a queue nobody is watching
+                  says so instead of quietly filling up. */}
+              {c.stale && <div style={{marginTop:6,padding:"3px 8px",borderRadius:99,
+                    background:alphaHex("#fbbf24",.18),color:"var(--partial)",
+                    fontSize:".62rem",fontWeight:800,letterSpacing:".06em",textTransform:"uppercase"}}>
+                Waiting a while
+              </div>}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,marginTop:14}}>
+            <button className="scr-btn primary" style={{flex:1}} disabled={busy}
+              onClick={()=>confirm(c)}>Confirm</button>
+            <button className="scr-btn danger" style={{flex:1}} disabled={busy}
+              onClick={()=>{setRejecting(c);setWhy("");}}>Reject</button>
+          </div>
+        </div>
+      ))}
+
+      {recent.length > 0 && (
+        <div className="scr-card" style={{marginTop:16,padding:16}}>
+          <div className="scr-lbl">Recently Decided</div>
+          {recent.map(r => (
+            <div key={r.id} style={{display:"flex",justifyContent:"space-between",
+                  fontSize:".8rem",padding:"6px 0",color:"var(--text2)"}}>
+              <span>{r.name}</span>
+              <span style={{color: r.status==="confirmed" ? "var(--green)" : "var(--red)"}}>
+                {(r.status==="confirmed" ? "Confirmed " : "Rejected ") + "€" + Number(r.amount).toFixed(2)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {rejecting && (
+        <div onClick={()=>setRejecting(null)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:300,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div onClick={e=>e.stopPropagation()} className="scr-card" style={{maxWidth:360,padding:22,width:"100%"}}>
+            <div className="scr-card-t" style={{marginBottom:8}}>{"Reject " + rejecting.name + "'s claim?"}</div>
+            <div style={{fontSize:".82rem",color:"var(--text2)",lineHeight:1.6,marginBottom:14}}>
+              Nothing was recorded, so nothing is undone. The family will see it was turned down, and what you say here.
+            </div>
+            <div className="ig">
+              <label>Reason (optional)</label>
+              <input className="inp" placeholder="e.g. Nothing matching on the statement"
+                value={why} onChange={e=>setWhy(e.target.value)} />
+            </div>
+            <button className="scr-btn danger wide" onClick={reject}>Reject Claim</button>
+            <button className="scr-btn wide" style={{marginTop:10}} onClick={()=>setRejecting(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   PgStampCalibrate -- the owner registers what their stamp looks like.
+
+   They press it on the target area and the pattern is stored against their
+   business. Matching happens in the database, never here, so nothing on this
+   screen is security-relevant: it is a capture tool.
+
+   The captured points are drawn back at once. A stamp that landed at an angle,
+   or with a pad that did not make contact, produces a pattern the owner can
+   see is wrong and press again -- which matters, because a bad calibration
+   fails silently later on a parent's phone where nobody is watching.
+--------------------------------------------------------------------------- */
+function PgStampCalibrate({ biz, onBack }) {
+  const p = bizPal(biz);
+  const [saved, setSaved]   = useState(null);     // stored geometry
+  const [caught, setCaught] = useState(null);     // this session's capture
+  const [err, setErr]       = useState("");
+  const [note, setNote]     = useState("");
+  const [busy, setBusy]     = useState(true);
+  const padRef = useRef(null);
+
+  async function load() {
+    const { data: r, error } = await sb.rpc("stamp_geometry_get");
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
+    if (r && r.ok) setSaved(r.calibrated ? r : null);
+  }
+  useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    const el = padRef.current;
+    if (!el) return;
+    const col = stampPressCollector((pts) => {
+      setErr(""); setNote("");
+      if (pts.length < 4) {
+        setErr("Only " + pts.length + " pad" + (pts.length === 1 ? "" : "s") + " registered. Press the whole stamp down flat.");
+        setCaught(null);
+        return;
+      }
+      setCaught(stampNormalise(pts));
+    }, 120);
+    const h = (e) => { e.preventDefault(); col.handle(e); };
+    // Not passive: the page must not scroll or zoom under a five-finger press.
+    el.addEventListener("touchstart", h, { passive: false });
+    el.addEventListener("touchmove", h, { passive: false });
+    return () => { col.cancel(); el.removeEventListener("touchstart", h); el.removeEventListener("touchmove", h); };
+  }, []);
+
+  async function save() {
+    if (!caught) return;
+    setErr(""); setNote("");
+    const { data: r, error } = await sb.rpc("stamp_geometry_set", {
+      p_points: caught, p_tolerance: 18,
+      p_ratio: (window.devicePixelRatio || 1) });
+    if (error)                    { setErr(error.message); return; }
+    if (r.error === "bad_count")  { setErr("A stamp needs between 4 and 8 pads. That press had " + r.count + "."); return; }
+    if (r.error)                  { setErr("Could not save that pattern."); return; }
+    setNote("Saved. Your parents' phones will pick this up next time they open PayStamp.");
+    setCaught(null);
+    load();
+  }
+
+  async function clear() {
+    const { error } = await sb.rpc("stamp_geometry_clear");
+    if (error) { setErr(error.message); return; }
+    setSaved(null); setCaught(null); setNote("Removed. The stamp no longer opens anything.");
+  }
+
+  // Drawn to fit whatever the points span, so a wide stamp and a small one
+  // both read clearly rather than one of them crowding a corner.
+  function plot(points, size) {
+    const xs = points.map(q => q[0]), ys = points.map(q => q[1]);
+    const w = Math.max(1, Math.max.apply(null, xs)), h = Math.max(1, Math.max.apply(null, ys));
+    const k = Math.min((size - 28) / w, (size - 28) / h, 3);
+    return (
+      <svg width={size} height={size} style={{display:"block"}}>
+        {points.map((q, i) => (
+          <circle key={i} cx={14 + q[0] * k} cy={14 + q[1] * k} r={7}
+                  fill={alphaHex(p.acc, .85)} stroke={p.acc} strokeWidth={1.5} />
+        ))}
+      </svg>
+    );
+  }
+
+  return (
+    <div className="reg-page scr" style={{"--accent":p.acc}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
+        <button className="tb-back" onClick={onBack}>←</button>
+        <h2>Stamp</h2>
+      </div>
+      <p>Press your stamp on the pad below so PayStamp learns its shape. Saving it is what switches the stamp on for your parents — there is nothing for them to install or turn on.</p>
+
+      {err  && <div className="err" style={{marginBottom:10}}>{err}</div>}
+      {note && <div className="info-box" style={{marginBottom:14}}>{note}</div>}
+
+      <div ref={padRef}
+        style={{height:300,borderRadius:22,border:"2px dashed "+alphaHex(p.acc,.55),
+                background:alphaHex(p.acc,.07),display:"flex",alignItems:"center",
+                justifyContent:"center",marginBottom:16,touchAction:"none",
+                userSelect:"none",WebkitUserSelect:"none",textAlign:"center",padding:16}}>
+        {caught
+          ? <div>{plot(caught, 220)}
+              <div style={{fontSize:".74rem",fontWeight:700,color:"var(--accent)",marginTop:6}}>
+                {caught.length + " pads registered"}
+              </div>
+            </div>
+          : <div style={{color:"var(--text2)",fontSize:".88rem",fontWeight:600,lineHeight:1.6}}>
+              Press the stamp here,<br />flat and firm
+            </div>}
+      </div>
+
+      {caught && <button className="scr-btn primary wide" onClick={save}>
+        {saved ? "Replace Saved Pattern" : "Save This Pattern"}
+      </button>}
+
+      <div className="scr-card" style={{marginTop:16,padding:16}}>
+        <div className="scr-lbl">Saved Pattern</div>
+        {busy ? <div style={{color:"var(--text2)",fontSize:".84rem"}}>Loading…</div>
+          : !saved ? <div style={{color:"var(--text2)",fontSize:".84rem",lineHeight:1.6}}>
+              Nothing saved yet. Until you save a pattern, no parent's phone is listening for a stamp.
+            </div>
+          : <div style={{display:"flex",alignItems:"center",gap:16}}>
+              {plot(saved.points, 120)}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:".84rem",fontWeight:800,color:"var(--text)"}}>{saved.point_count} pads</div>
+                <div style={{fontSize:".72rem",color:"var(--text2)",marginTop:3}}>
+                  Saved {new Date(saved.updated_at).toLocaleDateString("en-GB")}
+                </div>
+              </div>
+            </div>}
+      </div>
+
+      {saved && <button className="scr-btn danger wide" style={{marginTop:12}} onClick={clear}>
+        Remove Saved Pattern
+      </button>}
+
+      <div style={{fontSize:".72rem",color:"var(--text2)",lineHeight:1.6,marginTop:16}}>
+        Press it at any angle — the pattern is recognised however the stamp is
+        turned, and on phones that measure the screen differently from this one.
+        Removing the saved pattern switches the stamp off again everywhere.
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   PgStampTag -- the owner's side: the tag's address, a QR of it, and the PIN.
+
+   The QR library is fetched only when this screen opens, and the screen works
+   without it. That is deliberate: the app already carries five CDN scripts it
+   cannot boot without, and a sixth that only one settings page needs has no
+   business being one of them. If the fetch fails the address is shown as text
+   and can still be copied.
+
+   The token is never sent anywhere to be turned into a picture. Rendering it
+   through one of the public QR-image services would hand the school's secret
+   to a third party for the sake of saving a script.
+--------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------
+   QR encoder -- byte mode, error-correction level M, versions 1 to 10.
+   Returns a square array of 0/1 rows, or null if the text will not fit.
+
+   Carried here rather than fetched because the first attempt fetched a CDN
+   path that does not exist (qrcode@1.5.3 ships no build/ directory at all),
+   and because the thing being encoded is the school's secret -- handing it to
+   a public QR-image service to be drawn would be worse than any dependency.
+   It also means the screen works with no network beyond the app itself.
+
+   Verified in app/test/qr.js: every version 1-10 is compared cell-for-cell
+   against a reference encoder and then read back with a real decoder. Two
+   bugs were found that way and neither was visible by looking at the picture
+   -- see the comments at the format-info placement below.
+--------------------------------------------------------------------------- */
+function qrMatrix(text) {
+  // --- the text as bytes (UTF-8) -------------------------------------------
+  const bytes = [];
+  for (const ch of unescape(encodeURIComponent(text))) bytes.push(ch.charCodeAt(0));
+
+  // Per version, EC level M: [data codewords, ec codewords per block,
+  // block count group 1, data per block group 1, block count g2, data per block g2]
+  const V = [
+    null,
+    [16,  10, 1, 16, 0, 0],
+    [28,  16, 1, 28, 0, 0],
+    [44,  26, 1, 44, 0, 0],
+    [64,  18, 2, 32, 0, 0],
+    [86,  24, 2, 43, 0, 0],
+    [108, 16, 4, 27, 0, 0],
+    [124, 18, 4, 31, 0, 0],
+    [154, 22, 2, 38, 2, 39],
+    [182, 22, 3, 36, 2, 37],
+    [216, 26, 4, 43, 1, 44],
+  ];
+  const ALIGN = [null, [], [6,18], [6,22], [6,26], [6,30], [6,34],
+                 [6,22,38], [6,24,42], [6,26,46], [6,28,50]];
+
+  // Smallest version that holds it.
+  let ver = 0;
+  for (let v = 1; v <= 10; v++) {
+    const countBits = v < 10 ? 8 : 16;
+    if (bytes.length * 8 + 4 + countBits <= V[v][0] * 8) { ver = v; break; }
+  }
+  if (!ver) return null;
+
+  const [dataCw, ecPerBlock, g1, g1cw, g2, g2cw] = V[ver];
+  const countBits = ver < 10 ? 8 : 16;
+
+  // --- bit stream ----------------------------------------------------------
+  const bits = [];
+  const push = (val, n) => { for (let i = n - 1; i >= 0; i--) bits.push((val >> i) & 1); };
+  push(0b0100, 4);              // byte mode
+  push(bytes.length, countBits);
+  for (const b of bytes) push(b, 8);
+  for (let i = 0; i < 4 && bits.length < dataCw * 8; i++) bits.push(0);   // terminator
+  while (bits.length % 8) bits.push(0);
+  const pad = [0xEC, 0x11];
+  for (let i = 0; bits.length < dataCw * 8; i++) push(pad[i % 2], 8);
+
+  const data = [];
+  for (let i = 0; i < bits.length; i += 8) {
+    let b = 0; for (let j = 0; j < 8; j++) b = (b << 1) | bits[i + j];
+    data.push(b);
+  }
+
+  // --- GF(256) for Reed-Solomon -------------------------------------------
+  const EXP = new Array(512), LOG = new Array(256);
+  for (let i = 0, x = 1; i < 255; i++) {
+    EXP[i] = x; LOG[x] = i;
+    x <<= 1; if (x & 0x100) x ^= 0x11D;
+  }
+  for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+  const mul = (a, b) => (a === 0 || b === 0) ? 0 : EXP[LOG[a] + LOG[b]];
+
+  function generator(n) {
+    let g = [1];
+    for (let i = 0; i < n; i++) {
+      const ng = new Array(g.length + 1).fill(0);
+      for (let j = 0; j < g.length; j++) {
+        ng[j] ^= g[j];
+        ng[j + 1] ^= mul(g[j], EXP[i]);
+      }
+      g = ng;
+    }
+    return g;
+  }
+  function ecFor(block, n) {
+    const g = generator(n);
+    const res = block.concat(new Array(n).fill(0));
+    for (let i = 0; i < block.length; i++) {
+      const c = res[i];
+      if (!c) continue;
+      for (let j = 0; j < g.length; j++) res[i + j] ^= mul(g[j], c);
+    }
+    return res.slice(block.length);
+  }
+
+  // --- split into blocks, compute EC, interleave ---------------------------
+  const dBlocks = [], eBlocks = [];
+  let p = 0;
+  for (let i = 0; i < g1; i++) { const b = data.slice(p, p + g1cw); p += g1cw; dBlocks.push(b); eBlocks.push(ecFor(b, ecPerBlock)); }
+  for (let i = 0; i < g2; i++) { const b = data.slice(p, p + g2cw); p += g2cw; dBlocks.push(b); eBlocks.push(ecFor(b, ecPerBlock)); }
+
+  const final = [];
+  const maxD = Math.max(g1cw, g2cw);
+  for (let i = 0; i < maxD; i++) for (const b of dBlocks) if (i < b.length) final.push(b[i]);
+  for (let i = 0; i < ecPerBlock; i++) for (const b of eBlocks) final.push(b[i]);
+
+  // --- matrix --------------------------------------------------------------
+  const size = 17 + ver * 4;
+  const m   = Array.from({length: size}, () => new Array(size).fill(null));
+  const res = Array.from({length: size}, () => new Array(size).fill(false)); // reserved
+
+  const setF = (r, c, v) => { m[r][c] = v; res[r][c] = true; };
+
+  function finder(r0, c0) {
+    for (let r = -1; r <= 7; r++) for (let c = -1; c <= 7; c++) {
+      const rr = r0 + r, cc = c0 + c;
+      if (rr < 0 || cc < 0 || rr >= size || cc >= size) continue;
+      const on = (r >= 0 && r <= 6 && (c === 0 || c === 6)) ||
+                 (c >= 0 && c <= 6 && (r === 0 || r === 6)) ||
+                 (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+      setF(rr, cc, on ? 1 : 0);
+    }
+  }
+  finder(0, 0); finder(0, size - 7); finder(size - 7, 0);
+
+  for (let i = 8; i < size - 8; i++) {           // timing
+    const v = i % 2 === 0 ? 1 : 0;
+    setF(6, i, v); setF(i, 6, v);
+  }
+
+  for (const r0 of ALIGN[ver]) for (const c0 of ALIGN[ver]) {
+    if ((r0 <= 8 && c0 <= 8) || (r0 <= 8 && c0 >= size - 9) || (r0 >= size - 9 && c0 <= 8)) continue;
+    for (let r = -2; r <= 2; r++) for (let c = -2; c <= 2; c++) {
+      const on = Math.max(Math.abs(r), Math.abs(c)) !== 1;
+      setF(r0 + r, c0 + c, on ? 1 : 0);
+    }
+  }
+
+  setF(size - 8, 8, 1);                          // dark module
+
+  // Reserve format areas (filled after masking).
+  for (let i = 0; i < 9; i++) { if (!res[8][i]) setF(8, i, 0); if (!res[i][8]) setF(i, 8, 0); }
+  for (let i = 0; i < 8; i++) { if (!res[8][size - 1 - i]) setF(8, size - 1 - i, 0);
+                                if (!res[size - 1 - i][8]) setF(size - 1 - i, 8, 0); }
+
+  // BCH long division, used for both the format and version strings.
+  function bchRemainder(v, poly, deg) {
+    let r = v << deg;
+    const polyDeg = 31 - Math.clz32(poly);
+    for (let i = 31 - Math.clz32(r); i >= polyDeg; i--) {
+      if (r & (1 << i)) r ^= poly << (i - polyDeg);
+    }
+    return r;
+  }
+
+  if (ver >= 7) {                                 // version info, BCH(18,6)
+    const vinfo = (ver << 12) | bchRemainder(ver, 0x1F25, 12);
+    for (let i = 0; i < 18; i++) {
+      const bit = (vinfo >> i) & 1;
+      setF(Math.floor(i / 3), size - 11 + (i % 3), bit);
+      setF(size - 11 + (i % 3), Math.floor(i / 3), bit);
+    }
+  }
+
+  // --- place data, zigzag from bottom-right --------------------------------
+  let bi = 0;
+  const bitAt = (i) => i < final.length * 8 ? (final[i >> 3] >> (7 - (i & 7))) & 1 : 0;
+  let upward = true;
+  for (let col = size - 1; col > 0; col -= 2) {
+    if (col === 6) col--;                         // skip the timing column
+    for (let i = 0; i < size; i++) {
+      const row = upward ? size - 1 - i : i;
+      for (let c = 0; c < 2; c++) {
+        const cc = col - c;
+        if (res[row][cc]) continue;
+        m[row][cc] = bitAt(bi++);
+      }
+    }
+    upward = !upward;
+  }
+
+  // --- masking -------------------------------------------------------------
+  const MASKS = [
+    (r, c) => (r + c) % 2 === 0,
+    (r, c) => r % 2 === 0,
+    (r, c) => c % 3 === 0,
+    (r, c) => (r + c) % 3 === 0,
+    (r, c) => (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0,
+    (r, c) => ((r * c) % 2) + ((r * c) % 3) === 0,
+    (r, c) => (((r * c) % 2) + ((r * c) % 3)) % 2 === 0,
+    (r, c) => (((r + c) % 2) + ((r * c) % 3)) % 2 === 0,
+  ];
+
+  function withMask(k) {
+    const g = m.map(row => row.slice());
+    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++)
+      if (!res[r][c] && MASKS[k](r, c)) g[r][c] ^= 1;
+
+    // format info: EC level M = 0b00, mask k
+    const fmt = (0b00 << 3) | k;
+    const bch = bchRemainder(fmt, 0x537, 10);
+    const info = ((fmt << 10) | bch) ^ 0b101010000010010;
+    // Placement runs MSB-first: cell (8,0) carries bit 14, not bit 0. Writing
+    // these the other way round produces a well-formed but unreadable code --
+    // the data decodes fine, the decoder just never gets far enough to try.
+    for (let i = 0; i < 15; i++) {
+      const bit = (info >> (14 - i)) & 1;
+      if (i < 6)       g[8][i] = bit;
+      else if (i < 8)  g[8][i + 1] = bit;
+      else if (i === 8) g[7][8] = bit;
+      else              g[14 - i][8] = bit;
+
+      // Bits 0-6 only: (size-8, 8) is the dark module, not a format cell.
+      // Writing bit 7 there shifts bits 7-14 by one and the code stops being
+      // readable at all -- which is exactly what happened.
+      if (i < 7)       g[size - 1 - i][8] = bit;
+      else             g[8][size - 15 + i] = bit;
+    }
+    g[size - 8][8] = 1;
+    return g;
+  }
+
+  function penalty(g) {
+    let p = 0;
+    // rule 1: runs of 5+
+    for (let i = 0; i < size; i++) {
+      for (const line of [g[i], g.map(r => r[i])]) {
+        let run = 1;
+        for (let j = 1; j < size; j++) {
+          if (line[j] === line[j - 1]) { run++; if (run === 5) p += 3; else if (run > 5) p++; }
+          else run = 1;
+        }
+      }
+    }
+    // rule 2: 2x2 blocks
+    for (let r = 0; r < size - 1; r++) for (let c = 0; c < size - 1; c++)
+      if (g[r][c] === g[r][c+1] && g[r][c] === g[r+1][c] && g[r][c] === g[r+1][c+1]) p += 3;
+    // rule 3: finder-like patterns
+    const pat1 = [1,0,1,1,1,0,1,0,0,0,0], pat2 = [0,0,0,0,1,0,1,1,1,0,1];
+    for (let i = 0; i < size; i++) {
+      for (const line of [g[i], g.map(r => r[i])]) {
+        for (let j = 0; j + 11 <= size; j++) {
+          const seg = line.slice(j, j + 11);
+          if (seg.every((v, k) => v === pat1[k]) || seg.every((v, k) => v === pat2[k])) p += 40;
+        }
+      }
+    }
+    // rule 4: dark ratio
+    let dark = 0;
+    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) dark += g[r][c];
+    const pct = dark * 100 / (size * size);
+    p += Math.floor(Math.abs(pct - 50) / 5) * 10;
+    return p;
+  }
+
+  let best = null, bestP = Infinity;
+  for (let k = 0; k < 8; k++) {
+    const g = withMask(k), pv = penalty(g);
+    if (pv < bestP) { bestP = pv; best = g; }
+  }
+  return best;
+}
+
+function PgStampTag({ biz, onBack, onSaved }) {
+  const p = bizPal(biz);
+  const [tok, setTok]         = useState(null);
+  const [busy, setBusy]       = useState(true);
+  const [err, setErr]         = useState("");
+  const [note, setNote]       = useState("");
+  const [ask, setAsk]         = useState(null);       // 'rotate' | 'revoke'
+  const [qrFail, setQrFail]   = useState(false);
+  const [qrUrl, setQrUrl]     = useState("");
+  const [requirePin, setRequirePin] = useState(!!biz.requirePinOnConfirm);
+  const [pin, setPin]         = useState("");
+  const canvasRef = useRef(null);
+
+  const origin  = (location.origin && location.origin !== "null") ? location.origin : "https://paystamp.app";
+  const tagUrl  = tok ? origin + "/stamp/" + tok : "";
+
+  async function load() {
+    setBusy(true);
+    const { data: r, error } = await sb.rpc("stamp_token_get");
+    setBusy(false);
+    if (error)      { setErr(error.message); return; }
+    if (r && r.ok)  { setTok(r.token); setRequirePin(!!r.require_pin); }
+    else            { setErr("Could not load your tag."); }
+  }
+  useEffect(()=>{ load(); }, []);
+
+  /* The QR carries a code derived from the token and the current 30-second
+     window, so the picture changes twice a minute and the server can tell a
+     scan from a tap. Redrawing on a timer is the whole mechanism -- there is
+     no round trip, because both sides derive the same value independently. */
+  useEffect(() => {
+    if (!tok) return;
+    let live = true, timer = null;
+    async function draw() {
+      try {
+        const n   = await stampNonce(tok, STAMP_BUCKET());
+        const url = origin + "/stamp/" + tok + "?n=" + n;
+        if (!live) return;
+        setQrUrl(url);
+        const mx = qrMatrix(url);
+        const cv = canvasRef.current;
+        if (!live || !cv || !mx) throw new Error("qr");
+        // Drawn at whole-pixel module size with the quiet zone the spec wants;
+        // a fractional module size is what makes a hand-rolled QR fail to scan
+        // on a phone even though it looks right on a desktop screen.
+        const quiet = 4, mod = Math.max(2, Math.floor(232 / (mx.length + quiet * 2)));
+        const px = (mx.length + quiet * 2) * mod;
+        cv.width = px; cv.height = px;
+        const g = cv.getContext("2d");
+        g.fillStyle = "#ffffff"; g.fillRect(0, 0, px, px);
+        g.fillStyle = "#000000";
+        for (let r = 0; r < mx.length; r++) for (let c = 0; c < mx.length; c++)
+          if (mx[r][c]) g.fillRect((c + quiet) * mod, (r + quiet) * mod, mod, mod);
+        if (live) setQrFail(false);
+      } catch (e) { if (live) setQrFail(true); }
+    }
+    draw();
+    timer = setInterval(draw, 30000);
+    return () => { live = false; clearInterval(timer); };
+  }, [tok]);
+
+  async function doRotate() {
+    setAsk(null); setBusy(true);
+    const { data: r, error } = await sb.rpc("stamp_token_rotate");
+    setBusy(false);
+    if (error || !r || !r.ok) { setErr("Could not issue a new tag."); return; }
+    setTok(r.token); setNote("New code issued. Rewrite your tag with the new address.");
+  }
+  async function doRevoke() {
+    setAsk(null); setBusy(true);
+    const { error } = await sb.rpc("stamp_token_revoke");
+    setBusy(false);
+    if (error) { setErr("Could not switch it off."); return; }
+    setTok(null); setQrUrl(""); setNote("Switched off. Existing tags and QR codes no longer work.");
+  }
+  async function savePin(nextRequire) {
+    setErr(""); setNote("");
+    const { data: r, error } = await sb.rpc("set_confirm_settings",
+      { p_require: nextRequire, p_pin: pin ? pin : null });
+    if (error)                       { setErr(error.message); return; }
+    if (r.error === "pin_required")  { setErr("Set a PIN first, then switch this on."); return; }
+    if (r.error === "bad_pin")       { setErr("The PIN must be 4 to 8 digits."); return; }
+    if (r.error)                     { setErr("Could not save that."); return; }
+    setRequirePin(!!r.require_pin); setPin(""); setNote("Saved.");
+    onSaved && onSaved();
+  }
+  function copy() {
+    try { navigator.clipboard.writeText(tagUrl); setNote("Address copied."); }
+    catch (e) { setNote("Select the address above to copy it."); }
+  }
+
+  return (
+    <div className="reg-page scr" style={{"--accent":p.acc}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
+        <button className="tb-back" onClick={onBack}>←</button>
+        <h2>Tap to Pay</h2>
+      </div>
+      <p>A parent holds their phone against your tag, or scans this code, and confirms the cash they are handing you.</p>
+
+      {err  && <div className="err" style={{marginBottom:10}}>{err}</div>}
+      {note && <div className="info-box" style={{marginBottom:14}}>{note}</div>}
+
+      {busy && !tok ? <div className="empty">Loading…</div> : !tok ? (
+        <>
+          <div className="info-box" style={{marginBottom:16}}>Tap to Pay is switched off. Nobody can confirm a payment this way until you issue a new code.</div>
+          <button className="scr-btn primary wide" onClick={doRotate}>Issue a New Code</button>
+        </>
+      ) : (
+        <>
+          <div className="scr-card" style={{marginBottom:16,padding:16}}>
+            <div className="scr-lbl">Tag Address</div>
+            <div style={{fontSize:".78rem",fontWeight:700,color:"var(--accent)",wordBreak:"break-all",lineHeight:1.6,marginBottom:12}}>{tagUrl}</div>
+            <button className="scr-btn wide" onClick={copy}>Copy Address</button>
+            <div style={{fontSize:".72rem",color:"var(--text2)",lineHeight:1.6,marginTop:12}}>
+              Write this onto an NFC sticker with any tag-writing app. Keep it to yourself — anyone holding it can open a confirmation.
+            </div>
+          </div>
+
+          <div className="scr-card" style={{marginBottom:16,padding:16,textAlign:"center"}}>
+            <div className="scr-lbl" style={{textAlign:"left"}}>Scan Instead</div>
+            {qrFail ? (
+              <div style={{fontSize:".76rem",color:"var(--text2)",lineHeight:1.6,padding:"12px 0"}}>
+                The code could not be drawn. The address above still works — a parent can type it in.
+              </div>
+            ) : (
+              <div style={{background:"#fff",borderRadius:16,padding:12,display:"inline-block",margin:"6px 0 10px"}}>
+                <canvas ref={canvasRef} width={232} height={232} style={{display:"block",maxWidth:"100%"}} />
+              </div>
+            )}
+            <div style={{fontSize:".72rem",color:"var(--text2)",lineHeight:1.6}}>
+              This code changes every 30 seconds. Leave the screen open while parents scan it.
+            </div>
+          </div>
+
+          <div className="scr-card" style={{marginBottom:16,padding:16}}>
+            <div className="scr-lbl">Ask For My PIN</div>
+            <div style={{fontSize:".74rem",color:"var(--text2)",lineHeight:1.6,marginBottom:12}}>
+              With this on, nothing is recorded until you type your PIN on the parent's phone. Use it if you want every confirmation to happen in front of you.
+            </div>
+            <div className="ig" style={{marginBottom:10}}>
+              <label>{biz.confirmPinSet ? "New PIN (leave blank to keep)" : "PIN (4–8 digits)"}</label>
+              <input className="inp" type="password" inputMode="numeric" value={pin}
+                onChange={e=>{setPin(e.target.value);setErr("");}} placeholder="••••" />
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button className="scr-btn" style={{flex:1}} onClick={()=>savePin(requirePin)}>Save PIN</button>
+              <button className={"scr-btn"+(requirePin?" primary":"")} style={{flex:1}}
+                onClick={()=>savePin(!requirePin)}>{requirePin ? "Turn Off" : "Turn On"}</button>
+            </div>
+            <div style={{fontSize:".72rem",fontWeight:700,color:requirePin?"var(--green)":"var(--text2)",marginTop:10}}>
+              {requirePin ? "On — your PIN is required to confirm." : "Off — parents confirm on their own."}
+            </div>
+          </div>
+
+          {/* Both of these invalidate every tag already written, so neither
+              happens on a single tap. */}
+          <button className="scr-btn wide" onClick={()=>setAsk("rotate")}>Issue a New Code</button>
+          <button className="scr-btn danger wide" style={{marginTop:10}} onClick={()=>setAsk("revoke")}>Switch Tap to Pay Off</button>
+        </>
+      )}
+
+      {ask && (
+        <div onClick={()=>setAsk(null)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:300,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div onClick={e=>e.stopPropagation()} className="scr-card" style={{maxWidth:340,padding:22}}>
+            <div className="scr-card-t" style={{marginBottom:8}}>
+              {ask==="rotate" ? "Issue a new code?" : "Switch Tap to Pay off?"}
+            </div>
+            <div style={{fontSize:".82rem",color:"var(--text2)",lineHeight:1.6,marginBottom:18}}>
+              {ask==="rotate"
+                ? "Your current tag and QR code stop working immediately. You will need to rewrite the tag with the new address."
+                : "Every tag and QR code you have stops working. Payments already recorded are not affected."}
+            </div>
+            <button className={"scr-btn wide "+(ask==="rotate"?"primary":"danger")}
+              onClick={ask==="rotate"?doRotate:doRevoke}>
+              {ask==="rotate" ? "Issue New Code" : "Switch Off"}
+            </button>
+            <button className="scr-btn wide" style={{marginTop:10}} onClick={()=>setAsk(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   PgStamp -- what a parent sees after tapping the tag or scanning the QR.
+
+   Every decision worth making has already been made by the database. This
+   component asks stamp_begin what happened and renders one of its four
+   answers; it never works out for itself whether somebody is entitled to
+   confirm a payment, and it never computes the payment. The amount field is
+   a suggestion the server made and the parent may change; what that amount
+   buys is worked out again server-side when they confirm.
+
+   The 60-second clock is shown rather than hidden. A parent who watches it
+   run out is told to tap again, which is a better outcome than a silent
+   failure at the moment they press the button.
+--------------------------------------------------------------------------- */
+function PgStamp({ onDone, preset, studentAuth }) {
+  // `studentAuth` is a share code and PIN from the student portal, which has no
+  // login at all. When it is set the confirm and undo calls go to the
+  // student-portal functions instead; everything else on this screen -- the
+  // countdown, the amount, the PIN prompt, the success and the undo -- is the
+  // same code, because it is the same flow with a different way of proving
+  // who is holding the phone.
+  const token = STAMP_BOOT;
+  // `preset` is a session the stamp trigger already opened. Everything past
+  // this point is identical either way -- the trigger reuses this screen and
+  // the confirm call rather than carrying its own copy of them.
+  const first0 = (preset && preset.students && preset.students[0]) || null;
+  const [phase, setPhase]   = useState(preset ? "pick" : "loading");  // loading|owner|nomatch|pick|saving|done|dead
+  const [data, setData]     = useState(preset || null);
+  const [cardId, setCardId] = useState(first0 ? first0.card_id : null);
+  const [amount, setAmount] = useState(first0 && first0.amount ? String(first0.amount) : "");
+  const [pin, setPin]       = useState("");
+  const [err, setErr]       = useState("");
+  const [left, setLeft]     = useState(60);
+  const [result, setResult] = useState(null);
+  const [undone, setUndone] = useState(false);
+
+  useEffect(() => {
+    if (preset) return;                     // the session is already open
+    let live = true;
+    (async () => {
+      const { data: r, error } = await sb.rpc("stamp_begin", { p_token: token, p_nonce: stampNonceStored() });
+      if (!live) return;
+      if (error)               { setErr(error.message); setPhase("dead"); return; }
+      if (r && r.owner)        { setData(r); setPhase("owner"); return; }
+      if (!r || r.error)       { setPhase("nomatch"); return; }
+      setData(r);
+      const first = (r.students || [])[0];
+      if (first) { setCardId(first.card_id); setAmount(first.amount ? String(first.amount) : ""); }
+      setPhase("pick");
+    })();
+    return () => { live = false; };
+  }, []);
+
+  /* Counts down the session the server opened, from the server's own
+     expires_at rather than from 60 -- the round trip has already spent some
+     of it, and a clock that lies by two seconds is worse than none. */
+  useEffect(() => {
+    if (phase !== "pick" || !data || !data.expires_at) return;
+    const end = new Date(data.expires_at).getTime();
+    const tick = () => {
+      const s = Math.max(0, Math.round((end - Date.now()) / 1000));
+      setLeft(s);
+      if (s === 0) setPhase("dead");
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [phase, data]);
+
+  const students = (data && data.students) || [];
+  const student  = students.find(s => s.card_id === cardId) || students[0];
+
+  function finish() { stampClear(); onDone(); }
+
+  async function doConfirm() {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) { setErr("Enter the amount you are paying."); return; }
+    if (data.require_pin && !pin) { setErr("Ask the school to enter their PIN."); return; }
+    setErr(""); setPhase("saving");
+    const { data: r, error } = studentAuth
+      ? await sb.rpc("stamp_confirm_student", {
+          p_confirmation: data.confirmation, p_code: studentAuth.code, p_pin: studentAuth.pin,
+          p_amount: amt, p_owner_pin: data.require_pin ? pin : null })
+      : await sb.rpc("stamp_confirm", {
+          p_confirmation: data.confirmation, p_card_id: cardId, p_amount: amt,
+          p_pin: data.require_pin ? pin : null });
+    if (error)   { setErr(error.message); setPhase("pick"); return; }
+    if (r.error === "expired")      { setPhase("dead"); return; }
+    if (r.error === "bad_pin")      { setErr(r.burned ? "Too many wrong tries. Tap again to start over." : "That PIN is not right."); setPin(""); setPhase(r.burned ? "dead" : "pick"); return; }
+    if (r.error === "nothing_due")  { setErr((r.name||"This student")+" has nothing outstanding."); setPhase("dead"); return; }
+    if (r.error)                    { setErr("That did not go through. Please tap again."); setPhase("dead"); return; }
+    setResult(r); setPhase("done");
+  }
+
+  async function doUndo() {
+    const { data: r } = studentAuth
+      ? await sb.rpc("stamp_undo_student", { p_code: studentAuth.code, p_pin: studentAuth.pin, p_n: result.n })
+      : await sb.rpc("stamp_undo", { p_card_id: cardId, p_n: result.n });
+    if (r && r.ok) setUndone(true);
+    else setErr("That can no longer be undone here — ask the school.");
+  }
+
+  /* The school's own colour. `accent` off the wire is a theme NAME, so it has
+     to go through bizPal like everywhere else -- putting it straight into
+     --accent would set the property to an invalid colour, and the skin would
+     quietly fall back to the :root default instead of failing visibly. */
+  const acc = data ? bizPal({ type:data.type, accent:data.accent, icon:data.icon }).acc : null;
+  const wrap = (kids) => (
+    <div className="reg-page scr" style={acc ? {"--accent":acc} : undefined}>{kids}</div>
+  );
+
+  if (phase === "loading") return wrap(<div className="empty">Checking…</div>);
+
+  if (phase === "owner") return wrap(<>
+    <h2 style={{marginBottom:4}}>Your tag works</h2>
+    <p>This is {data.business_name}'s own device, so nothing has been recorded. Hand the tag to a parent and it will open their confirmation.</p>
+    <button className="scr-btn primary wide" onClick={finish}>Back to PayStamp</button>
+  </>);
+
+  if (phase === "nomatch") return wrap(<>
+    <h2 style={{marginBottom:4}}>Nothing to confirm</h2>
+    <p>We could not match this to a student on your account. If you have just linked your child, open PayStamp and try the tag again.</p>
+    <button className="scr-btn primary wide" onClick={finish}>Open PayStamp</button>
+  </>);
+
+  if (phase === "dead") return wrap(<>
+    <h2 style={{marginBottom:4}}>Please tap again</h2>
+    <p>{err || "That confirmation timed out. Hold your phone against the tag once more."}</p>
+    <button className="scr-btn primary wide" onClick={finish}>Done</button>
+  </>);
+
+  if (phase === "done") return wrap(<>
+    <div className="reveal-box">
+      <div className="rv-lbl">{undone ? "Undone" : "Payment recorded"}</div>
+      <div className="rv-val">{undone ? "—" : "€"+Number(result.amount).toFixed(2)}</div>
+      <div className="rv-sep" />
+      <div className="rv-lbl">{result.name}</div>
+      <div style={{fontSize:".85rem",fontWeight:700,color:"var(--text2)"}}>
+        {undone ? "Nothing was kept." : (result.months||[]).map(mi=>MFULL[mi]).join(", ")}
+      </div>
+    </div>
+    {err && <div className="err" style={{marginBottom:10}}>{err}</div>}
+    {!undone && <button className="scr-btn danger wide" onClick={doUndo}>Undo</button>}
+    <button className="scr-btn primary wide" style={{marginTop:10}} onClick={finish}>Done</button>
+  </>);
+
+  return wrap(<>
+    <h2 style={{marginBottom:4}}>{data.business_name}</h2>
+    <p>Confirm the cash payment you are handing over now.</p>
+
+    {students.length > 1 && (
+      <div className="ig">
+        <label>Student</label>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {students.map(s => (
+            <button key={s.card_id}
+              onClick={()=>{ setCardId(s.card_id); setAmount(s.amount ? String(s.amount) : ""); setErr(""); }}
+              className={"scr-chip"+(s.card_id===cardId?" on":"")}>{s.name}</button>
+          ))}
+        </div>
+      </div>
+    )}
+
+    <div className="scr-card" style={{marginBottom:14}}>
+      <div className="scr-card-t">{student ? student.name : ""}</div>
+      <div className="scr-card-s">{student && student.month
+        ? ("Next unpaid month: "+student.month)
+        : "Nothing currently outstanding"}</div>
+    </div>
+
+    <div className="ig">
+      <label>Amount</label>
+      <input className="inp" type="number" inputMode="decimal" value={amount}
+        onChange={e=>{setAmount(e.target.value);setErr("");}} placeholder="0" />
+    </div>
+
+    {data.require_pin && (
+      <div className="ig">
+        <label>School PIN</label>
+        <input className="inp" type="password" inputMode="numeric" value={pin}
+          onChange={e=>{setPin(e.target.value);setErr("");}} placeholder="Ask the school" />
+      </div>
+    )}
+
+    {err && <div className="err" style={{marginBottom:8}}>{err}</div>}
+
+    <button className="scr-btn primary wide" onClick={doConfirm} disabled={phase==="saving"}>
+      {phase==="saving" ? "…" : "Confirm Payment"}
+    </button>
+    <div style={{textAlign:"center",marginTop:12,fontSize:".72rem",fontWeight:700,color:left<=10?"var(--red)":"var(--text2)"}}>
+      {"Expires in "+left+"s"}
+    </div>
+    <button className="scr-btn wide" style={{marginTop:10}} onClick={finish}>Cancel</button>
+  </>);
+}
+
+function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onName, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded, onStampTag, onStampCal, onPayLink, onPayQueue, pendingPays }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
       the two can never fall out of step. Grouped by what the owner is trying
       to do rather than by when each screen happened to be built. */
    const SET_GROUPS = [
      ["Students",      [["📅","Months","Manage active/inactive months",onMonths],["🎓","Levels","Edit student levels & fees",onLevels],["👥","Groups","Weekly schedule by group",onGroups],["🗂️","Manage","Create groups & assign teachers",onManage]]],
      ["Appearance",    [["✏️","Name","Rename your school",onName],["🎨","Colour","Pick your accent colour",onTheme],["🏫","Icon","Choose your school's icon",onIcon],["🖼️","Card","Choose card design",onCustomCard]]],
      ["Communication", [["🔔","Remind","Send payment reminders",onRemind],["📣","Announcements","Post news to parents & students",onAnnouncements],["📝","Registration","Public sign-up links & requests",onRegistrations,pendingRegs]]],
+     /* Always offered now. Calibrating is what switches the stamp on for a
+        school's parents, so hiding the screen behind a flag would have left
+        nobody able to reach the thing that enables it. */
+     ["Payments",      [["📲","Tap to Pay","NFC tag & QR for confirmations",onStampTag],
+                        ["🔘","Stamp","Teach PayStamp your rubber stamp",onStampCal],
+                        ["🔗","Payment Link","Where parents pay you online",onPayLink],
+                        ["📥","Pending Payments","Online payments waiting on you",onPayQueue,pendingPays]]],
      ["Data",          [["📤","Export","Download payment records",onExport]]],
    ];   const hasImg = !!biz.customCardImage;   const headerBg = hasImg ? "#000" : "linear-gradient(160deg,"+alphaHex(p.acc,.22)+" 0%,#131315 100%)";    const filtered = allCards     .filter(c=>{       if (levelFilter==="all") return true;       if (levelFilter==="none") return !c.level;       return c.level && c.level.id===levelFilter;     })     .filter(c=>!search||(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.shareCode||"").toLowerCase().includes(search.toLowerCase()))     .sort((a,b)=>{       if (sort==="owed") {         const oA=getStudentMonthStatus(a,biz,year).owedTotal;         const oB=getStudentMonthStatus(b,biz,year).owedTotal;         return oB-oA;       }       if (sort==="progress") { return monthsPaid(b.payments||{},year,inactive.concat(b.pausedMonths||[]),b.enrollmentStart)-monthsPaid(a.payments||{},year,inactive.concat(a.pausedMonths||[]),a.enrollmentStart); }       return (a.name||"").localeCompare(b.name||"");     });
 
@@ -1299,7 +2596,10 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
     const newPmts = {...snap};
     for (const b of bd) { newPmts[ymOf(year,b.mi)]={paid:b.full,partial:!b.full,amount:b.newTotal}; }
     const n = hist.length+1;
-    const entry = {n,amount:amt,date:new Date().toLocaleDateString("en-GB"),snapshot:{...snap},months:bd.map(b=>b.mi),receipt_sent_at:null};
+    /* Typed into the dashboard by the owner. The confirmation flow stamps
+       its own source; saying so here means "no trigger_source" never has to
+       be read as "we do not know". */
+    const entry = {n,amount:amt,date:new Date().toLocaleDateString("en-GB"),snapshot:{...snap},months:bd.map(b=>b.mi),receipt_sent_at:null,trigger_source:"manual"};
     onUpdate({payments:newPmts,history:[entry,...hist]});
     setAmount(""); setConfirm(null);
   }
@@ -1463,7 +2763,17 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
                     <div className="hi-amt">{"€"+h.amount.toFixed(2)}</div>
                     <div className="hi-lbl">{cm ? cm : ("Payment #"+h.n)}</div>
                   </div>
-                  <div className="hi-dt">{h.date}</div>
+                  <div style={{textAlign:"right"}}>
+                    <div className="hi-dt">{h.date}</div>
+                    {/* Anything the owner did not type carries its source. The
+                        badge is informational, not a warning, so it takes the
+                        accent rather than a status colour. */}
+                    {TRIGGER_LABEL[h.trigger_source] && (
+                      <div style={{display:"inline-block",marginTop:6,padding:"3px 9px",borderRadius:99,background:alphaHex(bizPal(biz).acc,.18),color:"var(--accent)",fontSize:".62rem",fontWeight:800,letterSpacing:".08em",textTransform:"uppercase"}}>
+                        {TRIGGER_LABEL[h.trigger_source]}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div style={{display:"flex",gap:6,marginTop:12}}>
                   {[["whatsapp","WhatsApp","#25D366","var(--accent-ink)"],["viber","Viber","#7360F2","#fff"],["sms","SMS","var(--accent)","var(--accent-ink)"]].map(([v,l,bg,ink])=>(
@@ -1636,6 +2946,30 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
   // the payment history pushed off the bottom of it. Collapsed to the newest
   // few, opened by a tap.
   const [annOpen, setAnnOpen] = useState(false);
+  /* A confirmation the stamp trigger opened on this card. The student portal
+     has no login, so the identity carried through is the share code and PIN
+     this screen already verified -- and the database re-checks them under the
+     same rate limit rather than taking this page's word for it. */
+  const [stampSess, setStampSess] = useState(null);
+  /* Same two reads as the family portal, proved the way this one proves
+     things: with the code and PIN the card was opened with. */
+  const [payLink, setPayLink]     = useState(null);
+  const [payClaims, setPayClaims] = useState([]);
+  async function loadPay(c, p) {
+    try {
+      const { data: l } = await sb.rpc("payment_link_student", { p_code: c, p_pin: p });
+      setPayLink(l && l.link ? l : null);
+      const { data: cl } = await sb.rpc("payment_claims_mine_student", { p_code: c, p_pin: p });
+      setPayClaims(cl || []);
+    } catch (e) { /* the card still works without it */ }
+  }
+  async function onClaim(a) {
+    const { data: r, error } = await sb.rpc("payment_claim_create_student",
+      { p_code: code.trim(), p_pin: pin, p_amount: a.amount, p_paid_on: a.paid_on, p_reference: a.reference });
+    if (error) return { error: error.message };
+    if (r && r.ok) await loadPay(code.trim(), pin);
+    return r;
+  }
   function doCode() {
     if (!code.trim()) { setErr("Enter your code."); return; }
     setErr(""); setStep("pin");
@@ -1657,7 +2991,47 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
     // NEW pills mid-visit.
     let seenAt=""; try { seenAt = localStorage.getItem("ann_seen_stu_"+c.share_code)||""; } catch(e){}
     setFound({biz,card,announcements:data.announcements||[],seenAt}); setStep("view");
+    loadPay(code.trim(), pin);
   }
+  /* The stamp trigger, on an open student card.
+     Only once the card is actually open: before that there is no code and PIN
+     to prove anything with, and a press would have nothing to match against. */
+  useEffect(() => {
+    if (STAMP_PREF === "0") return;
+    if (step !== "view" || stampSess) return;
+    let alive = true, inFlight = false, cooldownUntil = 0, listening = false;
+    const col = stampPressCollector(async (pts) => {
+      if (!alive || inFlight || Date.now() < cooldownUntil) return;
+      if (pts.length < 4) return;
+      inFlight = true;
+      try {
+        const { data: r } = await sb.rpc("stamp_begin_geometry_student", {
+          p_code: code.trim(), p_pin: pin, p_points: stampNormalise(pts) });
+        if (alive && r && r.ok) setStampSess(r);
+      } catch (e) { /* silent, as everywhere else */ }
+      inFlight = false;
+      cooldownUntil = Date.now() + 2500;
+    }, 90);
+    const h = (e) => col.handle(e);
+    // Same single question, proved the way this portal proves anything: with
+    // the code and PIN the card was opened with.
+    stampTriggerActive("stamp_trigger_active_student",
+                       { p_code: code.trim(), p_pin: pin }).then(on => {
+      if (!alive || !on) return;
+      listening = true;
+      document.addEventListener("touchstart", h, { passive: true });
+    });
+    return () => {
+      alive = false; col.cancel();
+      if (listening) document.removeEventListener("touchstart", h);
+    };
+  }, [step, stampSess, code, pin]);
+
+  if (stampSess) return (
+    <PgStamp preset={stampSess} studentAuth={{ code: code.trim(), pin }}
+             onDone={()=>setStampSess(null)} />
+  );
+
   if (step==="view" && found) {
     const {biz,card} = found;
     const inactive = biz.inactiveMonths||[];
@@ -1688,6 +3062,12 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
         </div>
         <div style={{padding:"0 16px 16px"}}>
           <BizCard biz={biz} card={card} isTeacher={false} onTap={null} inactiveMonths={inactive} />
+          {/* Same panel the family portal uses, and the same rule: it sits
+              under the months because the months are what is true. */}
+          {payLink && (
+            <PayOnline link={payLink.link} linkName={payLink.name}
+              cardId={null} claims={payClaims} onClaim={onClaim} />
+          )}
         </div>
         {/* Between the months grid and Payment History, and always open. As a
             speaker icon in the top corner this was a notification a student had
@@ -2063,6 +3443,28 @@ function PgLinkChild({ onBack, onLink, kids, onAssign, onCreateChild }) {
 }
 
 function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead, onLink, onUnlink, onAssign, onCreateChild, onRenameChild, onDeleteChild, onLogout, onTeacher, onSettings }) {
+  /* Where a school takes money, and what this family has already claimed.
+     Both read once when the portal opens; the panel below re-reads after a
+     claim so "Awaiting confirmation" appears without a reload. */
+  const [payLinks, setPayLinks]   = useState({});
+  const [payClaims, setPayClaims] = useState([]);
+  async function loadPay() {
+    try {
+      const { data: l } = await sb.rpc("payment_links_mine");
+      const m = {}; (l || []).forEach(x => { m[x.card_id] = x; });
+      setPayLinks(m);
+      const { data: c } = await sb.rpc("payment_claims_mine");
+      setPayClaims(c || []);
+    } catch (e) { /* the portal works perfectly well without this */ }
+  }
+  useEffect(() => { loadPay(); }, []);
+  async function onClaim(a) {
+    const { data: r, error } = await sb.rpc("payment_claim_create",
+      { p_card_id: a.card_id, p_amount: a.amount, p_paid_on: a.paid_on, p_reference: a.reference });
+    if (error) return { error: error.message };
+    if (r && r.ok) await loadPay();
+    return r;
+  }
   const [expanded, setExpanded] = useState({});
   const [openGroups, setOpenGroups] = useState({});
   const [notesOpen, setNotesOpen] = useState({});      // per "From the school" block
@@ -2181,6 +3583,12 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
         {isOpen && (
           <div style={{padding:"0 12px 12px",borderTop:"1px solid var(--fam-line2)"}}>
             <BizCard biz={r.biz} card={r.card} isTeacher={false} onTap={null} inactiveMonths={r.biz.inactiveMonths} />
+            {/* Under the card, not above it: the months are the truth, and a
+                pending claim must never look like it has changed them. */}
+            {payLinks[r.it.cardId] && (
+              <PayOnline link={payLinks[r.it.cardId].link} linkName={payLinks[r.it.cardId].name}
+                cardId={r.it.cardId} claims={payClaims} onClaim={onClaim} accent={r.pal.acc} />
+            )}
             {kids.length>0 && (
               <div style={{display:"flex",gap:6,flexWrap:"wrap",margin:"2px 0 8px",alignItems:"center"}}>
                 <span style={{fontSize:".7rem",color:"var(--fam-t3)",fontWeight:600,textTransform:"uppercase",letterSpacing:".12em"}}>Child</span>
@@ -3739,6 +5147,26 @@ function App() {
   const [dashExpanded, setDashExpanded] = useState({});
   const [approval, setApproval] = useState(null);
   const [mode, setMode] = useState("teacher");
+  /* A tap waiting to be dealt with. Seeded from the URL at load, cleared when
+     the parent finishes or cancels. It outranks whatever view the app would
+     otherwise have chosen: somebody standing at the counter with their phone
+     against a tag is not there to browse. */
+  const [stampTok, setStampTok] = useState(STAMP_BOOT);
+  /* A confirmation the stamp trigger opened. Distinct from stampTok because
+     there is no token involved -- the database matched a geometry and handed
+     back a session directly. */
+  const [stampSession, setStampSession] = useState(null);
+
+  /* How many online payments are waiting. Surfaced on the settings row the
+     same way pending registrations are, so a queue nobody thinks to open
+     still says it has something in it. */
+  const [pendingPays, setPendingPays] = useState(0);
+  async function loadPendingPays() {
+    try {
+      const { data: r } = await sb.rpc("payment_claims_queue");
+      setPendingPays(r && r.ok ? (r.pending || []).length : 0);
+    } catch (e) { setPendingPays(0); }
+  }
 
   const pop = (msg,type="ok")=>{setToast({msg,type});setTimeout(()=>setToast(null),2800);};
 
@@ -3812,6 +5240,63 @@ function App() {
       finally { setBizLoaded(true); }
     })();
   },[session]);
+
+  /* ---------------------------------------------------------------------
+     The stamp trigger: a global listener on the family portal.
+
+     Only on the family portal, because that is the screen a parent has open
+     when they are standing at the desk, and a school owner pressing their own
+     stamp on their own dashboard should not be doing anything.
+
+     The points go to the database raw and it decides whether they match. This
+     side never learns which school a press belongs to, or whether it was
+     close -- on anything other than a match it does nothing at all, with no
+     message, exactly as specified. A silent no-match is also what makes an
+     ordinary five-finger fumble on a phone harmless.
+  --------------------------------------------------------------------------- */
+  useEffect(() => {
+    if (STAMP_PREF === "0") return;
+    if (!session || mode !== "parent") return;
+    if (stampTok || stampSession) return;      // already confirming something
+
+    let alive = true, inFlight = false, cooldownUntil = 0, listening = false;
+    const col = stampPressCollector(async (pts) => {
+      if (!alive || inFlight || Date.now() < cooldownUntil) return;
+      if (pts.length < 4) return;              // four is the floor worth trying
+      inFlight = true;
+      try {
+        const { data: r } = await sb.rpc("stamp_begin_geometry",
+          { p_points: stampNormalise(pts) });
+        if (alive && r && r.ok) setStampSession(r);
+      } catch (e) { /* silent, by design */ }
+      inFlight = false;
+      // A stamp held down a moment too long fires twice otherwise, and the
+      // second press would burn a session nobody asked for.
+      cooldownUntil = Date.now() + 2500;
+    }, 90);
+
+    const h = (e) => col.handle(e);
+    // The one question, asked once. Until it comes back nothing is listening,
+    // so a school with no stamp never attaches a listener at all.
+    stampTriggerActive("stamp_trigger_active").then(on => {
+      if (!alive || !on) return;
+      listening = true;
+      document.addEventListener("touchstart", h, { passive: true });
+    });
+    return () => {
+      alive = false; col.cancel();
+      if (listening) document.removeEventListener("touchstart", h);
+    };
+  }, [session, mode, stampTok, stampSession]);
+
+  /* Tapped while logged out. The token is already in sessionStorage, so the
+     login round-trip cannot lose it and the tap resumes by itself the moment
+     a session appears. */
+  useEffect(()=>{
+    if (authReady && !session && stampTok) setView("parentAuth");
+  },[authReady, session, stampTok]);
+
+  useEffect(() => { if (session && bizId) loadPendingPays(); }, [session, bizId]);
 
   const biz = bizId ? db.businesses[bizId] : null;
   const card = biz && cardId ? biz.cards[cardId] : null;
@@ -4142,6 +5627,8 @@ async function doUpdateCard(updates){
       <div className={"app"+(view==="dashboard"?" app--wide":"")}>
         {!authReady ? <div className="empty" style={{paddingTop:80}}>Loading…</div>
          : session && !bizLoaded ? <div className="empty" style={{paddingTop:80}}>Loading…</div>
+         : session && stampSession ? <PgStamp preset={stampSession} onDone={()=>setStampSession(null)} />
+         : session && stampTok ? <PgStamp onDone={()=>{ setStampTok(null); setView(mode==="parent"?"parentDash":"dashboard"); }} />
          : session && approval==="pending" ? <PgPending email={session.user&&session.user.email} onLogout={doLogout} />
          : session && approval==="rejected" ? <PgRejected onLogout={doLogout} />
          : session && mode==="parent" ? (view==="linkChild"
@@ -4156,8 +5643,9 @@ async function doUpdateCard(updates){
         {view==="forgot" && <PgForgot onBack={()=>setView("login")} />}
         {view==="register" && <PgRegister onBack={()=>setView("login")} onCreated={onRegistered} />}
         {view==="student" && <PgStudent onBack={()=>setView("landing")} />}
+        {view==="parentAuth" && stampTok && <div style={{padding:"18px 28px 0"}}><div className="info-box">Log in to confirm the payment. We will pick up where you left off.</div></div>}
         {view==="parentAuth" && <PgParentAuth onBack={()=>setView("landing")} />}
-        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onIcon={()=>goView("icon")} onName={()=>goView("name")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} />}
+        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onIcon={()=>goView("icon")} onName={()=>goView("name")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} onStampTag={()=>goView("stampTag")} onStampCal={()=>goView("stampCal")} onPayLink={()=>goView("payLink")} onPayQueue={()=>goView("payQueue")} pendingPays={pendingPays} />}
         {view==="addCard" && biz && <PgAddCard biz={biz} onBack={()=>setView("dashboard")} onCreate={doAddCard} />}
         {view==="import" && biz && <PgImport biz={biz} onBack={()=>setView("dashboard")} onImport={doImportStudents} />}
         {view==="reveal" && revealCard && <PgReveal biz={biz} card={revealCard} onDone={()=>{setRevealCard(null);setView("dashboard");}} />}
@@ -4168,6 +5656,10 @@ async function doUpdateCard(updates){
         {view==="theme" && biz && <PgTheme biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveAccent} />}
         {view==="icon" && biz && <PgIcon biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveIcon} />}
         {view==="name" && biz && <PgName biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveName} />}
+        {view==="stampTag" && biz && <PgStampTag biz={biz} onBack={()=>setView("dashboard")} onSaved={refresh} />}
+        {view==="stampCal" && biz && <PgStampCalibrate biz={biz} onBack={()=>setView("dashboard")} />}
+        {view==="payLink" && biz && <PgPayLink biz={biz} onBack={()=>setView("dashboard")} onSaved={refresh} />}
+        {view==="payQueue" && biz && <PgPayQueue biz={biz} onBack={()=>setView("dashboard")} onChanged={()=>{refresh();loadPendingPays();}} />}
         {view==="export" && biz && <PgExport biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="remind" && biz && <PgRemind biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="announcements" && biz && <PgAnnouncements biz={biz} onBack={()=>setView("dashboard")} />}
