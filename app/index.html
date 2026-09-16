@@ -1049,6 +1049,10 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
       <div className="ig"><label>Password (min 6 chars)</label><input className="inp" type="password" placeholder="Keep private" value={v.pin} onChange={e=>setV(p=>({...p,pin:e.target.value}))} /></div>
       {err && <div className="err">{err}</div>}
       <button className="scr-btn primary wide" style={{marginTop:8}} onClick={doCreate} disabled={busy}>{busy?"…":"Create Business"}</button>
+      {/* The contract forms here, not on the login screen, so the agreement is
+          stated here and the DPA is named — a school is a data controller and
+          the DPA is the part that binds us as its processor. */}
+      <p style={{fontSize:".72rem",color:"var(--text2)",textAlign:"center",marginTop:18,lineHeight:1.5}}>By creating your business you agree to our <a href="/terms" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Terms of Service</a>, the <a href="/dpa" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Data Processing Agreement</a> and our <a href="/privacy" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Privacy Policy</a>.</p>
     </div>
   );
 }
@@ -3314,6 +3318,7 @@ function PgCustomCard({ biz, onBack, onSave }) {   const [preview, setPreview] =
       <div className="ig"><label>Monthly Fee</label><input className="inp" type="number" placeholder="e.g. 50" value={v.fee} onChange={e=>setV(p=>({...p,fee:e.target.value}))} /></div>
       {err && <div className="err">{err}</div>}
       <button className="scr-btn primary wide" style={{marginTop:8}} onClick={doCreate} disabled={busy}>{busy?"…":"Create Business"}</button>
+      <p style={{fontSize:".72rem",color:"var(--text2)",textAlign:"center",marginTop:18,lineHeight:1.5}}>By creating your business you agree to our <a href="/terms" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Terms of Service</a>, the <a href="/dpa" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Data Processing Agreement</a> and our <a href="/privacy" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Privacy Policy</a>.</p>
     </div>
   );
 }

@@ -133,6 +133,26 @@ security page on paystamp.app rather than a rewrite of the audit.
 
 ---
 
+## Accepting the Terms is the signature — there is no separate contract to post
+
+A school does not sign anything. The Terms of Service incorporate the Data
+Processing Agreement, and Article 28(9) accepts a contract "in writing,
+including in electronic form" — so clicking through at signup forms the same
+contract a printed one would. What was missing was not a signature but the
+*showing*: the two screens where a business is actually created carried no
+agreement line at all, and the DPA was never named at the point of acceptance.
+Both now state it and link all three documents.
+
+A signed PDF is still offered on request, because an accountant sometimes wants
+one in a folder. That is a courtesy, not a legal requirement, and the Terms now
+say so.
+
+**What changes it:** a customer whose own compliance policy demands a
+countersigned agreement before they will start — sign the PDF, don't rebuild the
+mechanism.
+
+---
+
 ## Tap to Pay computes the payment in the database, not in the browser
 
 The parent's phone is what calls the confirmation functions, and a parent has
