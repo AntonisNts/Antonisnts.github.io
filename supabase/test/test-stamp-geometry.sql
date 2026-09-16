@@ -59,9 +59,17 @@ select 'contact order does not matter' as t,
        public.stamp_geometry_match(
          '[[0,0],[20,35],[60,60],[0,60],[60,0]]'::jsonb, :'STAMP'::jsonb, 18) < 0.01 as pass;
 
+-- Tolerance is relative to the pattern since the rotation work, so on this
+-- deliberately small 60px test stamp the effective limit is about 12.7 rather
+-- than the 18 passed in. The press below is sloppy but inside that; the one
+-- after it is outside, and the pair is what pins where the line actually sits.
 select 'a sloppy press inside tolerance matches, and scores how sloppy' as t,
        public.stamp_geometry_match(
-         '[[0,0],[68,5],[6,66],[64,54],[27,31]]'::jsonb, :'STAMP'::jsonb, 18) between 0.01 and 18 as pass;
+         '[[0,0],[64,3],[3,63],[62,57],[23,33]]'::jsonb, :'STAMP'::jsonb, 18) between 0.01 and 12.8 as pass;
+
+select 'a sloppier one is refused, because tolerance follows the pattern''s size' as t,
+       public.stamp_geometry_match(
+         '[[0,0],[68,5],[6,66],[64,54],[27,31]]'::jsonb, :'STAMP'::jsonb, 18) is null as pass;
 
 select 'a press outside tolerance does not match' as t,
        public.stamp_geometry_match(
@@ -207,9 +215,17 @@ select 'two of the parent''s own schools with the same stamp is a tie, and a tie
 delete from public.card_links
  where card_id='62000000-0000-0000-0000-0000000000cb' and parent_email='geo-parent@t.example';
 
+-- An owner has no card_links -- those rows link a PARENT to a child -- so this
+-- assertion returned NULL for as long as the owner check lived inside the loop
+-- over them. NULL is neither t nor f, which is how it stayed invisible.
 select pg_temp.act_as('60000000-0000-0000-0000-00000000000a','geo-owner-a@t.example');
-select 'the owner pressing their own stamp is told so, and records nothing' as t,
-       (public.stamp_begin_geometry(:'STAMP'::jsonb)->>'owner')::boolean as pass;
+create temp table _own as select public.stamp_begin_geometry(:'STAMP'::jsonb) as r;
+select 'the owner pressing their own stamp is told so' as t,
+       coalesce(((select r from _own)->>'owner')::boolean, false) as pass;
+select 'and is told which school it belongs to' as t,
+       (select r from _own)->>'business_name' = 'Geo School A' as pass;
+select 'and nothing at all was recorded for it' as t, count(*) = 0 as pass
+  from public.stamp_confirmations where parent_email = 'geo-owner-a@t.example';
 
 
 \echo

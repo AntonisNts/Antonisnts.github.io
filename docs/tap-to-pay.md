@@ -197,3 +197,78 @@ look at and, with enough patience, reproduce with their fingers. The matching
 happens on the server and only against schools that person is already a
 customer of, so nobody can use it to reach another school — but as a secret, a
 stamp is weak. If that matters to you, turn on **Ask For My PIN**.
+
+
+---
+
+# Paying online
+
+Separate from everything above, and the only route where the money does not
+pass through your hands.
+
+## Setting it up
+
+**Settings → Payments → Payment Link.** Paste wherever you already take money —
+Revolut, Viva, your bank's payment page. PayStamp never touches the money; it
+only sends parents there and keeps the record.
+
+It has to start with `https://`. A plain `http://` link is refused, and so is
+anything that is not a web address.
+
+Give it a name parents will recognise — "Revolut — Maria" reads better on their
+phone than a bare URL.
+
+## What a parent does
+
+1. Opens their child's card and taps **Pay Online**.
+2. Pays, on your page, in their own banking app.
+3. Comes back and taps **I've paid**, giving the amount, the date, and
+   optionally a reference or the last four digits.
+
+That option only appears *after* they have opened the link.
+
+## Nothing is paid until you say so
+
+This is the part worth being clear about, because it is the whole design.
+
+**A claim is not a payment.** When a parent says they have paid:
+
+- the student's card does not change
+- the months stay exactly as they were
+- your **Owed** total does not move
+- nothing appears in the payment history
+
+The parent sees **"Awaiting confirmation"** and, in as many words, that it is
+**not recorded as paid yet**. Nobody is told the money has arrived until you
+have said it has.
+
+## Your queue
+
+**Settings → Payments → Pending Payments.** The row carries a count, so a queue
+nobody thinks to open still says it has something in it.
+
+Each claim shows the student, the amount, the date they say they paid, and any
+reference — which is what you match against your statement.
+
+**Confirm** records it exactly the way every other route does: same months,
+same breakdown, same history, same undo. It shows as **Paid online** in the
+student's history.
+
+**Reject** asks for a reason, changes nothing, and shows the parent what you
+said. Nothing was recorded, so nothing has to be undone.
+
+A claim left more than ten days is flagged **Waiting a while** — the queue says
+when it is being ignored rather than quietly filling up.
+
+## Both portals
+
+Parents with an account, and students using Quick View with just a code and
+PIN, both get the same thing.
+
+## What is not built
+
+Automatic confirmation through a card processor. The groundwork is there — a
+claim already records whether a person or a processor verified it — but it
+needs somewhere to run server code, which PayStamp does not have yet. Until
+then, confirming is a person reading a statement, which is what you would be
+doing anyway.
