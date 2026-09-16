@@ -1,7 +1,9 @@
 // The stamp trigger, driven with real multi-touch events.
 //
-// What matters here is the browser half: that the flag really gates it, that a
-// press staggered across several touchstart events is still collected whole,
+// What matters here is the browser half: that a phone listens only when the
+// school has actually calibrated a stamp, that the question is asked ONCE
+// rather than per touch, that a press staggered across several touchstart
+// events is still collected whole,
 // that the points sent up are normalised so contact order cannot matter, and
 // that a non-match does nothing visible. The matching itself is the database's
 // job and is covered in supabase/test/test-stamp-geometry.sql.
@@ -11,6 +13,8 @@ let pass = 0, fail = 0;
 const ok = (n, c, d) => { c ? (pass++, console.log("  ok   " + n))
                             : (fail++, console.log("  FAIL " + n + (d ? " — " + d : ""))); };
 
+const ACTIVE = { stamp_trigger_active: { active: true },
+                stamp_trigger_active_student: { active: true } };
 const SESSION = {
   ok: true, confirmation: "c0000000-0000-0000-0000-000000000009",
   expires_at: new Date(Date.now() + 60000).toISOString(),
@@ -54,18 +58,20 @@ const text = (page) => page.evaluate(() => document.body.innerText);
     const { browser, page } = await open({ role: "parent", rpc: { get_my_cards: [], stamp_begin_geometry: SESSION } });
     await page.waitForTimeout(500);
     await press(page, PADS, false);
-    ok("with the flag unset, a press is not even sent", (await calls(page)).length === 0);
+    ok("a school with no stamp registered: the phone does not listen", (await calls(page)).length === 0);
+    const asked = await page.evaluate(() => (window.__RPC_CALLS || []).filter(c => c[0] === "stamp_trigger_active").length);
+    ok("it asked once whether to, and took no for an answer", asked === 1, "asked " + asked + " times");
     const on = await page.evaluate(() => { try { return localStorage.getItem("ps_stamp_trigger"); } catch (e) { return "throw"; } });
-    ok("and nothing was switched on behind the scenes", on === null, JSON.stringify(on));
+    ok("and nothing was written to this device", on === null, JSON.stringify(on));
     await browser.close();
   }
 
   // --- switched on ---------------------------------------------------------
   {
     const { browser, page, errors } = await open({
-      query: "?stamptrigger=1", role: "parent",
-      rpc: { get_my_cards: [], stamp_begin_geometry: SESSION,
-             stamp_confirm: { ok: true, n: 1, name: "Elena Georgiou", amount: 45, months: [2], trigger: "stamp" } },
+      role: "parent",
+      rpc: Object.assign({}, ACTIVE, { get_my_cards: [], stamp_begin_geometry: SESSION,
+             stamp_confirm: { ok: true, n: 1, name: "Elena Georgiou", amount: 45, months: [2], trigger: "stamp" } }),
     });
     await page.waitForTimeout(500);
 
@@ -97,6 +103,17 @@ const text = (page) => page.evaluate(() => document.body.innerText);
     ok("carrying the session the trigger opened, nothing invented locally",
        conf && conf[1].p_confirmation === SESSION.confirmation);
 
+    // The listener runs on every touch; the question must not. Three presses
+    // and it should still have been asked exactly once.
+    await page.waitForTimeout(2700);
+    await press(page, PADS, false);
+    await page.waitForTimeout(2700);
+    await press(page, PADS, false);
+    const asked = await page.evaluate(() => (window.__RPC_CALLS || [])
+      .filter(c => c[0] === "stamp_trigger_active").length);
+    ok("the school-has-a-stamp question is asked once, not per press",
+       asked === 1, "asked " + asked + " times");
+
     await browser.close();
     ok("no page errors", errors.filter(e => !/Failed to load resource|ERR_/.test(e)).length === 0,
        errors.slice(0, 3).join(" | "));
@@ -105,8 +122,8 @@ const text = (page) => page.evaluate(() => document.body.innerText);
   // --- contact order ------------------------------------------------------
   {
     const { browser, page } = await open({
-      query: "?stamptrigger=1", role: "parent",
-      rpc: { get_my_cards: [], stamp_begin_geometry: { error: "no_match" } } });
+      role: "parent",
+      rpc: Object.assign({}, ACTIVE, { get_my_cards: [], stamp_begin_geometry: { error: "no_match" } }) });
     await page.waitForTimeout(500);
     await press(page, PADS.slice().reverse(), false);
     const a = (await calls(page))[0].p_points;
@@ -122,8 +139,8 @@ const text = (page) => page.evaluate(() => document.body.innerText);
   // --- a non-match must be invisible --------------------------------------
   {
     const { browser, page } = await open({
-      query: "?stamptrigger=1", role: "parent",
-      rpc: { get_my_cards: [], stamp_begin_geometry: { error: "no_match" } } });
+      role: "parent",
+      rpc: Object.assign({}, ACTIVE, { get_my_cards: [], stamp_begin_geometry: { error: "no_match" } }) });
     await page.waitForTimeout(500);
     const before = await text(page);
     await press(page, [[10, 10], [200, 40], [30, 300], [260, 320]], false);
@@ -135,7 +152,7 @@ const text = (page) => page.evaluate(() => document.body.innerText);
 
   // --- not on the school's own dashboard ----------------------------------
   {
-    const { browser, page } = await open({ query: "?stamptrigger=1", rpc: { stamp_begin_geometry: SESSION } });
+    const { browser, page } = await open({ rpc: Object.assign({}, ACTIVE, { stamp_begin_geometry: SESSION }) });
     await page.waitForTimeout(600);
     await press(page, PADS, false);
     ok("a press on the school's own dashboard is ignored", (await calls(page)).length === 0);
@@ -144,8 +161,8 @@ const text = (page) => page.evaluate(() => document.body.innerText);
 
   // --- the flag can be turned back off ------------------------------------
   {
-    const { browser, page } = await open({ query: "?stamptrigger=1", role: "parent",
-      rpc: { get_my_cards: [], stamp_begin_geometry: SESSION } });
+    const { browser, page } = await open({ role: "parent",
+      rpc: Object.assign({}, ACTIVE, { get_my_cards: [], stamp_begin_geometry: SESSION }) });
     await page.waitForTimeout(400);
     await page.goto(page.url().split("?")[0] + "?stamptrigger=0", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(700);
@@ -156,17 +173,7 @@ const text = (page) => page.evaluate(() => document.body.innerText);
 
   // --- the calibration screen, owner side ---------------------------------
   {
-    const { browser, page } = await open({ rpc: { stamp_geometry_get: { ok: true, calibrated: false } } });
-    await page.waitForTimeout(500);
-    await page.locator(".dash-gear").first().click();
-    await page.waitForTimeout(350);
-    ok("with the flag off, no calibration screen is offered at all",
-       await page.locator(".set-ov").getByText("Stamp", { exact: true }).count() === 0);
-    await browser.close();
-  }
-  {
     const { browser, page, errors } = await open({
-      query: "?stamptrigger=1",
       rpc: { stamp_geometry_get: { ok: true, calibrated: false },
              stamp_geometry_set: { ok: true, point_count: 5 } } });
     await page.waitForTimeout(500);
@@ -208,7 +215,6 @@ const text = (page) => page.evaluate(() => document.body.innerText);
   }
   {
     const { browser, page } = await open({
-      query: "?stamptrigger=1",
       rpc: { stamp_geometry_get: { ok: true, calibrated: false } } });
     await page.waitForTimeout(500);
     await page.locator(".dash-gear").first().click();
@@ -238,10 +244,10 @@ const text = (page) => page.evaluate(() => document.body.innerText);
                    card: { name: "Elena Georgiou", share_code: "SC1001", payments: {}, history: [] },
                    announcements: [] };
     const { browser, page, errors } = await open({
-      query: "?stamptrigger=1", signedOut: true,
-      rpc: { get_student_card: CARD,
+      signedOut: true,
+      rpc: Object.assign({}, ACTIVE, { get_student_card: CARD,
              stamp_begin_geometry_student: Object.assign({}, SESSION, { trigger: "stamp" }),
-             stamp_confirm_student: { ok: true, n: 1, name: "Elena Georgiou", amount: 45, months: [2], trigger: "stamp" } } });
+             stamp_confirm_student: { ok: true, n: 1, name: "Elena Georgiou", amount: 45, months: [2], trigger: "stamp" } }) });
     await page.waitForTimeout(500);
 
     // Land on the student portal the way a student does: "Quick View" on the

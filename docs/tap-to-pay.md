@@ -119,20 +119,25 @@ history, same receipts, same export. There is no separate ledger to reconcile.
 
 ---
 
-## The stamp (not switched on)
+## The stamp
 
-A third way in, built but dark. A rubber stamp with conductive pads is pressed
-against the parent's phone; the pattern its pads make identifies your school
-and opens the same confirmation a tag or a QR would.
+A third way in. A rubber stamp with conductive pads is pressed against the
+parent's phone; the pattern its pads make identifies your school and opens the
+same confirmation a tag or a QR would.
 
-**It does nothing until a device opts in.** Open the app with
-`?stamptrigger=1` on the end of the address and that phone starts listening;
-`?stamptrigger=0` stops it. Nothing is enabled for anyone else, and nothing is
-enabled by default.
+**Saving a calibration is what switches it on.** There is nothing for a parent
+to install, enable or know about. Until you save a pattern, no phone is
+listening; once you do, your parents' phones pick it up the next time they open
+PayStamp. Remove the pattern and it switches off again everywhere.
+
+If you ever want a particular device to ignore the stamp completely, open the
+app there with `?stamptrigger=0` on the end of the address. `?stamptrigger=1`
+forces the opposite, which is only useful for testing before you have
+calibrated anything.
 
 ### Teaching it your stamp
 
-With the flag on, **Settings → Payments → Stamp** appears. Press the stamp flat
+**Settings → Payments → Stamp.** Press the stamp flat
 and firm on the target area. The pads it registers are drawn back so you can
 see the press was clean — if one pad missed, press again rather than saving it,
 because a bad pattern fails silently later on a parent's phone where nobody is

@@ -72,27 +72,54 @@ const sb = window.supabase.createClient(SB_URL, SB_KEY);
    in a tab opened tomorrow.
 --------------------------------------------------------------------------- */
 /* ---------------------------------------------------------------------------
-   The stamp trigger, off unless switched on.
+   Whether this device listens for a stamp.
 
-   A device opts in with ?stamptrigger=1 and stays opted in; ?stamptrigger=0
-   turns it off again. localStorage rather than a build constant so it can be
-   tried on one real phone without deploying anything, and read here BEFORE
-   STAMP_BOOT below, which clears the query string.
+   It shipped as a per-device flag, which was right for building it and wrong
+   for using it: a parent at the desk has their own phone, that phone has never
+   seen the flag, and nobody is pasting a URL with a queue behind them.
 
-   The flag only decides whether the page listens. It grants nothing: the match
-   itself happens in the database against geometries registered to schools the
-   caller is actually a customer of, so switching this on by hand buys an
-   attacker no more than an unregistered stamp already gets them -- nothing.
+   So the default is now "ask". The app puts one question to the database when
+   it loads -- does any school this person deals with have a stamp registered?
+   -- and only listens if the answer is yes. A school that has not calibrated
+   one has no parents listening and no wasted calls, which is the property the
+   flag was really there to provide.
+
+   The flag survives as an override, because being able to switch a thing off
+   by hand is worth keeping:
+
+       ?stamptrigger=0   never listen on this device
+       ?stamptrigger=1   always listen, even before calibrating
+       (unset)           ask, which is what everyone gets
+
+   Returns "0", "1", or null for ask.
 --------------------------------------------------------------------------- */
-const STAMP_TRIGGER = (function () {
+const STAMP_PREF = (function () {
   try {
     const q = new URLSearchParams(location.search);
     if (q.has("stamptrigger")) {
       localStorage.setItem("ps_stamp_trigger", q.get("stamptrigger") === "0" ? "0" : "1");
     }
-    return localStorage.getItem("ps_stamp_trigger") === "1";
-  } catch (e) { return false; }
+    return localStorage.getItem("ps_stamp_trigger");
+  } catch (e) { return null; }
 })();
+
+/* Asked ONCE and remembered for the life of the page. The listener runs on
+   every touch; this must not. Resolves to true/false without ever throwing,
+   because a failure here should leave the stamp quiet rather than break a
+   portal that works perfectly well without it. */
+let _stampActive = null;
+function stampTriggerActive(rpc, args) {
+  if (STAMP_PREF === "0") return Promise.resolve(false);
+  if (STAMP_PREF === "1") return Promise.resolve(true);
+  if (_stampActive) return _stampActive;
+  // Promise.resolve() first: the Supabase builder is a thenable, not a real
+  // Promise, so .catch() is not necessarily on it. Chaining straight onto the
+  // builder threw a TypeError and took the whole portal down with it.
+  _stampActive = Promise.resolve(sb.rpc(rpc, args || {}))
+    .then(({ data }) => !!(data && data.active))
+    .catch(() => false);
+  return _stampActive;
+}
 
 /* ---------------------------------------------------------------------------
    Collecting one stamp press.
@@ -1083,7 +1110,7 @@ function PgStampCalibrate({ biz, onBack }) {
     if (error)                    { setErr(error.message); return; }
     if (r.error === "bad_count")  { setErr("A stamp needs between 4 and 8 pads. That press had " + r.count + "."); return; }
     if (r.error)                  { setErr("Could not save that pattern."); return; }
-    setNote("Saved. Test it by pressing the stamp on a parent's phone.");
+    setNote("Saved. Your parents' phones will pick this up next time they open PayStamp.");
     setCaught(null);
     load();
   }
@@ -1116,7 +1143,7 @@ function PgStampCalibrate({ biz, onBack }) {
         <button className="tb-back" onClick={onBack}>←</button>
         <h2>Stamp</h2>
       </div>
-      <p>Press your stamp on the pad below so PayStamp learns its shape. After that, pressing it on a parent's phone opens their confirmation.</p>
+      <p>Press your stamp on the pad below so PayStamp learns its shape. Saving it is what switches the stamp on for your parents — there is nothing for them to install or turn on.</p>
 
       {err  && <div className="err" style={{marginBottom:10}}>{err}</div>}
       {note && <div className="info-box" style={{marginBottom:14}}>{note}</div>}
@@ -1145,7 +1172,7 @@ function PgStampCalibrate({ biz, onBack }) {
         <div className="scr-lbl">Saved Pattern</div>
         {busy ? <div style={{color:"var(--text2)",fontSize:".84rem"}}>Loading…</div>
           : !saved ? <div style={{color:"var(--text2)",fontSize:".84rem",lineHeight:1.6}}>
-              Nothing saved yet. Until you save one, pressing a stamp on a parent's phone does nothing.
+              Nothing saved yet. Until you save a pattern, no parent's phone is listening for a stamp.
             </div>
           : <div style={{display:"flex",alignItems:"center",gap:16}}>
               {plot(saved.points, 120)}
@@ -1163,9 +1190,9 @@ function PgStampCalibrate({ biz, onBack }) {
       </button>}
 
       <div style={{fontSize:".72rem",color:"var(--text2)",lineHeight:1.6,marginTop:16}}>
-        Phones differ in how finely they measure the screen, so a stamp learned
-        on this phone may not be recognised on a very different one. Test on a
-        parent's handset before relying on it.
+        Press it at any angle — the pattern is recognised however the stamp is
+        turned, and on phones that measure the screen differently from this one.
+        Removing the saved pattern switches the stamp off again everywhere.
       </div>
     </div>
   );
@@ -1837,10 +1864,11 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
      ["Students",      [["📅","Months","Manage active/inactive months",onMonths],["🎓","Levels","Edit student levels & fees",onLevels],["👥","Groups","Weekly schedule by group",onGroups],["🗂️","Manage","Create groups & assign teachers",onManage]]],
      ["Appearance",    [["✏️","Name","Rename your school",onName],["🎨","Colour","Pick your accent colour",onTheme],["🏫","Icon","Choose your school's icon",onIcon],["🖼️","Card","Choose card design",onCustomCard]]],
      ["Communication", [["🔔","Remind","Send payment reminders",onRemind],["📣","Announcements","Post news to parents & students",onAnnouncements],["📝","Registration","Public sign-up links & requests",onRegistrations,pendingRegs]]],
-     /* The Stamp row appears only where the trigger is switched on. A school
-        that cannot use it should not be offered a calibration screen. */
-     ["Payments",      [["📲","Tap to Pay","NFC tag & QR for confirmations",onStampTag]]
-                        .concat(STAMP_TRIGGER ? [["🔘","Stamp","Teach PayStamp your rubber stamp",onStampCal]] : [])],
+     /* Always offered now. Calibrating is what switches the stamp on for a
+        school's parents, so hiding the screen behind a flag would have left
+        nobody able to reach the thing that enables it. */
+     ["Payments",      [["📲","Tap to Pay","NFC tag & QR for confirmations",onStampTag],
+                        ["🔘","Stamp","Teach PayStamp your rubber stamp",onStampCal]]],
      ["Data",          [["📤","Export","Download payment records",onExport]]],
    ];   const hasImg = !!biz.customCardImage;   const headerBg = hasImg ? "#000" : "linear-gradient(160deg,"+alphaHex(p.acc,.22)+" 0%,#131315 100%)";    const filtered = allCards     .filter(c=>{       if (levelFilter==="all") return true;       if (levelFilter==="none") return !c.level;       return c.level && c.level.id===levelFilter;     })     .filter(c=>!search||(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.shareCode||"").toLowerCase().includes(search.toLowerCase()))     .sort((a,b)=>{       if (sort==="owed") {         const oA=getStudentMonthStatus(a,biz,year).owedTotal;         const oB=getStudentMonthStatus(b,biz,year).owedTotal;         return oB-oA;       }       if (sort==="progress") { return monthsPaid(b.payments||{},year,inactive.concat(b.pausedMonths||[]),b.enrollmentStart)-monthsPaid(a.payments||{},year,inactive.concat(a.pausedMonths||[]),a.enrollmentStart); }       return (a.name||"").localeCompare(b.name||"");     });
 
@@ -2604,9 +2632,9 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
      Only once the card is actually open: before that there is no code and PIN
      to prove anything with, and a press would have nothing to match against. */
   useEffect(() => {
-    if (!STAMP_TRIGGER) return;
+    if (STAMP_PREF === "0") return;
     if (step !== "view" || stampSess) return;
-    let alive = true, inFlight = false, cooldownUntil = 0;
+    let alive = true, inFlight = false, cooldownUntil = 0, listening = false;
     const col = stampPressCollector(async (pts) => {
       if (!alive || inFlight || Date.now() < cooldownUntil) return;
       if (pts.length < 4) return;
@@ -2620,8 +2648,18 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
       cooldownUntil = Date.now() + 2500;
     }, 90);
     const h = (e) => col.handle(e);
-    document.addEventListener("touchstart", h, { passive: true });
-    return () => { alive = false; col.cancel(); document.removeEventListener("touchstart", h); };
+    // Same single question, proved the way this portal proves anything: with
+    // the code and PIN the card was opened with.
+    stampTriggerActive("stamp_trigger_active_student",
+                       { p_code: code.trim(), p_pin: pin }).then(on => {
+      if (!alive || !on) return;
+      listening = true;
+      document.addEventListener("touchstart", h, { passive: true });
+    });
+    return () => {
+      alive = false; col.cancel();
+      if (listening) document.removeEventListener("touchstart", h);
+    };
   }, [step, stampSess, code, pin]);
 
   if (stampSess) return (
@@ -4806,11 +4844,11 @@ function App() {
      ordinary five-finger fumble on a phone harmless.
   --------------------------------------------------------------------------- */
   useEffect(() => {
-    if (!STAMP_TRIGGER) return;
+    if (STAMP_PREF === "0") return;
     if (!session || mode !== "parent") return;
     if (stampTok || stampSession) return;      // already confirming something
 
-    let alive = true, inFlight = false, cooldownUntil = 0;
+    let alive = true, inFlight = false, cooldownUntil = 0, listening = false;
     const col = stampPressCollector(async (pts) => {
       if (!alive || inFlight || Date.now() < cooldownUntil) return;
       if (pts.length < 4) return;              // four is the floor worth trying
@@ -4827,8 +4865,17 @@ function App() {
     }, 90);
 
     const h = (e) => col.handle(e);
-    document.addEventListener("touchstart", h, { passive: true });
-    return () => { alive = false; col.cancel(); document.removeEventListener("touchstart", h); };
+    // The one question, asked once. Until it comes back nothing is listening,
+    // so a school with no stamp never attaches a listener at all.
+    stampTriggerActive("stamp_trigger_active").then(on => {
+      if (!alive || !on) return;
+      listening = true;
+      document.addEventListener("touchstart", h, { passive: true });
+    });
+    return () => {
+      alive = false; col.cancel();
+      if (listening) document.removeEventListener("touchstart", h);
+    };
   }, [session, mode, stampTok, stampSession]);
 
   /* Tapped while logged out. The token is already in sessionStorage, so the
