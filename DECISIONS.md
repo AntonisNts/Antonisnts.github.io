@@ -339,3 +339,67 @@ is occasionally what you want.
 **What changes it:** a school wanting the stamp off while keeping its
 calibration, which would be a switch on the calibration screen rather than a
 change to how the question is asked.
+
+---
+
+## A pending claim is not a payment, and that is enforced by where it lives
+
+The whole online-payment flow turns on one property: a parent saying they have
+paid must not move a balance. Not the card, not the school's totals, not any
+overdue figure.
+
+It holds because claims live in their own table and nothing in that path writes
+to `cards.payments`. The only thing that moves money is the school confirming,
+and that calls `stamp_apply_payment` — the same writer the tag, the QR and the
+stamp use, not a copy. A link payment therefore lands on a card identically to
+every other kind, with the same breakdown, history entry and undo snapshot.
+
+That is a property of the system rather than of any one function, so the test
+asserts it by photographing the card and the school's owed total before and
+after raising a claim and comparing them, rather than by reading the code and
+believing it. The browser suite does the same for what the parent is shown,
+because "Awaiting confirmation" read as "done" would be the failure that
+matters most and it is a wording failure, not a code one.
+
+**What changes it:** a card processor confirming automatically, which would
+skip the queue but still go through the same writer.
+
+---
+
+## The payment URL is a CHECK constraint, not validation in a function
+
+Who may set it is RLS, which was already there. What may be set is a database
+constraint: `https://` only, no `javascript:`, no `data:`, no plain http.
+
+Put in a function, that rule would hold only for callers who went through the
+function — and the app writes this column directly, because RLS plus a
+column-level grant already says who may. A constraint holds on every path,
+including a hand-written UPDATE in the SQL editor.
+
+It matters more than it looks: this link is shown to parents and leads to a
+page where they type card details.
+
+**What changes it:** nothing. Validation that can be bypassed is decoration.
+
+---
+
+## The test rig counts a NULL verdict as a failure
+
+Every SQL suite reports a `pass` column of `t` or `f`. A verdict that comes
+back NULL — because the expression referenced something an earlier statement
+failed to create — is neither, and the counter ignored it. Such an assertion
+does not pass and does not fail; it is simply absent, and the totals look
+merely smaller rather than wrong.
+
+That hid a broken fixture through most of one suite, and it had been hiding a
+real product bug for longer: `stamp_begin_geometry`'s "this is the school's own
+device" branch sat inside a loop over the caller's linked children, and an
+owner has none, so it never ran. An owner pressing their own stamp got silence.
+The assertion covering it had been returning NULL, invisibly, since it was
+written.
+
+`run-tests.sh` now counts NULL verdicts as failures and prints any SQL errors
+from the run.
+
+**What changes it:** nothing. This is the third time in this project that a
+test which could not fail was mistaken for one that passed.
