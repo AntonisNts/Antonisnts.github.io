@@ -32,7 +32,17 @@ create function auth.uid() returns uuid language sql stable as $$
 create function auth.email() returns text language sql stable as $$
   select nullif(current_setting('request.jwt.claim.email', true), '') $$;
 grant usage on schema auth, storage to anon, authenticated, service_role;
-create extension if not exists pgcrypto;
+-- pgcrypto goes in its OWN schema, because that is where Supabase puts it.
+-- Installed into public instead, this replica silently accepts a function
+-- pinned to `set search_path = public` that calls gen_random_bytes() or
+-- hmac() -- and the live project then rejects it with "function does not
+-- exist". That is exactly how the Tap to Pay token generator reached
+-- production broken. Creating it here first means schema.sql's own
+-- `create extension if not exists pgcrypto` finds it already present and
+-- leaves it where it is.
+create schema if not exists extensions;
+grant usage on schema extensions to anon, authenticated, service_role;
+create extension if not exists pgcrypto with schema extensions;
 SQL
 
 # Every migration, in the order the live database received them. Order matters
@@ -44,6 +54,7 @@ SQL
 # only in the database, never committed" -- it is committed now, so the real
 # file is loaded instead. cards.group_name and cards.lesson_schedule come from
 # migration-flip-card.sql above it, which is why that file is not in it.
+n=0
 for f in schema.sql migration-add-phone.sql migration-approval-gate.sql \
          migration-parent-portal.sql migration-child-grouping.sql \
          migration-plaintext-pins.sql migration-security-hardening.sql \
@@ -56,13 +67,17 @@ for f in schema.sql migration-add-phone.sql migration-approval-gate.sql \
          migration-announcement-targeting.sql \
          migration-business-accent-part-b.sql \
          migration-business-icon.sql migration-business-icon-part-b.sql \
-         migration-registration-throttle.sql migration-student-limit.sql; do
+         migration-registration-throttle.sql migration-student-limit.sql \
+         migration-family-export.sql migration-stamp-confirm.sql \
+         migration-stamp-geometry.sql migration-stamp-rotation.sql \
+         migration-stamp-student.sql migration-stamp-auto.sql; do
   # Show the real error rather than swallowing it -- a silent "FAILED: x.sql"
   # tells you nothing about which statement broke.
   if ! psql -q -v ON_ERROR_STOP=1 -f "$S/$f" >/tmp/replica-$$.log 2>&1; then
     echo "FAILED: $f"; sed 's/^/    /' /tmp/replica-$$.log | head -5; rm -f /tmp/replica-$$.log; exit 1
   fi
+  n=$((n+1))
 done
 rm -f /tmp/replica-$$.log
 
-echo "replica rebuilt ($(ls "$S"/*.sql | wc -l) SQL files in supabase/, 25 applied)"
+echo "replica rebuilt ($(ls "$S"/*.sql | wc -l) SQL files present, $n applied in order)"
