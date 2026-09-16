@@ -52,7 +52,7 @@ const FIXTURES = {
 
 // A chainable stand-in for the postgrest builder: every filter/modifier returns
 // itself, and awaiting it resolves with the table's fixture rows.
-function installMock(fixtures, session, rpcExtra) {
+function installMock(fixtures, session, rpcExtra, rpcError) {
   const make = (table) => {
     const box = { rows: (fixtures[table] || []).slice() };
     const b = {};
@@ -89,9 +89,16 @@ function installMock(fixtures, session, rpcExtra) {
     if (Array.isArray(v) && v.__seq) return v.length > 1 ? v.shift() : v[0];
     return v !== undefined ? v : [];
   };
+  // A database that has never had a migration run answers 404 for the
+  // functions it has never heard of. Listing a name in `rpcError` reproduces
+  // that, which is the state every already-deployed app is in the moment a new
+  // module ships and before the owner runs its SQL.
+  const broken = (rpcError || []).reduce((m, n) => (m[n] = true, m), {});
+  const FAIL = { message: "Could not find the function in the schema cache", code: "PGRST202" };
+
   window.__MOCK_SB = {
     from: (t) => make(t),
-    rpc: (name, args) => ({ then: (r) => { window.__RPC_CALLS = (window.__RPC_CALLS||[]).concat([[name, args||null]]); return r({ data: answer(name), error: null }); } }),
+    rpc: (name, args) => ({ then: (r) => { window.__RPC_CALLS = (window.__RPC_CALLS||[]).concat([[name, args||null]]); return r(broken[name] ? { data: null, error: FAIL } : { data: answer(name), error: null }); } }),
     channel: () => ({ on: function () { return this; }, subscribe: function () { return this; } }),
     removeChannel: () => {},
     storage: { from: () => ({ upload: async () => ({ data: null, error: null }), getPublicUrl: () => ({ data: { publicUrl: "" } }) }) },
@@ -121,7 +128,7 @@ async function open(opts) {
   const session = opts.signedOut ? null
     : { user: { id: "u1", email: "owner@aurora.example", user_metadata: { role: opts.role || "teacher" } }, access_token: "tok" };
   await page.addInitScript(
-    `(${installMock.toString()})(${JSON.stringify(opts.fixtures || FIXTURES)}, ${JSON.stringify(session)}, ${JSON.stringify(opts.rpc || {})});`
+    `(${installMock.toString()})(${JSON.stringify(opts.fixtures || FIXTURES)}, ${JSON.stringify(session)}, ${JSON.stringify(opts.rpc || {})}, ${JSON.stringify(opts.rpcError || [])});`
   );
 
   // Swap only the client construction; every loader above it runs for real.

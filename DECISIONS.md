@@ -7,7 +7,7 @@ Each entry says what was decided, the reasoning, and what would change it.
 If you are about to re-open one of these, read the reasoning first: it is
 probably still true.
 
-Last reviewed 13 September 2026.
+Last reviewed 16 September 2026.
 
 ---
 
@@ -423,3 +423,86 @@ from the run.
 
 **What changes it:** nothing. This is the third time in this project that a
 test which could not fail was mistaken for one that passed.
+
+---
+
+## The shop's switch is a row in its own table, not a column on `businesses`
+
+A `shop_enabled` column would have been simpler to write and impossible to take
+back out: dropping it later means an `ALTER TABLE` on the table everything else
+in the product depends on, and until then every school carries a column for a
+feature most of them will never turn on.
+
+The switch lives in `shop_settings`, one row per school, absent by default.
+Absent means off, so a school that never touches the shop has no row, no
+column, and nothing to clean up.
+
+The same reasoning kept a parent's "I've paid" for kit off the `payment_claims`
+table. Reusing it would have been less code and would have meant editing
+`payment_claim_confirm` — a function on the fee path, which is the one path the
+shop was asked not to disturb. The claim lives on the order instead.
+
+**What changes it:** the shop ceasing to be optional. If every school has it on,
+the argument for keeping it detachable is gone.
+
+---
+
+## Kit debt and fee debt are different numbers and are never added up
+
+"Who owes me for September" is a question about lessons. A school that also
+sells jumpers still wants that answer to mean what it always meant, and a
+parent looking at a red month wants to know it is about lessons.
+
+So shop orders touch no month, no fee total and no breakdown. What is owed for
+kit is its own figure on its own screen and says so on its face: *Owed For Kit
+— separate from lesson fees*.
+
+The temptation was one "total owed" per family. It reads well and it is wrong:
+it merges a recurring obligation with a one-off purchase, and the two are
+chased differently, forgiven differently and argued about differently.
+
+**What changes it:** a school asking for a combined figure. Even then it should
+be a third number shown beside the two, not a replacement for either.
+
+---
+
+## One function settles an order, and it is granted to nobody
+
+`shop_order_mark_paid` is the only thing in the module that can turn an order
+paid. The owner ticking it off, a confirmed payment-link claim and — later — a
+card processor all call it; none of them re-implements what being paid means.
+
+It authorises nothing. It is handed an order whose caller has already
+established the right to settle it, which is why no role can execute it. Each
+entry point does its own proving, exactly as `stamp_apply_payment` does on the
+fee side.
+
+This is the same shape as the fee path for the same reason: when four triggers
+each had their own idea of what a payment was, they disagreed. Adding Stripe
+later is verifying a webhook, finding the order, and calling this with
+`p_via = 'stripe'`.
+
+**What changes it:** nothing. A second writer is how the two ledgers start
+disagreeing about the same order.
+
+---
+
+## The shop's removability is tested by removing it
+
+The module carries instructions for deleting itself. Instructions in a comment
+rot quietly: a mount added six months later without its marker leaves the
+instructions describing a removal that no longer works, and nobody finds out
+until somebody tries it.
+
+`app/test/shop.js` performs the documented removal on a copy of
+`app/index.html` — cut the block, drop every line marked `SHOP MODULE mount` —
+and boots the result in a browser. A dangling reference is a blank screen for
+every school, not only the ones that switched the shop on.
+
+Writing that test is what found the first version's real problem. The badge
+count lived in `App` as state and was passed down to the dashboard, so removing
+the module left `shopPending={shopPending}` pointing at a variable that was no
+longer declared: a `ReferenceError` on load, for everybody. The count moved
+into the module as a hook the settings row calls on the line it draws.
+
+**What changes it:** nothing.
