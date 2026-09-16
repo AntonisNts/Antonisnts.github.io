@@ -195,7 +195,7 @@ const STAMP_BUCKET = () => Math.floor(Date.now() / 30000);
 /* How a payment came to be recorded. 'manual' is the dashboard; the rest are
    the confirmation flow, and the DATABASE decides which of them applies --
    never the browser. Read by the history list to mark the ones nobody typed. */
-const TRIGGER_LABEL = { nfc:"Tap", qr:"QR scan", stamp:"Stamp" };
+const TRIGGER_LABEL = { nfc:"Tap", qr:"QR scan", stamp:"Stamp", link:"Paid online" };
 
 function bizFromRow(b, cardRows) {
   const cards = {};
@@ -204,7 +204,7 @@ function bizFromRow(b, cardRows) {
      deliberately NOT mapped through: nothing in the UI needs the value, only
      whether one is set, and state that is never held cannot be leaked by a
      future screen that renders the business object. */
-  return { id:b.id, bizCode:b.biz_code, name:b.name, type:b.type, accent:b.accent||null, icon:b.icon||null, fee:Number(b.fee), year:b.year, email:b.contact_email||"", inactiveMonths:b.inactive_months||[], levels:b.levels||[], customCardImage:b.custom_card_image||null, requirePinOnConfirm:!!b.require_pin_on_confirm, confirmPinSet:!!b.confirm_pin, cards };
+  return { id:b.id, bizCode:b.biz_code, name:b.name, type:b.type, accent:b.accent||null, icon:b.icon||null, fee:Number(b.fee), year:b.year, email:b.contact_email||"", inactiveMonths:b.inactive_months||[], levels:b.levels||[], customCardImage:b.custom_card_image||null, requirePinOnConfirm:!!b.require_pin_on_confirm, confirmPinSet:!!b.confirm_pin, paymentLink:b.payment_link||"", paymentLinkName:b.payment_link_name||"", cards };
 }
 // Resolve a card's effective group: prefer the real group (group_id -> groups
 // table) and fall back to the legacy free-text group_name / per-card schedule
@@ -1049,6 +1049,349 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
       <div className="ig"><label>Password (min 6 chars)</label><input className="inp" type="password" placeholder="Keep private" value={v.pin} onChange={e=>setV(p=>({...p,pin:e.target.value}))} /></div>
       {err && <div className="err">{err}</div>}
       <button className="scr-btn primary wide" style={{marginTop:8}} onClick={doCreate} disabled={busy}>{busy?"…":"Create Business"}</button>
+      {/* The contract forms here, not on the login screen, so the agreement is
+          stated here and the DPA is named — a school is a data controller and
+          the DPA is the part that binds us as its processor. */}
+      <p style={{fontSize:".72rem",color:"var(--text2)",textAlign:"center",marginTop:18,lineHeight:1.5}}>By creating your business you agree to our <a href="/terms" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Terms of Service</a>, the <a href="/dpa" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Data Processing Agreement</a> and our <a href="/privacy" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Privacy Policy</a>.</p>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   PayOnline -- the parent's half, shared by both portals.
+
+   Deliberately two steps. The link opens first; only afterwards is there
+   anything to claim, because claiming before paying is the mistake this whole
+   flow exists to make awkward.
+
+   The wording is the load-bearing part. "Awaiting confirmation" has to read as
+   NOT PAID, because it is: the card behind this panel still shows the month
+   owing, and a parent who reads this as done will be surprised later.
+--------------------------------------------------------------------------- */
+function PayOnline({ link, linkName, cardId, claims, onClaim, accent }) {
+  const [opened, setOpened] = useState(false);
+  const [form, setForm]     = useState(false);
+  const [amount, setAmount] = useState("");
+  const [when, setWhen]     = useState(new Date().toISOString().slice(0,10));
+  const [ref, setRef]       = useState("");
+  const [err, setErr]       = useState("");
+  const [busy, setBusy]     = useState(false);
+
+  // cardId null means the caller has already narrowed these to one card, which
+  // is the student portal's situation: it only ever shows one.
+  const mine    = cardId === null ? (claims || []) : (claims || []).filter(c => c.card_id === cardId);
+  const pending = mine.find(c => c.status === "pending");
+  const decided = mine.find(c => c.status !== "pending");
+
+  async function submit() {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) { setErr("How much did you pay?"); return; }
+    setErr(""); setBusy(true);
+    const r = await onClaim({ card_id: cardId, amount: amt, paid_on: when, reference: ref.trim() || null });
+    setBusy(false);
+    if (r && r.error === "already_pending") { setErr("You have already told the school about a payment for this student."); return; }
+    if (r && r.error === "bad_date")        { setErr("That date is not one we can use — check the day."); return; }
+    if (r && r.error === "no_link")         { setErr("The school is not taking online payments just now."); return; }
+    if (r && r.error)                       { setErr("That did not go through. Try again."); return; }
+    setForm(false); setAmount(""); setRef("");
+  }
+
+  if (pending) return (
+    <div className="scr-card" style={{marginTop:12,padding:16,borderColor:"var(--partial)"}}>
+      <div style={{fontSize:".78rem",fontWeight:800,color:"var(--partial)",letterSpacing:".04em",textTransform:"uppercase"}}>
+        Awaiting confirmation
+      </div>
+      <div style={{fontSize:".82rem",color:"var(--text2)",lineHeight:1.6,marginTop:8}}>
+        {"You told the school you paid €" + Number(pending.amount).toFixed(2)
+          + " on " + new Date(pending.paid_on).toLocaleDateString("en-GB") + "."}
+        {" "}<strong style={{color:"var(--text)"}}>This is not recorded as paid yet</strong>
+        {" — the months below stay as they are until the school checks their statement and confirms."}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="scr-card" style={{marginTop:12,padding:16}}>
+      {decided && (
+        <div style={{fontSize:".8rem",lineHeight:1.6,marginBottom:12,
+              color: decided.status === "confirmed" ? "var(--green)" : "var(--red)"}}>
+          {decided.status === "confirmed"
+            ? ("✓ Your payment of €" + Number(decided.amount).toFixed(2) + " was confirmed.")
+            : ("Your payment of €" + Number(decided.amount).toFixed(2) + " was not confirmed."
+               + (decided.note ? " " + decided.note : ""))}
+        </div>
+      )}
+
+      <div className="scr-lbl">Pay Online</div>
+      <div style={{fontSize:".78rem",color:"var(--text2)",lineHeight:1.6,marginBottom:12}}>
+        {linkName ? ("Pay through " + linkName + ", then come back and tell the school.")
+                  : "Pay through the school's payment page, then come back and tell the school."}
+      </div>
+
+      <a href={link} target="_blank" rel="noopener noreferrer"
+         onClick={()=>setOpened(true)}
+         className="scr-btn primary wide"
+         style={{display:"block",textAlign:"center",textDecoration:"none",boxSizing:"border-box"}}>
+        Pay Online
+      </a>
+
+      {/* Only after the link has been opened. Offering "I've paid" to somebody
+          who has not been anywhere is inviting the claim this queue exists to
+          scrutinise. */}
+      {opened && !form && (
+        <button className="scr-btn wide" style={{marginTop:10}} onClick={()=>setForm(true)}>
+          I've paid
+        </button>
+      )}
+
+      {form && (
+        <div style={{marginTop:14}}>
+          <div className="ig">
+            <label>Amount Paid</label>
+            <input className="inp" type="number" inputMode="decimal" placeholder="0"
+              value={amount} onChange={e=>{setAmount(e.target.value);setErr("");}} />
+          </div>
+          <div className="ig">
+            <label>Date Paid</label>
+            <input className="inp" type="date" value={when}
+              max={new Date().toISOString().slice(0,10)}
+              onChange={e=>{setWhen(e.target.value);setErr("");}} />
+          </div>
+          <div className="ig">
+            <label>Reference Or Last 4 Digits (optional)</label>
+            <input className="inp" placeholder="Helps the school find it"
+              value={ref} onChange={e=>{setRef(e.target.value);setErr("");}} />
+          </div>
+          {err && <div className="err" style={{marginBottom:8}}>{err}</div>}
+          <button className="scr-btn primary wide" onClick={submit} disabled={busy}>
+            {busy ? "…" : "Tell The School"}
+          </button>
+          <div style={{fontSize:".72rem",color:"var(--text2)",lineHeight:1.6,marginTop:10}}>
+            This does not mark anything paid. The school confirms it against their statement first.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   PgPayLink -- where the school takes money.
+
+   Saved with a plain UPDATE rather than through a function, because the two
+   things that matter are already enforced by the database: RLS restricts the
+   row to its owner, and a CHECK constraint restricts the value to an https
+   URL. A function in between would add a third place for those rules to live
+   and a third place for them to drift.
+
+   Which means the error a bad URL produces is a constraint violation, and it
+   is caught and translated here rather than shown raw.
+--------------------------------------------------------------------------- */
+function PgPayLink({ biz, onBack, onSaved }) {
+  const p = bizPal(biz);
+  const [url, setUrl]   = useState(biz.paymentLink || "");
+  const [name, setName] = useState(biz.paymentLinkName || "");
+  const [err, setErr]   = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function save(clear) {
+    setErr(""); setNote(""); setBusy(true);
+    const link = clear ? null : url.trim();
+    if (link && !/^https:\/\//i.test(link)) {
+      setBusy(false);
+      setErr("The address has to start with https:// — a payment page should never be plain http.");
+      return;
+    }
+    const { error } = await sb.from("businesses")
+      .update({ payment_link: link, payment_link_name: clear ? null : (name.trim() || null) })
+      .eq("id", biz.id);
+    setBusy(false);
+    if (error) {
+      setErr(/check constraint|violates/i.test(error.message)
+        ? "That does not look like a web address. Paste the whole link, starting with https://"
+        : error.message);
+      return;
+    }
+    if (clear) { setUrl(""); setName(""); setNote("Removed. Parents will not see a Pay online button."); }
+    else setNote("Saved. Parents will see a Pay online button on their child's card.");
+    onSaved && onSaved();
+  }
+
+  return (
+    <div className="reg-page scr" style={{"--accent":p.acc}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
+        <button className="tb-back" onClick={onBack}>←</button>
+        <h2>Payment Link</h2>
+      </div>
+      <p>Paste the link parents should use to pay you — Revolut, Viva, your bank, anything. PayStamp does not touch the money; it only sends them there.</p>
+
+      {err  && <div className="err" style={{marginBottom:10}}>{err}</div>}
+      {note && <div className="info-box" style={{marginBottom:14}}>{note}</div>}
+
+      <div className="ig">
+        <label>Payment Address</label>
+        <input className="inp" type="url" inputMode="url" autoCapitalize="off" autoCorrect="off"
+          placeholder="https://revolut.me/yourname" value={url}
+          onChange={e=>{setUrl(e.target.value);setErr("");}} />
+      </div>
+      <div className="ig">
+        <label>Shown To Parents As</label>
+        <input className="inp" placeholder="e.g. Revolut — Maria" value={name}
+          onChange={e=>{setName(e.target.value);setErr("");}} />
+      </div>
+
+      <button className="scr-btn primary wide" onClick={()=>save(false)} disabled={busy||!url.trim()}>
+        {busy ? "…" : "Save Link"}
+      </button>
+      {biz.paymentLink && <button className="scr-btn danger wide" style={{marginTop:10}}
+        onClick={()=>save(true)} disabled={busy}>Remove Link</button>}
+
+      <div style={{fontSize:".72rem",color:"var(--text2)",lineHeight:1.6,marginTop:16}}>
+        A parent who pays this way tells PayStamp they have. That does not mark
+        anything paid — it lands in Pending Payments for you to check against
+        your statement first.
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   PgPayQueue -- claims waiting on the school.
+
+   Nothing on this screen has moved any money yet. Confirming is the only
+   action that does, and it runs the same breakdown the tag, the QR and the
+   stamp run, so a link payment lands on a card exactly the way they do.
+--------------------------------------------------------------------------- */
+function PgPayQueue({ biz, onBack, onChanged }) {
+  const p = bizPal(biz);
+  const [q, setQ]       = useState(null);
+  const [busy, setBusy] = useState(true);
+  const [err, setErr]   = useState("");
+  const [note, setNote] = useState("");
+  const [rejecting, setRejecting] = useState(null);
+  const [why, setWhy]   = useState("");
+
+  async function load() {
+    const { data: r, error } = await sb.rpc("payment_claims_queue");
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
+    if (r && r.ok) setQ(r); else setErr("Could not load the queue.");
+  }
+  useEffect(()=>{ load(); }, []);
+
+  async function confirm(c) {
+    setErr(""); setNote(""); setBusy(true);
+    const { data: r, error } = await sb.rpc("payment_claim_confirm", { p_id: c.id });
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
+    if (r.error === "already_decided") { setNote("Somebody already dealt with that one."); load(); return; }
+    if (r.error) { setErr("Could not confirm that."); return; }
+    setNote(r.nothing_due
+      ? (r.name + " had nothing outstanding, so the payment was not applied to a month.")
+      : ("€" + Number(r.amount).toFixed(2) + " recorded for " + r.name + " — "
+         + (r.months||[]).map(mi=>MFULL[mi]).join(", ")));
+    onChanged && onChanged();
+    load();
+  }
+
+  async function reject() {
+    const c = rejecting; setRejecting(null);
+    setErr(""); setNote(""); setBusy(true);
+    const { data: r, error } = await sb.rpc("payment_claim_reject", { p_id: c.id, p_note: why.trim() || null });
+    setBusy(false); setWhy("");
+    if (error) { setErr(error.message); return; }
+    if (r.error) { setErr("Could not reject that."); return; }
+    setNote("Turned down. " + c.name + "'s family will see it and the reason.");
+    load();
+  }
+
+  const pending = (q && q.pending) || [];
+  const recent  = (q && q.recent)  || [];
+
+  return (
+    <div className="reg-page scr" style={{"--accent":p.acc}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
+        <button className="tb-back" onClick={onBack}>←</button>
+        <h2>Pending Payments</h2>
+      </div>
+      <p>Parents who say they have paid online. Nothing here has changed a balance — check it against your statement, then confirm.</p>
+
+      {err  && <div className="err" style={{marginBottom:10}}>{err}</div>}
+      {note && <div className="info-box" style={{marginBottom:14}}>{note}</div>}
+
+      {busy && !q ? <div className="empty">Loading…</div>
+       : pending.length === 0 ? <div className="empty">Nothing waiting.</div>
+       : pending.map(c => (
+        <div key={c.id} className="scr-card" style={{marginBottom:10,padding:16,
+              border:"1px solid "+(c.stale ? "var(--partial)" : "var(--border)")}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
+            <div style={{minWidth:0}}>
+              <div className="scr-card-t">{c.name}</div>
+              <div className="scr-card-s">
+                {"Says they paid on " + new Date(c.paid_on).toLocaleDateString("en-GB")}
+              </div>
+              {c.reference && <div style={{fontSize:".74rem",color:"var(--text2)",marginTop:4}}>
+                {"Reference: " + c.reference}
+              </div>}
+              <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:4}}>
+                {c.claimed_by.indexOf("student:") === 0 ? "From the student portal" : c.claimed_by}
+              </div>
+            </div>
+            <div style={{textAlign:"right",flexShrink:0}}>
+              <div style={{fontSize:"1.1rem",fontWeight:800,color:"var(--accent)"}}>
+                {"€"+Number(c.amount).toFixed(2)}
+              </div>
+              {/* Flagged rather than hidden, so a queue nobody is watching
+                  says so instead of quietly filling up. */}
+              {c.stale && <div style={{marginTop:6,padding:"3px 8px",borderRadius:99,
+                    background:alphaHex("#fbbf24",.18),color:"var(--partial)",
+                    fontSize:".62rem",fontWeight:800,letterSpacing:".06em",textTransform:"uppercase"}}>
+                Waiting a while
+              </div>}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,marginTop:14}}>
+            <button className="scr-btn primary" style={{flex:1}} disabled={busy}
+              onClick={()=>confirm(c)}>Confirm</button>
+            <button className="scr-btn danger" style={{flex:1}} disabled={busy}
+              onClick={()=>{setRejecting(c);setWhy("");}}>Reject</button>
+          </div>
+        </div>
+      ))}
+
+      {recent.length > 0 && (
+        <div className="scr-card" style={{marginTop:16,padding:16}}>
+          <div className="scr-lbl">Recently Decided</div>
+          {recent.map(r => (
+            <div key={r.id} style={{display:"flex",justifyContent:"space-between",
+                  fontSize:".8rem",padding:"6px 0",color:"var(--text2)"}}>
+              <span>{r.name}</span>
+              <span style={{color: r.status==="confirmed" ? "var(--green)" : "var(--red)"}}>
+                {(r.status==="confirmed" ? "Confirmed " : "Rejected ") + "€" + Number(r.amount).toFixed(2)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {rejecting && (
+        <div onClick={()=>setRejecting(null)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:300,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div onClick={e=>e.stopPropagation()} className="scr-card" style={{maxWidth:360,padding:22,width:"100%"}}>
+            <div className="scr-card-t" style={{marginBottom:8}}>{"Reject " + rejecting.name + "'s claim?"}</div>
+            <div style={{fontSize:".82rem",color:"var(--text2)",lineHeight:1.6,marginBottom:14}}>
+              Nothing was recorded, so nothing is undone. The family will see it was turned down, and what you say here.
+            </div>
+            <div className="ig">
+              <label>Reason (optional)</label>
+              <input className="inp" placeholder="e.g. Nothing matching on the statement"
+                value={why} onChange={e=>setWhy(e.target.value)} />
+            </div>
+            <button className="scr-btn danger wide" onClick={reject}>Reject Claim</button>
+            <button className="scr-btn wide" style={{marginTop:10}} onClick={()=>setRejecting(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1857,7 +2200,7 @@ function PgStamp({ onDone, preset, studentAuth }) {
   </>);
 }
 
-function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onName, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded, onStampTag, onStampCal }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
+function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onName, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded, onStampTag, onStampCal, onPayLink, onPayQueue, pendingPays }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
       the two can never fall out of step. Grouped by what the owner is trying
       to do rather than by when each screen happened to be built. */
    const SET_GROUPS = [
@@ -1868,7 +2211,9 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
         school's parents, so hiding the screen behind a flag would have left
         nobody able to reach the thing that enables it. */
      ["Payments",      [["📲","Tap to Pay","NFC tag & QR for confirmations",onStampTag],
-                        ["🔘","Stamp","Teach PayStamp your rubber stamp",onStampCal]]],
+                        ["🔘","Stamp","Teach PayStamp your rubber stamp",onStampCal],
+                        ["🔗","Payment Link","Where parents pay you online",onPayLink],
+                        ["📥","Pending Payments","Online payments waiting on you",onPayQueue,pendingPays]]],
      ["Data",          [["📤","Export","Download payment records",onExport]]],
    ];   const hasImg = !!biz.customCardImage;   const headerBg = hasImg ? "#000" : "linear-gradient(160deg,"+alphaHex(p.acc,.22)+" 0%,#131315 100%)";    const filtered = allCards     .filter(c=>{       if (levelFilter==="all") return true;       if (levelFilter==="none") return !c.level;       return c.level && c.level.id===levelFilter;     })     .filter(c=>!search||(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.shareCode||"").toLowerCase().includes(search.toLowerCase()))     .sort((a,b)=>{       if (sort==="owed") {         const oA=getStudentMonthStatus(a,biz,year).owedTotal;         const oB=getStudentMonthStatus(b,biz,year).owedTotal;         return oB-oA;       }       if (sort==="progress") { return monthsPaid(b.payments||{},year,inactive.concat(b.pausedMonths||[]),b.enrollmentStart)-monthsPaid(a.payments||{},year,inactive.concat(a.pausedMonths||[]),a.enrollmentStart); }       return (a.name||"").localeCompare(b.name||"");     });
 
@@ -2606,6 +2951,25 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
      this screen already verified -- and the database re-checks them under the
      same rate limit rather than taking this page's word for it. */
   const [stampSess, setStampSess] = useState(null);
+  /* Same two reads as the family portal, proved the way this one proves
+     things: with the code and PIN the card was opened with. */
+  const [payLink, setPayLink]     = useState(null);
+  const [payClaims, setPayClaims] = useState([]);
+  async function loadPay(c, p) {
+    try {
+      const { data: l } = await sb.rpc("payment_link_student", { p_code: c, p_pin: p });
+      setPayLink(l && l.link ? l : null);
+      const { data: cl } = await sb.rpc("payment_claims_mine_student", { p_code: c, p_pin: p });
+      setPayClaims(cl || []);
+    } catch (e) { /* the card still works without it */ }
+  }
+  async function onClaim(a) {
+    const { data: r, error } = await sb.rpc("payment_claim_create_student",
+      { p_code: code.trim(), p_pin: pin, p_amount: a.amount, p_paid_on: a.paid_on, p_reference: a.reference });
+    if (error) return { error: error.message };
+    if (r && r.ok) await loadPay(code.trim(), pin);
+    return r;
+  }
   function doCode() {
     if (!code.trim()) { setErr("Enter your code."); return; }
     setErr(""); setStep("pin");
@@ -2627,6 +2991,7 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
     // NEW pills mid-visit.
     let seenAt=""; try { seenAt = localStorage.getItem("ann_seen_stu_"+c.share_code)||""; } catch(e){}
     setFound({biz,card,announcements:data.announcements||[],seenAt}); setStep("view");
+    loadPay(code.trim(), pin);
   }
   /* The stamp trigger, on an open student card.
      Only once the card is actually open: before that there is no code and PIN
@@ -2697,6 +3062,12 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
         </div>
         <div style={{padding:"0 16px 16px"}}>
           <BizCard biz={biz} card={card} isTeacher={false} onTap={null} inactiveMonths={inactive} />
+          {/* Same panel the family portal uses, and the same rule: it sits
+              under the months because the months are what is true. */}
+          {payLink && (
+            <PayOnline link={payLink.link} linkName={payLink.name}
+              cardId={null} claims={payClaims} onClaim={onClaim} />
+          )}
         </div>
         {/* Between the months grid and Payment History, and always open. As a
             speaker icon in the top corner this was a notification a student had
@@ -2947,6 +3318,7 @@ function PgCustomCard({ biz, onBack, onSave }) {   const [preview, setPreview] =
       <div className="ig"><label>Monthly Fee</label><input className="inp" type="number" placeholder="e.g. 50" value={v.fee} onChange={e=>setV(p=>({...p,fee:e.target.value}))} /></div>
       {err && <div className="err">{err}</div>}
       <button className="scr-btn primary wide" style={{marginTop:8}} onClick={doCreate} disabled={busy}>{busy?"…":"Create Business"}</button>
+      <p style={{fontSize:".72rem",color:"var(--text2)",textAlign:"center",marginTop:18,lineHeight:1.5}}>By creating your business you agree to our <a href="/terms" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Terms of Service</a>, the <a href="/dpa" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Data Processing Agreement</a> and our <a href="/privacy" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Privacy Policy</a>.</p>
     </div>
   );
 }
@@ -3071,6 +3443,28 @@ function PgLinkChild({ onBack, onLink, kids, onAssign, onCreateChild }) {
 }
 
 function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead, onLink, onUnlink, onAssign, onCreateChild, onRenameChild, onDeleteChild, onLogout, onTeacher, onSettings }) {
+  /* Where a school takes money, and what this family has already claimed.
+     Both read once when the portal opens; the panel below re-reads after a
+     claim so "Awaiting confirmation" appears without a reload. */
+  const [payLinks, setPayLinks]   = useState({});
+  const [payClaims, setPayClaims] = useState([]);
+  async function loadPay() {
+    try {
+      const { data: l } = await sb.rpc("payment_links_mine");
+      const m = {}; (l || []).forEach(x => { m[x.card_id] = x; });
+      setPayLinks(m);
+      const { data: c } = await sb.rpc("payment_claims_mine");
+      setPayClaims(c || []);
+    } catch (e) { /* the portal works perfectly well without this */ }
+  }
+  useEffect(() => { loadPay(); }, []);
+  async function onClaim(a) {
+    const { data: r, error } = await sb.rpc("payment_claim_create",
+      { p_card_id: a.card_id, p_amount: a.amount, p_paid_on: a.paid_on, p_reference: a.reference });
+    if (error) return { error: error.message };
+    if (r && r.ok) await loadPay();
+    return r;
+  }
   const [expanded, setExpanded] = useState({});
   const [openGroups, setOpenGroups] = useState({});
   const [notesOpen, setNotesOpen] = useState({});      // per "From the school" block
@@ -3189,6 +3583,12 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
         {isOpen && (
           <div style={{padding:"0 12px 12px",borderTop:"1px solid var(--fam-line2)"}}>
             <BizCard biz={r.biz} card={r.card} isTeacher={false} onTap={null} inactiveMonths={r.biz.inactiveMonths} />
+            {/* Under the card, not above it: the months are the truth, and a
+                pending claim must never look like it has changed them. */}
+            {payLinks[r.it.cardId] && (
+              <PayOnline link={payLinks[r.it.cardId].link} linkName={payLinks[r.it.cardId].name}
+                cardId={r.it.cardId} claims={payClaims} onClaim={onClaim} accent={r.pal.acc} />
+            )}
             {kids.length>0 && (
               <div style={{display:"flex",gap:6,flexWrap:"wrap",margin:"2px 0 8px",alignItems:"center"}}>
                 <span style={{fontSize:".7rem",color:"var(--fam-t3)",fontWeight:600,textTransform:"uppercase",letterSpacing:".12em"}}>Child</span>
@@ -3409,11 +3809,19 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
                 })}
               </div>
             )}
-            {/* PayStamp records cash a teacher has already taken. A button that
-                said "Pay all" would take money from nobody while telling a
-                parent they had paid, so this says where the money goes — once,
-                quietly, instead of as the second-largest text in a box. */}
-            <p className="fam-fine">Hand the money to your school — PayStamp keeps the record, it doesn't take payments.</p>
+            {/* Where the money goes, said once and quietly. A button that said
+                "Pay all" would take money from nobody while telling a parent
+                they had paid, which is why this is here at all.
+
+                It follows whether the school has published a link. "It doesn't
+                take payments" was true and stayed true, but printed directly
+                above a Pay Online button it reads as a contradiction, and a
+                parent will not stop to parse the difference between taking a
+                payment and recording one. "Handles" is the honest word: the
+                money never passes through PayStamp either way. */}
+            <p className="fam-fine">{Object.keys(payLinks).length > 0
+              ? "Pay your school directly — cash, or through their link. PayStamp only keeps the record."
+              : "Hand the money to your school — PayStamp keeps the record, it never handles payments."}</p>
           </div>
         )}
 
@@ -4757,6 +5165,17 @@ function App() {
      back a session directly. */
   const [stampSession, setStampSession] = useState(null);
 
+  /* How many online payments are waiting. Surfaced on the settings row the
+     same way pending registrations are, so a queue nobody thinks to open
+     still says it has something in it. */
+  const [pendingPays, setPendingPays] = useState(0);
+  async function loadPendingPays() {
+    try {
+      const { data: r } = await sb.rpc("payment_claims_queue");
+      setPendingPays(r && r.ok ? (r.pending || []).length : 0);
+    } catch (e) { setPendingPays(0); }
+  }
+
   const pop = (msg,type="ok")=>{setToast({msg,type});setTimeout(()=>setToast(null),2800);};
 
   useEffect(()=>{
@@ -4884,6 +5303,8 @@ function App() {
   useEffect(()=>{
     if (authReady && !session && stampTok) setView("parentAuth");
   },[authReady, session, stampTok]);
+
+  useEffect(() => { if (session && bizId) loadPendingPays(); }, [session, bizId]);
 
   const biz = bizId ? db.businesses[bizId] : null;
   const card = biz && cardId ? biz.cards[cardId] : null;
@@ -5232,7 +5653,7 @@ async function doUpdateCard(updates){
         {view==="student" && <PgStudent onBack={()=>setView("landing")} />}
         {view==="parentAuth" && stampTok && <div style={{padding:"18px 28px 0"}}><div className="info-box">Log in to confirm the payment. We will pick up where you left off.</div></div>}
         {view==="parentAuth" && <PgParentAuth onBack={()=>setView("landing")} />}
-        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onIcon={()=>goView("icon")} onName={()=>goView("name")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} onStampTag={()=>goView("stampTag")} onStampCal={()=>goView("stampCal")} />}
+        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onIcon={()=>goView("icon")} onName={()=>goView("name")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} onStampTag={()=>goView("stampTag")} onStampCal={()=>goView("stampCal")} onPayLink={()=>goView("payLink")} onPayQueue={()=>goView("payQueue")} pendingPays={pendingPays} />}
         {view==="addCard" && biz && <PgAddCard biz={biz} onBack={()=>setView("dashboard")} onCreate={doAddCard} />}
         {view==="import" && biz && <PgImport biz={biz} onBack={()=>setView("dashboard")} onImport={doImportStudents} />}
         {view==="reveal" && revealCard && <PgReveal biz={biz} card={revealCard} onDone={()=>{setRevealCard(null);setView("dashboard");}} />}
@@ -5245,6 +5666,8 @@ async function doUpdateCard(updates){
         {view==="name" && biz && <PgName biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveName} />}
         {view==="stampTag" && biz && <PgStampTag biz={biz} onBack={()=>setView("dashboard")} onSaved={refresh} />}
         {view==="stampCal" && biz && <PgStampCalibrate biz={biz} onBack={()=>setView("dashboard")} />}
+        {view==="payLink" && biz && <PgPayLink biz={biz} onBack={()=>setView("dashboard")} onSaved={refresh} />}
+        {view==="payQueue" && biz && <PgPayQueue biz={biz} onBack={()=>setView("dashboard")} onChanged={()=>{refresh();loadPendingPays();}} />}
         {view==="export" && biz && <PgExport biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="remind" && biz && <PgRemind biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="announcements" && biz && <PgAnnouncements biz={biz} onBack={()=>setView("dashboard")} />}

@@ -37,6 +37,7 @@ node stamp.js     # the Tap to Pay confirmation flow, both sides of it
 node routes.js    # /stamp/TOKEN and the 404 fallback that makes it work
 node qr.js        # the QR encoder, against a reference encoder and a decoder
 node stamptrigger.js  # the stamp trigger and its calibration screen
+node paylink.js   # the payment link, and that a claim never looks like a payment
 ```
 
 `qr.js` needs no browser. It lifts `qrMatrix()` straight out of `app/index.html`

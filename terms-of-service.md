@@ -1,12 +1,14 @@
 # Terms of Service
 
-**Last updated: 31 August 2026**
+**Last updated: 16 September 2026**
 
 These Terms of Service ("Terms") govern your use of PayStamp ("the Service"), operated by **Antonis Christodoulou, Cyprus** ("we", "us", "the Operator"). By creating an account or using the Service, you ("the Business") agree to these Terms. If you do not agree, do not use the Service.
 
 ## 1. What PayStamp is
 
-PayStamp is a web application that lets lesson-based businesses (such as swimming schools, music schools and sports clubs) record student enrolment and track which students have paid for lessons. Payments themselves are handled in cash directly between you and your customers. PayStamp only records that a payment has been confirmed by you.
+PayStamp is a web application that lets lesson-based businesses (such as swimming schools, music schools and sports clubs) record student enrolment and track which students have paid for lessons.
+
+**PayStamp never holds, transfers or processes money.** Payment reaches you directly — in cash, or through a payment page you publish yourself. If you choose to publish such a link, the arrangement is between you, your customer and that provider; PayStamp takes no part in the transaction and does not see it. A parent may tell PayStamp they have paid, but nothing is recorded as paid until you confirm it.
 
 ## 2. Your account
 
@@ -21,7 +23,7 @@ You decide what student and parent data to enter into PayStamp and why. In data 
 - Only entering data you are entitled to process.
 - Handling requests from your customers about their data (for example requests for access or deletion).
 
-The separate **Data Processing Agreement** sets out how the Operator processes data on your behalf and forms part of these Terms.
+The separate **Data Processing Agreement** sets out how the Operator processes data on your behalf and forms part of these Terms. By accepting these Terms when you create your account, you also accept the Data Processing Agreement — it is a written contract under Article 28(9) GDPR and no separate signature is required. If your own records or auditor need a signed copy, ask us and we will provide one.
 
 ## 4. Acceptable use
 
@@ -45,7 +47,11 @@ PayStamp is a paid service. Current pricing is published on our pricing page. We
 
 ## 9. Termination
 
-You may stop using the Service and request deletion of your data at any time. We may suspend or terminate access if these Terms are breached. On termination, your data is deleted in line with the Privacy Policy.
+You may stop using the Service and request deletion of your data at any time. We may suspend or terminate access if these Terms are breached.
+
+On termination you may take a copy of your records using the export function, or ask us to return them. Your data is then deleted within **30 days**, including from any backup copies, unless we are required by law to keep it.
+
+If we ever decide to stop operating PayStamp, we will give you **at least 30 days' notice** by email, and the export function will stay available throughout that period so you can take your records with you.
 
 ## 10. Changes to these Terms
 
