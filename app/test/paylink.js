@@ -40,6 +40,9 @@ const PARENT_CARDS = [{
     let t = await text(page);
     ok("a Pay Online button appears when the school has a link", /Pay Online/i.test(t), t.slice(0, 200));
     ok("named as the school wrote it", /Revolut — Antonis/i.test(t));
+    ok("and the small print names both ways of paying, not just cash",
+       /cash, or through their link/i.test(t) && !/doesn't take payments/i.test(t),
+       t.slice(0, 200));
 
     const href = await page.locator('a:has-text("Pay Online")').first().getAttribute("href");
     ok("it points at the school's link", href === "https://revolut.me/antonis", String(href));
@@ -132,8 +135,13 @@ const PARENT_CARDS = [{
     await page.waitForTimeout(700);
     await page.locator(".fam-kid-main").first().click();
     await page.waitForTimeout(500);
-    ok("a school with no link shows no Pay Online button at all",
-       !/Pay Online/i.test(await text(page)));
+    const t = await text(page);
+    ok("a school with no link shows no Pay Online button at all", !/Pay Online/i.test(t));
+    // The small print has to match what is on screen. "It doesn't take
+    // payments" above a Pay Online button reads as a contradiction, so the
+    // line follows whether a link is published.
+    ok("and the small print still talks about handing over cash",
+       /never handles payments/i.test(t) && !/through their link/i.test(t), t.slice(0, 200));
     await browser.close();
   }
 
