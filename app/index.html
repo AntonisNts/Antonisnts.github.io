@@ -3809,11 +3809,19 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
                 })}
               </div>
             )}
-            {/* PayStamp records cash a teacher has already taken. A button that
-                said "Pay all" would take money from nobody while telling a
-                parent they had paid, so this says where the money goes — once,
-                quietly, instead of as the second-largest text in a box. */}
-            <p className="fam-fine">Hand the money to your school — PayStamp keeps the record, it doesn't take payments.</p>
+            {/* Where the money goes, said once and quietly. A button that said
+                "Pay all" would take money from nobody while telling a parent
+                they had paid, which is why this is here at all.
+
+                It follows whether the school has published a link. "It doesn't
+                take payments" was true and stayed true, but printed directly
+                above a Pay Online button it reads as a contradiction, and a
+                parent will not stop to parse the difference between taking a
+                payment and recording one. "Handles" is the honest word: the
+                money never passes through PayStamp either way. */}
+            <p className="fam-fine">{Object.keys(payLinks).length > 0
+              ? "Pay your school directly — cash, or through their link. PayStamp only keeps the record."
+              : "Hand the money to your school — PayStamp keeps the record, it never handles payments."}</p>
           </div>
         )}
 
