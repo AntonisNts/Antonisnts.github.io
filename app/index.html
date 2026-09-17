@@ -1243,7 +1243,19 @@ function syncAppBadge(n) {
    the one people dismiss forever, and "denied" cannot be undone by us -- only
    by the parent, in browser settings, which is a support call nobody wants.
    So: a button, pressed on purpose, and the browser is only asked after that. */
-function PushSwitch({ compact, onDone }) {
+function PushSwitch({ compact, onDone, student }) {
+  /* `student` is {code, pin}: the portal with no account, where identity is a
+     share code and a PIN the database re-checks for itself. Only which three
+     functions are called changes. */
+  const P = student
+    ? { status: ["push_status_student", (e) => ({ p_code: student.code, p_pin: student.pin, p_endpoint: e })],
+        sub:    ["push_subscribe_student", (e, j) => ({ p_code: student.code, p_pin: student.pin,
+                   p_endpoint: e, p_p256dh: j.p256dh, p_auth: j.auth, p_user_agent: navigator.userAgent })],
+        unsub:  ["push_unsubscribe_student", (e) => ({ p_code: student.code, p_pin: student.pin, p_endpoint: e })] }
+    : { status: ["push_status", (e) => ({ p_endpoint: e })],
+        sub:    ["push_subscribe", (e, j) => ({ p_endpoint: e, p_p256dh: j.p256dh,
+                   p_auth: j.auth, p_user_agent: navigator.userAgent })],
+        unsub:  ["push_unsubscribe", (e) => ({ p_endpoint: e })] };
   const [cap, setCap]   = useState("none");
   const [on, setOn]     = useState(false);
   const [busy, setBusy] = useState(false);
@@ -1270,7 +1282,7 @@ function PushSwitch({ compact, onDone }) {
         const reg = await navigator.serviceWorker.getRegistration("/app/");
         const sub = reg && await reg.pushManager.getSubscription();
         if (!sub) { if (alive) { setOn(false); setReady(true); } return; }
-        const { data } = await sb.rpc("push_status", { p_endpoint: sub.endpoint });
+        const { data } = await sb.rpc(P.status[0], P.status[1](sub.endpoint));
         if (alive) { const v = !!(data && data.on); setOn(v); setWasOn(v); setReady(true); }
       } catch (e) { if (alive) { setOn(false); setReady(true); } }
     })();
@@ -1292,12 +1304,7 @@ function PushSwitch({ compact, onDone }) {
         applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY),
       });
       const j = sub.toJSON();
-      const { data, error } = await sb.rpc("push_subscribe", {
-        p_endpoint: sub.endpoint,
-        p_p256dh: j.keys && j.keys.p256dh,
-        p_auth: j.keys && j.keys.auth,
-        p_user_agent: navigator.userAgent,
-      });
+      const { data, error } = await sb.rpc(P.sub[0], P.sub[1](sub.endpoint, j.keys || {}));
       if (error || (data && data.error)) {
         // Do not leave the browser subscribed to something we failed to record:
         // it would look on and never ring.
@@ -1317,7 +1324,7 @@ function PushSwitch({ compact, onDone }) {
       const reg = await navigator.serviceWorker.getRegistration("/app/");
       const sub = reg && await reg.pushManager.getSubscription();
       if (sub) {
-        await sb.rpc("push_unsubscribe", { p_endpoint: sub.endpoint });
+        await sb.rpc(P.unsub[0], P.unsub[1](sub.endpoint));
         try { await sub.unsubscribe(); } catch (e) {}
       }
       setOn(false); onDone && onDone();
@@ -1363,8 +1370,9 @@ function PushSwitch({ compact, onDone }) {
   if (on) return wrap(<>
     <div className="fam-push-t">Notifications are on</div>
     <div className="fam-push-b">
-      You will be told when one of your schools posts an announcement. Nothing
-      else sends a notification.
+      {student
+        ? "You will be told when your school posts an announcement. Nothing else sends a notification."
+        : "You will be told when one of your schools posts an announcement. Nothing else sends a notification."}
     </div>
     <button className="fam-pill" style={{marginTop:10}} disabled={busy} onClick={turnOff}>
       {busy ? "…" : "Turn Off"}
@@ -1374,8 +1382,9 @@ function PushSwitch({ compact, onDone }) {
   return wrap(<>
     <div className="fam-push-t">🔔 Get told about announcements</div>
     <div className="fam-push-b">
-      Instead of opening PayStamp to check. Only announcements from your
-      children's schools — nothing else.
+      {student
+        ? "Instead of opening PayStamp to check. Only announcements from your school — nothing else."
+        : "Instead of opening PayStamp to check. Only announcements from your children's schools — nothing else."}
     </div>
     {err && <div className="err" style={{margin:"8px 0"}}>{err}</div>}
     <button className="fam-pill solid" style={{marginTop:10}} disabled={busy} onClick={turnOn}>
@@ -4127,6 +4136,12 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
                 <PayOnline link={payLink.link} linkName={payLink.name}
                   cardId={null} claims={payClaims} onClaim={onClaim} />
               )}
+              {/* A family with one child at one school never makes an account,
+                  so without this the switch existed only for people who had
+                  signed up. Same panel, proved with the code and PIN. */}
+              <div style={{marginTop:16}}>
+                <PushSwitch compact student={{code:code.trim(), pin}} />
+              </div>
             </> },
           { key:"school", label:"School", when: anns.length>0,
             badge: showUnread ? annUnread : 0, render: () => (

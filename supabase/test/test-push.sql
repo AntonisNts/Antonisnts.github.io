@@ -255,6 +255,101 @@ select 'a parent cannot ask what anybody is unread on' as t,
 
 
 \echo
+\echo '=== B3. the student portal, which has no account at all ==='
+-- A family with one child at one school never signs up. push_subscribe reads
+-- auth.email(), so for them the switch could not work.
+select pg_temp.act_as(null, null);
+
+select 'signed out, the parent''s subscribe is refused' as t,
+       public.push_subscribe('https://push.example.com/ep/x','P','A')->>'error' = 'not_authenticated' as pass;
+
+select 'but a code and a PIN can subscribe a browser' as t,
+       (public.push_subscribe_student('PUSHA','1111',
+          'https://push.example.com/ep/stu-a','SPK','SAK','iPhone')->>'ok')::boolean as pass;
+
+select 'a wrong PIN subscribes nothing' as t,
+       public.push_subscribe_student('PUSHA','9999',
+         'https://push.example.com/ep/bad','SPK','SAK')->>'error' = 'no_match' as pass;
+
+select 'the row belongs to the card, with no email on it' as t,
+       card_id = 'd2000000-0000-0000-0000-0000000000ca' and parent_email is null as pass
+  from public.push_subscriptions where endpoint = 'https://push.example.com/ep/stu-a';
+
+-- Exactly one owner. A row with both, or neither, is one no audience query
+-- would ever find -- and nobody would know why that phone went quiet.
+select 'a subscription cannot have two owners' as t,
+       (select count(*) = 0 from public.push_subscriptions
+         where parent_email is not null and card_id is not null) as pass;
+
+select 'a student can ask about their own browser' as t,
+       (public.push_status_student('PUSHA','1111','https://push.example.com/ep/stu-a')->>'on')::boolean as pass;
+select 'and gets a plain no for another student''s' as t,
+       (public.push_status_student('PUSHB','2222','https://push.example.com/ep/stu-a')->>'on')::boolean = false as pass;
+select 'and cannot unsubscribe it either' as t,
+       (public.push_unsubscribe_student('PUSHB','2222','https://push.example.com/ep/stu-a')->>'ok')::boolean as pass;
+select 'which is to say it is still there' as t, count(*) = 1 as pass
+  from public.push_subscriptions where endpoint = 'https://push.example.com/ep/stu-a';
+
+-- Afrodite is in Sharks, so a whole-school note and a Sharks note both reach
+-- her; the one for Anais does not.
+select pg_temp.act_as_service();
+select 'a student is in the whole-school audience' as t,
+       exists (select 1 from jsonb_array_elements(
+         public.push_audience('d4000000-0000-0000-0000-000000000001')->'subscriptions') s
+        where s->>'endpoint' = 'https://push.example.com/ep/stu-a') as pass;
+
+select 'and in their own class''s' as t,
+       exists (select 1 from jsonb_array_elements(
+         public.push_audience('d4000000-0000-0000-0000-000000000002')->'subscriptions') s
+        where s->>'endpoint' = 'https://push.example.com/ep/stu-a') as pass;
+
+select 'but not in a note for a different student' as t,
+       not exists (select 1 from jsonb_array_elements(
+         public.push_audience('d4000000-0000-0000-0000-000000000003')->'subscriptions') s
+        where s->>'endpoint' = 'https://push.example.com/ep/stu-a') as pass;
+
+-- No badge, deliberately: the student portal records what has been read in
+-- localStorage, so the database cannot count unread. A wrong number would be
+-- worse than none.
+select 'a student subscription carries no badge count' as t,
+       (select (s->'badge') is null
+          from jsonb_array_elements(
+            public.push_audience('d4000000-0000-0000-0000-000000000001')->'subscriptions') s
+         where s->>'endpoint' = 'https://push.example.com/ep/stu-a') as pass;
+
+select 'while a parent''s still does' as t,
+       (select (s->'badge') is not null
+          from jsonb_array_elements(
+            public.push_audience('d4000000-0000-0000-0000-000000000001')->'subscriptions') s
+         where s->>'endpoint' = 'https://push.example.com/ep/mum-phone') as pass;
+
+-- A phone that moves between a parent's account and a student's card must not
+-- end up ringing for both.
+select pg_temp.act_as(null, null);
+select 'a phone can move from a parent to a student' as t,
+       (public.push_subscribe_student('PUSHB','2222',
+          'https://push.example.com/ep/mum-phone','SPK2','SAK2')->>'ok')::boolean as pass;
+select 'and the email is cleared when it does' as t,
+       parent_email is null and card_id = 'd2000000-0000-0000-0000-0000000000cb' as pass
+  from public.push_subscriptions where endpoint = 'https://push.example.com/ep/mum-phone';
+select 'leaving one row, not two' as t, count(*) = 1 as pass
+  from public.push_subscriptions where endpoint = 'https://push.example.com/ep/mum-phone';
+
+-- And back again, which is the same move in reverse.
+select pg_temp.act_as('d0000000-0000-0000-0000-0000000000c0','push-mum@t.example');
+select 'and back to the parent' as t,
+       (public.push_subscribe('https://push.example.com/ep/mum-phone','PK1','AK1','iPhone')->>'ok')::boolean as pass;
+select 'clearing the card when it does' as t,
+       card_id is null and parent_email = 'push-mum@t.example' as pass
+  from public.push_subscriptions where endpoint = 'https://push.example.com/ep/mum-phone';
+
+select 'anon may subscribe as a student, having no session' as t,
+       (select has_function_privilege('anon','public.push_subscribe_student(text,text,text,text,text,text)','execute')) as pass;
+select 'but still cannot ask who else is subscribed' as t,
+       (select not has_function_privilege('anon','public.push_audience(uuid)','execute')) as pass;
+
+
+\echo
 \echo '=== C. a dead endpoint stops being tried ==='
 select pg_temp.act_as_service();
 select 'the sender can mark an endpoint gone' as t,
@@ -264,8 +359,9 @@ select 'and it drops out of every audience from then on' as t,
          select 1 from jsonb_array_elements(
            public.push_audience('d4000000-0000-0000-0000-000000000001')->'subscriptions') s
           where s->>'endpoint' = 'https://push.example.com/ep/dad-phone') as pass;
-select 'leaving two' as t,
-       jsonb_array_length(public.push_audience('d4000000-0000-0000-0000-000000000001')->'subscriptions') = 2 as pass;
+-- Mum's two browsers and Afrodite's student subscription; dad's is gone.
+select 'leaving three' as t,
+       jsonb_array_length(public.push_audience('d4000000-0000-0000-0000-000000000001')->'subscriptions') = 3 as pass;
 
 -- Kept, not deleted, so "why did this phone stop ringing" has an answer.
 select 'the row is kept, with the reason' as t, gone_at is not null as pass
@@ -320,7 +416,7 @@ select 'one table was added' as t, count(*) = 1 as pass
   from information_schema.tables
  where table_schema = 'public' and table_name = 'push_subscriptions';
 
-select 'and six functions, all prefixed push_' as t, count(*) = 6 as pass
+select 'and nine functions, all prefixed push_' as t, count(*) = 9 as pass
   from pg_proc where proname like 'push\_%';
 
 -- The announcements table is what this reads. If it were altered, removing

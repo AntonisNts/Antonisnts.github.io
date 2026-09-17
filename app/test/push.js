@@ -363,6 +363,95 @@ const openPortal = (o, rpc, reads) => open({
     await browser.close();
   }
 
+  // === the student portal ===================================================
+  // A family with one child at one school never makes an account, and
+  // push_subscribe reads auth.email() -- so the switch could not work for them.
+  {
+    const STU = {
+      card: { id: "card-1", name: "Andriana", level: null, share_code: "AQ3RG0",
+              payments: {}, history: [] },
+      business: { name: "Dance School", type: "Other", fee: 50, year: 2026, biz_code: "B1",
+                  inactive_months: [], levels: [], custom_card_image: null },
+      announcements: [],
+    };
+    const { browser, page, errors } = await open({
+      signedOut: true, init: stub({}),
+      rpc: { get_student_card: STU, push_status_student: { on: false },
+             push_subscribe_student: { ok: true } } });
+    await page.waitForTimeout(700);
+    await page.getByText("Quick View").click();
+    await page.waitForTimeout(500);
+    await page.locator("input.inp").first().fill("AQ3RG0");
+    await page.locator("button.btn").first().click();
+    await page.waitForTimeout(500);
+    await page.locator("input.inp").first().fill("1234");
+    await page.locator("button.btn").first().click();
+    await page.waitForTimeout(900);
+
+    let t = await text(page);
+    ok("the student portal offers notifications too",
+       /Get told about announcements/i.test(t), t.slice(0, 300));
+    // A student is not being told about "your children's schools".
+    ok("worded for a student, not a parent",
+       /from your school/i.test(t) && !/children's schools/i.test(t), t.slice(0, 400));
+    ok("and the browser has not been asked yet",
+       (await page.evaluate(() => window.__PUSH.asked)) === 0);
+
+    await page.locator('button:has-text("Turn On Notifications")').first().click();
+    await page.waitForTimeout(700);
+
+    const sent = await page.evaluate(() => (window.__RPC_CALLS || [])
+      .find(c => c[0] === "push_subscribe_student"));
+    ok("subscribing proves who they are with the code and PIN",
+       sent && sent[1].p_code === "AQ3RG0" && sent[1].p_pin === "1234",
+       JSON.stringify(sent && sent[1]));
+    ok("and hands over the same three things a parent's does",
+       sent && sent[1].p_endpoint === "https://push.example.com/ep/abc123"
+       && sent[1].p_p256dh === "BPubKeyHere" && sent[1].p_auth === "AuthSecret",
+       JSON.stringify(sent && sent[1]));
+    // The parent's function reads auth.email(), which is null here: it would
+    // not leak, it would silently do nothing.
+    ok("never through the signed-in parent's function",
+       !(await page.evaluate(() => (window.__RPC_CALLS || [])
+         .some(c => c[0] === "push_subscribe"))));
+    ok("and it confirms", /Notifications are on/i.test(await text(page)));
+
+    await browser.close();
+    ok("no page errors in the student portal",
+       errors.filter(e => !/Failed to load resource|ERR_/.test(e)).length === 0,
+       errors.slice(0, 3).join(" | "));
+  }
+
+  // An iPhone in a Safari tab gets the same instruction here as in the family
+  // portal -- there is no push machinery to offer a button for.
+  {
+    const { browser, page } = await open({
+      signedOut: true,
+      init: stub({ noPush: true, noNotification: true,
+        ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1" }),
+      rpc: { get_student_card: {
+        card: { id: "card-1", name: "Andriana", level: null, share_code: "AQ3RG0",
+                payments: {}, history: [] },
+        business: { name: "Dance School", type: "Other", fee: 50, year: 2026, biz_code: "B1",
+                    inactive_months: [], levels: [], custom_card_image: null },
+        announcements: [] } } });
+    await page.waitForTimeout(700);
+    await page.getByText("Quick View").click();
+    await page.waitForTimeout(500);
+    await page.locator("input.inp").first().fill("AQ3RG0");
+    await page.locator("button.btn").first().click();
+    await page.waitForTimeout(500);
+    await page.locator("input.inp").first().fill("1234");
+    await page.locator("button.btn").first().click();
+    await page.waitForTimeout(900);
+    const t = await text(page);
+    ok("an iPhone student is told to install, not offered a dead button",
+       /Add to Home Screen/i.test(t) &&
+       await page.getByRole("button", { name: /Turn On Notifications/i }).count() === 0,
+       t.slice(0, 300));
+    await browser.close();
+  }
+
   // === the number on the app icon ===========================================
   // "why doesn't it show 1 as a notification on the home page icon like
   //  StoryReel has 197?" -- because a banner and a badge are two different
@@ -417,6 +506,9 @@ const openPortal = (o, rpc, reads) => open({
     ok("a push sets the badge to what the sender counted", r[0] === 4, JSON.stringify(r));
     ok("and clears it when that count is zero", r[1] === 0, JSON.stringify(r));
     // An older sender, or a payload without one, must not blank a correct badge.
+    // This is the student case, not a hypothetical: the student portal records
+    // what has been read in localStorage, so the sender has no count to give
+    // and sends none rather than a wrong one.
     ok("a payload with no count leaves the badge alone", r.length === 2, JSON.stringify(r));
     await browser.close();
   }
