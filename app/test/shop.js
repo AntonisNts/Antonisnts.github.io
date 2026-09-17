@@ -18,6 +18,11 @@ let pass = 0, fail = 0;
 const ok = (n, c, d) => { c ? (pass++, console.log("  ok   " + n))
                             : (fail++, console.log("  FAIL " + n + (d ? " — " + d : ""))); };
 const text = (page) => page.evaluate(() => document.body.innerText);
+// A real 1x1 PNG. compressImage decodes whatever it is given, so a text file
+// pretending to be an image would fail for the wrong reason.
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64");
 // The months strip is the fee ledger as the parent sees it. Photographed
 // before and after an order, it is the separation made checkable.
 const months = (s) => (s.match(/\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\b/gi) || []).join(",");
@@ -348,12 +353,149 @@ const CATALOGUE = [{
     await browser.close();
   }
 
-  // --- a picture link that is not https -------------------------------------
+  // --- photographs ----------------------------------------------------------
+  // Was a box asking for an https:// link, which meant getting the picture
+  // onto the internet somewhere else first. It is a file now.
+  {
+    const ITEMS = { ok: true, enabled: true, items: [
+      { id: "it1", name: "School Jumper", description: null, price: 22.5, sizes: [],
+        stock: null, image_url: null, archived: false }] };
+    const { browser, page, errors } = await open({
+      rpc: { shop_items_list: ITEMS, shop_item_save: { ok: true } } });
+    await page.waitForTimeout(600);
+    await page.locator(".dash-gear").first().click();
+    await page.waitForTimeout(350);
+    await page.locator(".set-ov").getByText("Items", { exact: true }).locator("visible=true").first().click();
+    await page.waitForTimeout(600);
+    await page.locator('button:has-text("+ Add Item")').first().click();
+    await page.waitForTimeout(300);
+
+    let t = await text(page);
+    ok("the form asks for a photo, not a link", /Take Or Choose A Photo/i.test(t) &&
+       !/https:\/\//.test(t), t.slice(0, 500));
+    ok("and says what happens without one", /No photo/i.test(t));
+    ok("there is no url box left to paste into",
+       await page.locator('input[type="url"]').count() === 0);
+
+    await page.locator('input[placeholder="e.g. School Jumper"]').fill("PE Shorts");
+    await page.locator('input[placeholder="0"]').fill("12");
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "shorts.png", mimeType: "image/png", buffer: PNG });
+    await page.waitForTimeout(400);
+    ok("the chosen photo is shown before it is saved",
+       await page.locator('img[src^="blob:"]').count() === 1);
+    ok("and nothing has been uploaded yet — abandoning the form uploads nothing",
+       (await page.evaluate(() => (window.__UPLOADS || []).length)) === 0);
+
+    await page.locator('button:has-text("Save Item")').first().click();
+    await page.waitForTimeout(700);
+
+    const up = await page.evaluate(() => (window.__UPLOADS || [])[0]);
+    ok("saving puts it in the shop's own bucket", up && up.bucket === "shop-images",
+       JSON.stringify(up));
+    ok("under the school's own folder, which is what the policy checks",
+       up && up.path.indexOf(BIZ_ID + "/") === 0, JSON.stringify(up));
+    // A phone photograph is several megabytes and nobody needs that to look at
+    // a jumper. compressImage re-encodes it as JPEG first.
+    ok("re-encoded rather than sent as it came off the phone",
+       up && up.type === "image/jpeg" && /\.jpg$/.test(up.path), JSON.stringify(up));
+
+    const saved = await page.evaluate(() => (window.__RPC_CALLS || [])
+      .find(c => c[0] === "shop_item_save"));
+    ok("and the item points at the uploaded file",
+       saved && /\/shop-images\//.test(saved[1].p_image_url || ""),
+       JSON.stringify(saved && saved[1].p_image_url));
+
+    await browser.close();
+    ok("no page errors attaching a photo",
+       errors.filter(e => !/Failed to load resource|ERR_/.test(e)).length === 0,
+       errors.slice(0, 3).join(" | "));
+  }
+
+  // --- replacing and removing one ------------------------------------------
+  {
+    const URL0 = "https://x.supabase.co/storage/v1/object/public/shop-images/" + BIZ_ID + "/item-1.jpg";
+    const ITEMS = { ok: true, enabled: true, items: [
+      { id: "it1", name: "School Jumper", description: null, price: 22.5, sizes: [],
+        stock: null, image_url: URL0, archived: false }] };
+    const { browser, page } = await open({
+      rpc: { shop_items_list: ITEMS, shop_item_save: { ok: true } } });
+    await page.waitForTimeout(600);
+    await page.locator(".dash-gear").first().click();
+    await page.waitForTimeout(350);
+    await page.locator(".set-ov").getByText("Items", { exact: true }).locator("visible=true").first().click();
+    await page.waitForTimeout(600);
+
+    ok("an item with a photo shows it in the list",
+       await page.locator('img[src="' + URL0 + '"]').count() >= 1);
+
+    await page.locator('button:has-text("Edit")').first().click();
+    await page.waitForTimeout(300);
+    ok("editing shows the photo it already has", /Change Photo/i.test(await text(page)));
+
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "new.png", mimeType: "image/png", buffer: PNG });
+    await page.waitForTimeout(300);
+    await page.locator('button:has-text("Save Item")').first().click();
+    await page.waitForTimeout(700);
+
+    const up = await page.evaluate(() => (window.__UPLOADS || []));
+    const rm = await page.evaluate(() => (window.__REMOVED || []));
+    ok("replacing uploads the new one", up.length === 1);
+    ok("and deletes the old one it replaced",
+       rm.length === 1 && rm[0].path === BIZ_ID + "/item-1.jpg", JSON.stringify(rm));
+    // Order matters: a replacement that failed halfway must not have deleted
+    // the picture it was replacing, so the new one goes up first.
+    const ops = await page.evaluate(() => (window.__STORAGE_OPS || []));
+    ok("and the new one went up BEFORE the old one was deleted",
+       ops.length === 2 && /^upload:/.test(ops[0]) && /^remove:/.test(ops[1]),
+       JSON.stringify(ops));
+
+    await browser.close();
+  }
+
+  {
+    const URL0 = "https://x.supabase.co/storage/v1/object/public/shop-images/" + BIZ_ID + "/item-9.jpg";
+    const { browser, page } = await open({
+      rpc: { shop_items_list: { ok: true, enabled: true, items: [
+               { id: "it1", name: "Cap", description: null, price: 9, sizes: [],
+                 stock: null, image_url: URL0, archived: false }] },
+             shop_item_save: { ok: true } } });
+    await page.waitForTimeout(600);
+    await page.locator(".dash-gear").first().click();
+    await page.waitForTimeout(350);
+    await page.locator(".set-ov").getByText("Items", { exact: true }).locator("visible=true").first().click();
+    await page.waitForTimeout(600);
+    await page.locator('button:has-text("Edit")').first().click();
+    await page.waitForTimeout(300);
+    await page.locator('button:has-text("Remove Photo")').first().click();
+    await page.waitForTimeout(300);
+    ok("removing it offers to add one again", /Take Or Choose A Photo/i.test(await text(page)));
+    await page.locator('button:has-text("Save Item")').first().click();
+    await page.waitForTimeout(700);
+    const saved = await page.evaluate(() => (window.__RPC_CALLS || [])
+      .find(c => c[0] === "shop_item_save"));
+    ok("and the item is saved with no picture", saved && saved[1].p_image_url === null,
+       JSON.stringify(saved && saved[1].p_image_url));
+    const rm = await page.evaluate(() => (window.__REMOVED || []));
+    ok("with the file deleted rather than left behind",
+       rm.length === 1 && rm[0].path === BIZ_ID + "/item-9.jpg", JSON.stringify(rm));
+    await browser.close();
+  }
+
+  // --- an upload that fails must not half-save ------------------------------
   {
     const { browser, page } = await open({
       rpc: { shop_items_list: { ok: true, enabled: true, items: [] },
-             shop_item_save: { error: "bad_image" } } });
+             shop_item_save: { ok: true } } });
     await page.waitForTimeout(600);
+    await page.evaluate(() => {
+      const real = window.__MOCK_SB.storage.from;
+      window.__MOCK_SB.storage.from = (b) => {
+        const o = real(b);
+        return { ...o, upload: async () => ({ data: null, error: { message: "Bucket not found" } }) };
+      };
+    });
     await page.locator(".dash-gear").first().click();
     await page.waitForTimeout(350);
     await page.locator(".set-ov").getByText("Items", { exact: true }).locator("visible=true").first().click();
@@ -362,11 +504,39 @@ const CATALOGUE = [{
     await page.waitForTimeout(300);
     await page.locator('input[placeholder="e.g. School Jumper"]').fill("Cap");
     await page.locator('input[placeholder="0"]').fill("9");
-    await page.locator('input[placeholder="https://…"]').fill("http://example.com/cap.png");
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "c.png", mimeType: "image/png", buffer: PNG });
+    await page.waitForTimeout(300);
     await page.locator('button:has-text("Save Item")').first().click();
-    await page.waitForTimeout(400);
-    ok("the database's refusal of a plain-http picture is said in English",
-       /has to start with https/i.test(await text(page)));
+    await page.waitForTimeout(700);
+    ok("a failed upload says so in English, and names the likely cause",
+       /picture would not upload/i.test(await text(page)) &&
+       /shop-images/.test(await text(page)));
+    const saved = await page.evaluate(() => (window.__RPC_CALLS || [])
+      .filter(c => c[0] === "shop_item_save").length);
+    ok("and the item is NOT written pointing at a picture that is not there",
+       saved === 0, "saved " + saved);
+    await browser.close();
+  }
+
+  // --- the parent sees it ---------------------------------------------------
+  {
+    const PIC = "https://x.supabase.co/storage/v1/object/public/shop-images/b/jumper.jpg";
+    const CAT = [{ card_id: "card-1", student: "Elena Georgiou", school: "Aurora Music School",
+      items: [{ id: "it1", name: "School Jumper", description: "Navy", price: 22.5,
+                sizes: ["S","M"], out_of_stock: false, image_url: PIC }] }];
+    const { browser, page } = await open({
+      role: "parent",
+      rpc: { get_my_cards: PARENT_CARDS, shop_catalogue_mine: CAT, shop_orders_mine: [] } });
+    await page.waitForTimeout(700);
+    await page.locator(".fam-kid-main").first().click();
+    await page.waitForTimeout(600);
+    ok("the photo reaches the parent's shop", await page.locator('img[src="' + PIC + '"]').count() >= 1);
+
+    await page.getByRole("button", { name: "Order", exact: true }).first().click();
+    await page.waitForTimeout(300);
+    ok("and is on the order dialog, so they see what they are buying",
+       await page.locator('.scr-card img[src="' + PIC + '"]').count() >= 1);
     await browser.close();
   }
 

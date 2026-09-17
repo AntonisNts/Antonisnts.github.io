@@ -1330,6 +1330,23 @@ function PgShopItems({ biz, onBack }) {
   const [err, setErr]       = useState("");
   const [note, setNote]     = useState("");
   const [edit, setEdit]     = useState(null);   // the item being written
+  /* The picture being attached, before it is anywhere. Kept apart from `edit`
+     so that abandoning the form uploads nothing: a file only reaches storage
+     when the item it belongs to is saved. */
+  const [pic, setPic]       = useState(null);   // {file, preview} | "remove" | null
+  const picRef = useRef(null);
+
+  function shopPicPath(u) {
+    try { return u.split("/shop-images/")[1] || null; } catch (e) { return null; }
+  }
+  function pickPic(ev) {
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    // A photograph off a phone is several megabytes and nobody needs that to
+    // look at a jumper. compressImage is what the announcements use.
+    setPic({ file: f, preview: URL.createObjectURL(f) });
+    setErr("");
+  }
 
   async function load() {
     const { data: r, error } = await sb.rpc("shop_items_list");
@@ -1360,13 +1377,43 @@ function PgShopItems({ biz, onBack }) {
     const stock = e.stockText === "" || e.stockText == null ? null : parseInt(e.stockText, 10);
     if (stock !== null && (isNaN(stock) || stock < 0)) { setErr("Stock must be a whole number, or blank."); return; }
 
+    /* The photograph, if one is waiting. Uploaded before the row is written so
+       that a failed upload leaves the item as it was rather than pointing at a
+       picture that is not there. */
+    let imageUrl = e.image_url || null;
+    setBusy(true);
+    try {
+      if (pic === "remove") {
+        const old = shopPicPath(e.image_url);
+        if (old) { try { await sb.storage.from("shop-images").remove([old]); } catch (_) {} }
+        imageUrl = null;
+      } else if (pic && pic.file) {
+        const blob = await compressImage(pic.file, 1280, 0.7);
+        const path = biz.id + "/item-" + Date.now() + ".jpg";
+        const { error: ue } = await sb.storage.from("shop-images")
+          .upload(path, blob, { contentType: "image/jpeg", upsert: true });
+        if (ue) throw ue;
+        // Only once the new one is safely up: a replacement that failed
+        // halfway should not have deleted the picture it was replacing.
+        const old = shopPicPath(e.image_url);
+        if (old) { try { await sb.storage.from("shop-images").remove([old]); } catch (_) {} }
+        imageUrl = sb.storage.from("shop-images").getPublicUrl(path).data.publicUrl;
+      }
+    } catch (ex) {
+      setBusy(false);
+      setErr("The picture would not upload. " +
+             "If this keeps happening, check the shop-images bucket exists.");
+      return;
+    }
+    setBusy(false);
+
     const { data: r, error } = await sb.rpc("shop_item_save", {
       p_id: e.id || null, p_name: e.name.trim(), p_description: e.description || null,
-      p_price: price, p_sizes: sizes, p_stock: stock, p_image_url: e.image_url || null });
+      p_price: price, p_sizes: sizes, p_stock: stock, p_image_url: imageUrl });
     if (error)                  { setErr(error.message); return; }
-    if (r.error === "bad_image"){ setErr("A picture link has to start with https://"); return; }
+    if (r.error === "bad_image"){ setErr("That picture could not be used."); return; }
     if (r.error)                { setErr("Could not save that item."); return; }
-    setEdit(null); setNote("Saved."); load();
+    setEdit(null); setPic(null); setNote("Saved."); load();
   }
 
   async function archive(it) {
@@ -1376,6 +1423,11 @@ function PgShopItems({ biz, onBack }) {
   }
 
   const blank = { id:null, name:"", description:"", price:"", sizesText:"", stockText:"", image_url:"" };
+  /* What the form should show: the picture being attached, or nothing if it
+     has just been removed, or the one already saved. */
+  const shownPic = pic === "remove" ? null
+                 : (pic && pic.preview) ? pic.preview
+                 : (edit && edit.image_url) || null;
 
   return (
     <div className="reg-page scr" style={{"--accent":p.acc}}>
@@ -1407,7 +1459,9 @@ function PgShopItems({ biz, onBack }) {
           <div key={it.id} className="scr-card" style={{marginBottom:10,padding:16,
                 opacity: it.archived ? .55 : 1}}>
             <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
-              <div style={{minWidth:0}}>
+              {it.image_url && <img src={it.image_url} alt="" style={{width:56,height:56,
+                objectFit:"cover",borderRadius:12,flexShrink:0,background:"var(--bg)"}} />}
+              <div style={{minWidth:0,flex:1}}>
                 <div className="scr-card-t">{it.name}{it.archived ? " · archived" : ""}</div>
                 {it.description && <div className="scr-card-s">{it.description}</div>}
                 <div style={{fontSize:".72rem",color:"var(--text2)",marginTop:4}}>
@@ -1424,11 +1478,11 @@ function PgShopItems({ biz, onBack }) {
               </div>
             </div>
             <div style={{display:"flex",gap:8,marginTop:12}}>
-              <button className="scr-btn" style={{flex:1}} onClick={()=>setEdit({
+              <button className="scr-btn" style={{flex:1}} onClick={()=>{ setPic(null); setErr(""); setEdit({
                 id:it.id, name:it.name, description:it.description||"", price:String(it.price),
                 sizesText:(it.sizes||[]).join(", "),
                 stockText: it.stock == null ? "" : String(it.stock),
-                image_url: it.image_url||"" })}>Edit</button>
+                image_url: it.image_url||"" }); }}>Edit</button>
               <button className="scr-btn" style={{flex:1}} onClick={()=>archive(it)}>
                 {it.archived ? "Restore" : "Archive"}
               </button>
@@ -1437,7 +1491,7 @@ function PgShopItems({ biz, onBack }) {
         ))}
 
         {!edit && <button className="scr-btn primary wide" style={{marginTop:6}}
-          onClick={()=>setEdit(blank)}>+ Add Item</button>}
+          onClick={()=>{ setPic(null); setErr(""); setEdit(blank); }}>+ Add Item</button>}
       </>}
 
       {edit && (
@@ -1458,11 +1512,35 @@ function PgShopItems({ biz, onBack }) {
           <div className="ig"><label>Stock (optional — leave blank not to count)</label>
             <input className="inp" type="number" inputMode="numeric" placeholder="not counted" value={edit.stockText}
               onChange={e=>setEdit(x=>({...x,stockText:e.target.value}))} /></div>
-          <div className="ig"><label>Picture Link (optional)</label>
-            <input className="inp" type="url" placeholder="https://…" value={edit.image_url}
-              onChange={e=>setEdit(x=>({...x,image_url:e.target.value}))} /></div>
-          <button className="scr-btn primary wide" onClick={save}>Save Item</button>
-          <button className="scr-btn wide" style={{marginTop:10}} onClick={()=>{setEdit(null);setErr("");}}>Cancel</button>
+          <div className="ig"><label>Photo (optional)</label>
+            {/* Was a box asking for an https:// link, which meant the school
+                had to get the picture onto the internet somewhere else first.
+                They have the jumper in front of them and a camera in their
+                hand. */}
+            {shownPic ? (
+              <div style={{position:"relative",marginBottom:8}}>
+                <img src={shownPic} alt="" style={{display:"block",width:"100%",maxHeight:220,
+                  objectFit:"cover",borderRadius:14,background:"var(--bg)"}} />
+                <button className="scr-btn" style={{marginTop:8,width:"100%"}}
+                  onClick={()=>{ setPic("remove"); if(picRef.current) picRef.current.value=""; }}>
+                  Remove Photo
+                </button>
+              </div>
+            ) : (
+              <div style={{fontSize:".75rem",color:"var(--text2)",lineHeight:1.6,marginBottom:8}}>
+                No photo. Parents see the name and the price on their own.
+              </div>
+            )}
+            <input ref={picRef} type="file" accept="image/*" onChange={pickPic}
+              style={{display:"none"}} />
+            <button className="scr-btn wide" onClick={()=>picRef.current && picRef.current.click()}>
+              {shownPic ? "Change Photo" : "Take Or Choose A Photo"}
+            </button>
+          </div>
+          <button className="scr-btn primary wide" style={{marginTop:14}} onClick={save} disabled={busy}>
+            {busy ? "Saving…" : "Save Item"}
+          </button>
+          <button className="scr-btn wide" style={{marginTop:10}} onClick={()=>{setEdit(null);setPic(null);setErr("");}}>Cancel</button>
         </div>
       )}
     </div>
@@ -1681,6 +1759,13 @@ function ShopPanel({ accent, cards }) {
             ? <div style={{fontSize:".8rem",color:"var(--fam-t3)"}}>Nothing for sale just now.</div>
             : school.items.map(it => (
             <div key={it.id} className="scr-card" style={{marginBottom:8,padding:14}}>
+              {/* The catalogue has always returned image_url; nothing drew it,
+                  so an item with a photograph showed none. */}
+              {it.image_url && (
+                <img src={it.image_url} alt="" loading="lazy" style={{display:"block",width:"100%",
+                  maxHeight:200,objectFit:"cover",borderRadius:12,marginBottom:10,
+                  background:"var(--bg)",opacity: it.out_of_stock ? .5 : 1}} />
+              )}
               <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
                 <div style={{minWidth:0}}>
                   <div className="scr-card-t">{it.name}</div>
@@ -1781,6 +1866,10 @@ function ShopPanel({ accent, cards }) {
       {open && (
         <div onClick={()=>setOpen(null)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:300,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div onClick={e=>e.stopPropagation()} className="scr-card" style={{maxWidth:360,padding:22,width:"100%"}}>
+            {open.item.image_url && (
+              <img src={open.item.image_url} alt="" style={{display:"block",width:"100%",
+                maxHeight:160,objectFit:"cover",borderRadius:12,marginBottom:12,background:"var(--bg)"}} />
+            )}
             <div className="scr-card-t" style={{marginBottom:4}}>{open.item.name}</div>
             <div className="scr-card-s" style={{marginBottom:14}}>{"€"+Number(open.item.price).toFixed(2)+" each"}</div>
 
