@@ -30,11 +30,27 @@ Settings → **Shop** → **Items** → *+ Add Item*.
 | Price | required |
 | Sizes | optional, comma separated. An item that has sizes cannot be ordered without choosing one |
 | Stock | optional. **Blank means not counted**, which is not the same as zero |
-| Picture link | optional, must be `https://` |
+| Photo | optional. Taken or chosen on the phone — there is no link to paste |
 
 Stock blank and stock zero read differently everywhere on purpose: "stock not
 counted" versus "out of stock". A school that does not want to run an inventory
 leaves it blank and nothing is ever checked or decremented.
+
+### Photos
+
+*Take Or Choose A Photo* opens the phone's camera roll (or camera). The picture
+is re-encoded as a JPEG at 1280px before it leaves the device — a phone
+photograph is several megabytes and nobody needs that to look at a jumper — and
+stored in the `shop-images` bucket under a folder named after the school.
+
+It used to be a box asking for an `https://` link, which meant getting the
+picture onto the internet somewhere else first. Items saved that way still work:
+the column is a URL either way, and only where the URL comes from has changed.
+
+The bucket is public to read and writable only into your own school's folder,
+which is what stops one school replacing the picture on another's jumper. It
+needs `supabase/migration-shop-images.sql` and a bucket created in the
+dashboard; without them, items simply have no photo and everything else works.
 
 Items are archived, never deleted. An order placed last term still shows what
 was bought and what it cost, because every line stores the name and price as
@@ -136,6 +152,7 @@ instructions above are checked rather than asserted.
 | file | what it is |
 |---|---|
 | `supabase/migration-shop.sql` | the whole database half, including its own removal instructions |
+| `supabase/migration-shop-images.sql` | storage policies for item photos — optional, no table touched |
 | `supabase/test/test-shop.sql` | 74 assertions |
 | `app/index.html` | the block between the `SHOP MODULE` markers |
-| `app/test/shop.js` | 95 assertions, including the removal |
+| `app/test/shop.js` | 116 assertions, including the removal |

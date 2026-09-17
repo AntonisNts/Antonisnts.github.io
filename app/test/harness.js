@@ -101,7 +101,32 @@ function installMock(fixtures, session, rpcExtra, rpcError) {
     rpc: (name, args) => ({ then: (r) => { window.__RPC_CALLS = (window.__RPC_CALLS||[]).concat([[name, args||null]]); return r(broken[name] ? { data: null, error: FAIL } : { data: answer(name), error: null }); } }),
     channel: () => ({ on: function () { return this; }, subscribe: function () { return this; } }),
     removeChannel: () => {},
-    storage: { from: () => ({ upload: async () => ({ data: null, error: null }), getPublicUrl: () => ({ data: { publicUrl: "" } }) }) },
+    // Records what the app puts in a bucket, and hands back a URL shaped like
+    // a real Supabase public one -- the app parses that URL back into a path
+    // when it replaces or removes a picture, so an empty string made the
+    // replace-and-delete path untestable.
+    storage: {
+      from: (bucket) => ({
+        upload: async (path, body, opts) => {
+          window.__UPLOADS = (window.__UPLOADS || []).concat([{ bucket, path,
+            size: (body && body.size) || 0, type: (opts && opts.contentType) || null }]);
+          // One ordered log as well, because "was the replacement uploaded
+          // BEFORE the old file was deleted" is a question two separate lists
+          // cannot answer.
+          window.__STORAGE_OPS = (window.__STORAGE_OPS || []).concat(["upload:" + path]);
+          return { data: { path }, error: null };
+        },
+        remove: async (paths) => {
+          window.__REMOVED = (window.__REMOVED || []).concat(
+            paths.map((x) => ({ bucket, path: x })));
+          window.__STORAGE_OPS = (window.__STORAGE_OPS || [])
+            .concat(paths.map((x) => "remove:" + x));
+          return { data: null, error: null };
+        },
+        getPublicUrl: (path) => ({ data: { publicUrl:
+          "https://oqckztpsglcsrtyyvqrl.supabase.co/storage/v1/object/public/" + bucket + "/" + path } }),
+      }),
+    },
     auth: {
       getSession: async () => ({ data: { session }, error: null }),
       getUser: async () => ({ data: { user: session.user }, error: null }),
