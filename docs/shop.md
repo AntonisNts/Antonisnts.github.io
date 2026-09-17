@@ -43,6 +43,12 @@ is re-encoded as a JPEG at 1280px before it leaves the device — a phone
 photograph is several megabytes and nobody needs that to look at a jumper — and
 stored in the `shop-images` bucket under a folder named after the school.
 
+Shown **whole**, never cropped to fill: a uniform photographed head to toe
+loses the head and the feet to a cropping fit, which are the two ends that say
+what it is. Tapping any picture opens it full-screen. The only cropped one is
+the 56px square on the owner's own list, which is an identifier rather than the
+picture — and it opens full-screen too.
+
 It used to be a box asking for an `https://` link, which meant getting the
 picture onto the internet somewhere else first. Items saved that way still work:
 the column is a URL either way, and only where the URL comes from has changed.
@@ -70,10 +76,12 @@ questions and the screen asks them separately.
 
 ## What a parent sees
 
-A **Shop** section on that child's page in the family portal — tap the child's
-name, and their school's items are under their card. They are told whether
-something is available, never how many are left; the count is the school's
-business.
+A **Shop** tab on that child's page in the family portal — tap the child's
+name, then Shop. They are told whether something is available, never how many
+are left; the count is the school's business.
+
+The tab appears only when that child's school actually sells something. A tab
+that opens on nothing is a promise the page does not keep.
 
 It is deliberately not on the portal's front page. The catalogue comes back per
 card, so two siblings at one school meant the same jumper listed twice, above
@@ -136,7 +144,7 @@ block in `app/index.html`. It alters no existing table and no existing function.
   `supabase/migration-shop.sql`.
 - **App:** delete the block between the `SHOP MODULE — BEGIN` and
   `SHOP MODULE — END` markers, then delete every line marked
-  `SHOP MODULE mount`. There are four, each one whole line.
+  `SHOP MODULE mount`. There are five, each one whole line.
 
 What survives is two handler props on `PgDashboard` — a name in its signature
 that nothing reads, and an arrow at its call site that nothing calls. Neither
@@ -155,4 +163,4 @@ instructions above are checked rather than asserted.
 | `supabase/migration-shop-images.sql` | storage policies for item photos — optional, no table touched |
 | `supabase/test/test-shop.sql` | 74 assertions |
 | `app/index.html` | the block between the `SHOP MODULE` markers |
-| `app/test/shop.js` | 116 assertions, including the removal |
+| `app/test/shop.js` | 125 assertions, including the removal |

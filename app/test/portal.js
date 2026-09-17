@@ -50,6 +50,14 @@ const NOTE = [{ id: "a1", business_name: "Dance School", title: "Recital on the 
                 target_kind: "all", card_id: null, group_id: null, is_pinned: false }];
 
 const row = (page, n) => page.locator(".fam-kid-main").nth(n);
+// A child's page is tabbed. Everything except the card is one tap in.
+const tab = async (page, name) => {
+  const t = page.locator('.tab:has-text("' + name + '")');
+  if (await t.count() === 0) return false;
+  await t.first().click();
+  await page.waitForTimeout(400);
+  return true;
+};
 
 (async () => {
   // === the front page is names ==============================================
@@ -94,33 +102,47 @@ const row = (page, n) => page.locator(".fam-kid-main").nth(n);
     await row(page, 0).click();
     await page.waitForTimeout(600);
 
-    const t = await text(page);
+    let t = await text(page);
     ok("the page is titled with the child", /Afrodite Marina Savva/.test(t));
-    ok("and carries their card and months",
+    // The card is what a page opens on -- it is what the parent came for.
+    ok("and opens on their card and months",
        /MONTHS/i.test(t) && /JAN/i.test(t), t.slice(0, 300));
-    ok("their school's notes are here", /Recital on the 14th/.test(t));
-    ok("their shop is here", /Stoli/.test(t));
     ok("and where to pay", /Pay Online/i.test(t) && /Revolut/.test(t));
+    const labels = (await page.locator(".tab").allInnerTexts())
+      .map(x => x.split("\n")[0].trim());
+    ok("the rest is behind tabs rather than stacked under it",
+       labels.join(",") === "Card,School,Shop", labels.join(","));
+    // The notes and the shop are not on the card tab, which is the point.
+    ok("the card tab is not also the notes and the shop",
+       !/Recital on the 14th/.test(t) && !/Stoli/.test(t), t.slice(0, 400));
+
+    ok("their school's notes are one tap in", await tab(page, "School"));
+    t = await text(page);
+    ok("and are here when you get there", /Recital on the 14th/.test(t));
+
+    ok("their shop is one tap in", await tab(page, "Shop"));
+    t = await text(page);
+    ok("and is here when you get there", /Stoli/.test(t));
 
     // The whole point of the restructure.
     ok("NOTHING ABOUT THE SIBLING IS ON THIS PAGE", !/Anais/.test(t), t.slice(0, 500));
     // The bug in the screenshot: one item, listed once per child.
     ok("THE SAME ITEM IS LISTED ONCE, NOT TWICE",
        (t.match(/Stoli/g) || []).length === 1, "found " + (t.match(/Stoli/g) || []).length);
-    // The shop used to caption each block with the student it was for, which
-    // on one child's page is the name already at the top of it.
-    const shopCaption = await page.evaluate(() => {
-      const h = [...document.querySelectorAll("div")].find(d => d.textContent.trim() === "Shop"
-        && getComputedStyle(d).textTransform === "uppercase");
-      let n = h && h.parentElement && h.parentElement.nextElementSibling;
-      return n ? n.innerText.split("\n")[0] : null;
+    // Inside a tab called Shop, a heading saying Shop is the same word twice,
+    // and captioning each block with the name already at the top of the page
+    // is the same mistake again. The page title itself SHOULD name the child.
+    const shopBody = await page.evaluate(() => {
+      const bar = document.querySelector(".tabbar");
+      return bar && bar.nextElementSibling ? bar.nextElementSibling.innerText : "";
     });
-    ok("the shop is not captioned with the name at the top of the page",
-       shopCaption !== "AFRODITE MARINA SAVVA" && !/Afrodite/i.test(shopCaption || ""),
-       "caption=" + JSON.stringify(shopCaption));
+    ok("the shop tab repeats neither its own name nor the child's",
+       !/Afrodite/i.test(shopBody) && !/^\s*SHOP\b/i.test(shopBody),
+       JSON.stringify(shopBody.slice(0, 160)));
 
-    ok("unlinking is offered here, named, rather than on the list",
-       /Unlink Afrodite Marina Savva/.test(t));
+    await tab(page, "Card");
+    ok("unlinking is on the card tab, named, rather than on the list",
+       /Unlink Afrodite Marina Savva/.test(await text(page)));
 
     // Back, and the other child.
     await page.locator(".tb-back").first().click();
@@ -130,11 +152,14 @@ const row = (page, n) => page.locator(".fam-kid-main").nth(n);
 
     await row(page, 1).click();
     await page.waitForTimeout(600);
-    const t2 = await text(page);
+    let t2 = await text(page);
     ok("the other name opens the other child", /Anais Ion/.test(t2) && !/Afrodite/.test(t2));
-    ok("who has their own copy of the same item", /Stoli/.test(t2));
     ok("and no pay-online panel, because their school published no link for them",
        !/Revolut/.test(t2), t2.slice(0, 300));
+    await tab(page, "Shop");
+    t2 = await text(page);
+    ok("who has their own copy of the same item", /Stoli/.test(t2));
+    ok("and still nothing of their sibling", !/Afrodite/.test(t2), t2.slice(0, 300));
 
     await browser.close();
     ok("no page errors on a child's page",
@@ -249,6 +274,132 @@ const row = (page, n) => page.locator(".fam-kid-main").nth(n);
     const t = await text(page);
     ok("an empty portal still says what to do", /Link/i.test(t));
     ok("and shows no page to open", await page.locator(".fam-kid-main").count() === 0);
+    await browser.close();
+  }
+
+  // === the tab strip itself =================================================
+  // A tab that opens on nothing is worse than no tab: it is a promise the page
+  // does not keep, and the parent has to tap it to find that out.
+  {
+    const { browser, page } = await open({
+      role: "parent", rpc: { get_my_cards: [TWO[0]] } });   // no notes, no shop, no history
+    await page.waitForTimeout(800);
+    await row(page, 0).click();
+    await page.waitForTimeout(600);
+    ok("with nothing else to show, there is no tab bar at all",
+       await page.locator(".tab").count() === 0);
+    ok("and the card is simply the page", /MONTHS/i.test(await text(page)));
+    await browser.close();
+  }
+
+  {
+    const paid = card(1, "Afrodite Marina Savva", "Dance School", {});
+    paid.card.history = [{ n: 1, amount: 32, date: "15/09/2026" },
+                         { n: 2, amount: 18, date: "16/09/2026", trigger_source: "stamp" }];
+    const { browser, page } = await open({ role: "parent", rpc: { get_my_cards: [paid] } });
+    await page.waitForTimeout(800);
+    await row(page, 0).click();
+    await page.waitForTimeout(600);
+    const labels = (await page.locator(".tab").allInnerTexts()).map(x => x.split("\n")[0].trim());
+    ok("a card with payments earns a History tab and nothing else",
+       labels.join(",") === "Card,History", labels.join(","));
+
+    await tab(page, "History");
+    const h = await text(page);
+    ok("which lists what was actually handed over", /€32\.00/.test(h) && /€18\.00/.test(h));
+    // Newest first: dates are dd/mm/yyyy and sort wrongly as text, so the
+    // payment number is what orders them.
+    ok("newest first", h.indexOf("€18.00") < h.indexOf("€32.00"), h.slice(0, 200));
+    // A payment nobody remembers making needs an explanation attached.
+    ok("and says where a payment came from when it was not typed by hand",
+       /STAMP/i.test(h), h.slice(0, 200));
+    await browser.close();
+  }
+
+  // An unread note puts its count on the tab, so it is visible without opening.
+  {
+    const { browser, page } = await open({
+      role: "parent",
+      rpc: { get_my_cards: [TWO[0]], get_my_announcements: NOTE, get_my_ann_reads: [] } });
+    await page.waitForTimeout(800);
+    await row(page, 0).click();
+    await page.waitForTimeout(600);
+    ok("an unread note is counted on the School tab",
+       (await page.locator(".tab-badge").innerText()).trim() === "1");
+    await browser.close();
+  }
+
+  // === the student portal ===================================================
+  // Same three tabs, same reason: this was a card, then where to pay, then
+  // every note the school ever posted, then the history underneath all of it.
+  {
+    const STU = {
+      card: { id: "card-1", name: "Andriana", level: { id: "lv1", name: "Begginer" },
+              share_code: "AQ3RG0", payments: {},
+              history: [{ n: 1, amount: 32, date: "15/09/2026" },
+                        { n: 3, amount: 50, date: "16/09/2026", trigger_source: "link" }] },
+      business: { name: "Dance School", type: "Other", fee: 50, year: 2026, biz_code: "B1",
+                  inactive_months: [], levels: [], custom_card_image: null },
+      announcements: [{ id: "a1", title: "Kalimera", body: "Kalimera se ploys",
+                        created_at: "2026-09-17T09:00:00Z", target_kind: "all" }],
+    };
+    const { browser, page, errors } = await open({
+      signedOut: true, rpc: { get_student_card: STU } });
+    await page.waitForTimeout(700);
+    await page.getByText("Quick View").click();
+    await page.waitForTimeout(500);
+    await page.locator("input.inp").first().fill("AQ3RG0");
+    await page.locator("button.btn").first().click();
+    await page.waitForTimeout(500);
+    await page.locator("input.inp").first().fill("1234");
+    await page.locator("button.btn").first().click();
+    await page.waitForTimeout(900);
+
+    const labels = (await page.locator(".tab").allInnerTexts()).map(x => x.split("\n")[0].trim());
+    ok("the student portal has the same tabs", labels.join(",") === "Card,School,History",
+       labels.join(","));
+
+    let t = await text(page);
+    ok("it opens on the card", /MONTHS/i.test(t) && /Andriana/.test(t));
+    ok("with the notes and the history not stacked under it",
+       !/Kalimera se ploys/.test(t) && !/Payment #/.test(t), t.slice(0, 300));
+
+    await tab(page, "School");
+    ok("the school's notes are one tap in", /Kalimera se ploys/.test(await text(page)));
+
+    await tab(page, "History");
+    t = await text(page);
+    ok("and the payment history another", /€50\.00/.test(t) && /€32\.00/.test(t));
+    ok("newest first here too", t.indexOf("€50.00") < t.indexOf("€32.00"), t.slice(0, 200));
+    ok("with the source of a payment made through the link",
+       /PAID ONLINE/i.test(t), t.slice(0, 250));
+
+    await browser.close();
+    ok("no page errors in the student portal",
+       errors.filter(e => !/Failed to load resource|ERR_/.test(e)).length === 0,
+       errors.slice(0, 3).join(" | "));
+  }
+
+  // A student with nothing but a card sees no tab bar, same as a parent.
+  {
+    const { browser, page } = await open({ signedOut: true, rpc: { get_student_card: {
+      card: { id: "card-1", name: "Andriana", level: null, share_code: "AQ3RG0",
+              payments: {}, history: [] },
+      business: { name: "Dance School", type: "Other", fee: 50, year: 2026, biz_code: "B1",
+                  inactive_months: [], levels: [], custom_card_image: null },
+      announcements: [] } } });
+    await page.waitForTimeout(700);
+    await page.getByText("Quick View").click();
+    await page.waitForTimeout(500);
+    await page.locator("input.inp").first().fill("AQ3RG0");
+    await page.locator("button.btn").first().click();
+    await page.waitForTimeout(500);
+    await page.locator("input.inp").first().fill("1234");
+    await page.locator("button.btn").first().click();
+    await page.waitForTimeout(900);
+    ok("a student with only a card gets no tab bar",
+       await page.locator(".tab").count() === 0);
+    ok("and still sees their card", /Andriana/.test(await text(page)));
     await browser.close();
   }
 
