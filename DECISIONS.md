@@ -555,3 +555,62 @@ it until they navigate away — and if they act on what they see, acting on
 something that no longer exists.
 
 **What changes it:** nothing. Derive, don't snapshot.
+
+---
+
+## The notifications service worker caches nothing, and must not start
+
+A service worker exists in PayStamp for exactly one reason: a browser will not
+deliver a push notification without one. It has no `fetch` handler.
+
+The temptation is obvious — a service worker is *right there*, and making the
+app work offline looks like a free win. It is not. PayStamp is a single HTML
+file deployed by overwriting it. A worker that cached the app would keep
+serving whichever version it had cached, so a school could be looking at last
+week's app while the database had moved on: no error, no clue, and nothing they
+could do about it. Every support call would start with "try clearing your
+browser data", which is not a sentence to say to a customer.
+
+`app/test/push.js` asserts that the set of handlers is exactly install,
+activate, push and notificationclick, so adding a fetch handler fails a test
+rather than shipping.
+
+**What changes it:** a genuine need to work offline, which would then be
+designed deliberately with a version check — not acquired by accident.
+
+---
+
+## Notifications are asked for, never asked about
+
+No permission prompt appears on its own. There is a panel with a button, and
+the browser is asked only after somebody presses it.
+
+A prompt that appears unasked is the one people dismiss without reading, and a
+dismissal is not neutral: once a browser records "denied", we cannot ask again.
+Only the parent can undo it, in settings, which means the cost of asking at the
+wrong moment is that parent never being reachable again.
+
+Two consequences worth keeping. An iPhone in a Safari tab has no push machinery
+at all — not a refused permission, no API — so the panel tells them to add
+PayStamp to the Home Screen rather than offering a button that cannot work. And
+a browser with genuinely no push says nothing at all, because explaining a
+limitation somebody cannot act on is noise on a screen whose whole point is
+being quiet.
+
+**What changes it:** nothing. The one-shot nature of "denied" is not something
+better copy can recover from.
+
+---
+
+## A subscription we failed to record is undone
+
+Turning notifications on is two steps: the browser subscribes, then we store
+what it gave us. If the second fails, the first is rolled back.
+
+Otherwise the browser holds a live subscription, the panel reads it and says
+"on", and nothing is ever sent to it — because the sender works from our table,
+which never got the row. A parent who has been told they will be notified, and
+will not be, is worse off than one who was told it did not work.
+
+**What changes it:** nothing. Any state the app reports must be the state the
+sender acts on.

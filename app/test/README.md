@@ -40,7 +40,18 @@ node stamptrigger.js  # the stamp trigger and its calibration screen
 node paylink.js   # the payment link, and that a claim never looks like a payment
 node shop.js      # the shop module — and that it can be taken back out
 node portal.js    # the family portal: a list of names, one page per child
+node push.js      # notifications: the four device states, and the worker
 ```
+
+`push.js` cannot prove a real push arrives — that needs the Edge Function
+deployed and a real device. What it does cover is everything on this side of
+that line, including the assertion that `app/sw.js` has **no fetch handler**:
+a service worker that cached this single-file app would serve a stale version
+to a whole school with no way for them to tell.
+
+It uses `open({ init })` to stand in for `Notification` and `PushManager`,
+because a headless browser cannot be put into "denied" or stripped of push
+otherwise, and those states are most of the behaviour.
 
 `shop.js` keeps the shop out of `sweep.js`'s list on purpose. Removing the
 module should never mean editing a test that is not the module's own, so the
