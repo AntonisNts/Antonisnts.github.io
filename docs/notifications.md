@@ -105,6 +105,31 @@ Android works in an ordinary tab.
 
 ---
 
+## The number on the app icon
+
+A banner and a badge are two different things: `showNotification()` puts the
+banner on the lock screen, `navigator.setAppBadge()` puts the number on the
+icon. The first version did only the first, which is why notifications arrived
+and the icon stayed bare.
+
+The number is **that parent's unread announcement count**, not how many pushes
+were sent. A badge that disagrees with what is inside the app is worse than no
+badge, so it is counted in the database from the same two tables the portal
+reads, and carried per subscription in the push payload.
+
+Two things keep it honest:
+
+- the **service worker** sets it when a push lands, to the count the sender
+  worked out;
+- the **portal** sets it on every render, so opening a note clears the badge
+  immediately, and reading something on another device corrects it here.
+
+Both write the same number from the same definition of unread. Counting in the
+browser instead would drift the moment a parent read something elsewhere.
+
+It needs `supabase/migration-push-badge.sql`. Without it the payload carries no
+count and the worker leaves the badge alone — notifications still arrive.
+
 ## What a notification says
 
 The school's name as the title, the announcement's headline as the body. That
@@ -179,8 +204,9 @@ the Edge Function and the webhook. Nothing outside those objects was changed.
 | file | what it is |
 |---|---|
 | `supabase/migration-push.sql` | one table, five functions, its own removal instructions |
+| `supabase/migration-push-badge.sql` | the unread count that becomes the icon's number |
 | `supabase/functions/push-announcement/index.ts` | the sender |
 | `app/sw.js` | the service worker — push only, no caching |
 | `app/index.html` | `PushSwitch`, and the VAPID public key |
-| `supabase/test/test-push.sql` | 44 assertions |
-| `app/test/push.js` | 52 assertions |
+| `supabase/test/test-push.sql` | 51 assertions |
+| `app/test/push.js` | 58 assertions |

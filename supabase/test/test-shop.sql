@@ -394,13 +394,89 @@ select 'and switching it back on restores the catalogue intact' as t,
 
 
 \echo
+\echo '=== H2. the student portal: a code and a PIN, not an account ==='
+-- "some parents may have only one kid in one school only" -- and those use the
+-- portal that has no login, where auth.email() is null and every _mine
+-- function returns nothing.
+select pg_temp.act_as(null, null);
+
+select 'signed out, the parent''s catalogue is empty as ever' as t,
+       public.shop_catalogue_mine() = '[]'::jsonb as pass;
+
+select 'but a code and a PIN open the same shop' as t,
+       jsonb_array_length(public.shop_catalogue_student('SHPIRA','1111')) = 1 as pass;
+
+select 'with the school''s items in it' as t,
+       jsonb_array_length(
+         public.shop_catalogue_student('SHPIRA','1111')->0->'items') >= 3 as pass;
+
+select 'a wrong PIN opens nothing' as t,
+       public.shop_catalogue_student('SHPIRA','9999') = '[]'::jsonb as pass;
+select 'and an unknown code opens nothing' as t,
+       public.shop_catalogue_student('NOPE','1111') = '[]'::jsonb as pass;
+
+create temp table _so as select public.shop_order_place_student('SHPIRA','1111',
+  jsonb_build_array(jsonb_build_object('item_id',(select jumper from _it),'size','M','qty',1))) as r;
+select 'a student can place an order' as t, ((select r from _so)->>'ok')::boolean as pass;
+
+select 'priced by the database, not the portal' as t,
+       ((select r from _so)->>'total')::numeric = 25 as pass;
+
+select 'and it is recorded as coming from the student portal' as t,
+       ordered_by = 'student:SHPIRA' as pass
+  from public.shop_orders where id = ((select r from _so)->>'order')::uuid;
+
+select 'a wrong PIN places nothing' as t,
+       public.shop_order_place_student('SHPIRA','9999',
+         jsonb_build_array(jsonb_build_object('item_id',(select jumper from _it),'size','M','qty',1)))
+       ->>'error' = 'no_match' as pass;
+
+select 'a student sees their own orders' as t,
+       jsonb_array_length(public.shop_orders_mine_student('SHPIRA','1111')) >= 1 as pass;
+select 'and none of another student''s' as t,
+       jsonb_array_length(public.shop_orders_mine_student('SHPLOU','2222')) = 0 as pass;
+
+-- The claim path, same rule as everywhere: claimed is not paid.
+select 'a student can say they paid' as t,
+       (public.shop_order_claim_paid_student('SHPIRA','1111',
+          ((select r from _so)->>'order')::uuid, 25, current_date, 'REV-1')->>'ok')::boolean as pass;
+select 'which marks it claimed, NOT paid' as t,
+       payment_status = 'claimed' and paid_at is null as pass
+  from public.shop_orders where id = ((select r from _so)->>'order')::uuid;
+
+select 'and they cannot claim against an order that is not theirs' as t,
+       public.shop_order_claim_paid_student('SHPLOU','2222',
+         ((select r from _so)->>'order')::uuid, 25, current_date)->>'error' = 'no_match' as pass;
+
+-- The shared writer authorises nothing, so nobody may call it directly.
+select 'the order writer is granted to nobody' as t,
+       (select not has_function_privilege('authenticated','public.shop_order_open(uuid,text,jsonb,text)','execute')
+           and not has_function_privilege('anon','public.shop_order_open(uuid,text,jsonb,text)','execute')) as pass;
+select 'but the student doorway is open to anon, which has no session' as t,
+       (select has_function_privilege('anon','public.shop_order_place_student(text,text,jsonb,text)','execute')) as pass;
+
+-- Switching the shop off closes both doors, not just the parent's.
+select pg_temp.act_as('c0000000-0000-0000-0000-00000000000a','shop-owner@t.example');
+select public.shop_settings_set(false) is not null as _setup;
+select pg_temp.act_as(null, null);
+select 'shop off: the student portal shows nothing either' as t,
+       public.shop_catalogue_student('SHPIRA','1111') = '[]'::jsonb as pass;
+select 'and cannot order' as t,
+       public.shop_order_place_student('SHPIRA','1111',
+         jsonb_build_array(jsonb_build_object('item_id',(select jumper from _it),'size','M','qty',1)))
+       ->>'error' = 'shop_off' as pass;
+select pg_temp.act_as('c0000000-0000-0000-0000-00000000000a','shop-owner@t.example');
+select public.shop_settings_set(true) is not null as _setup;
+
+
+\echo
 \echo '=== I. the module touches nothing outside itself ==='
 
 select 'every table it added is prefixed shop_' as t, count(*) = 4 as pass
   from information_schema.tables
  where table_schema = 'public' and table_name like 'shop\_%';
 
-select 'and every function too' as t, count(*) = 16 as pass
+select 'and every function too' as t, count(*) = 21 as pass
   from pg_proc where proname like 'shop\_%';
 
 -- If this ever fails, the module has stopped being removable: something
@@ -422,9 +498,33 @@ select 'every shop table is function-internal' as t, count(*) = 0 as pass
   from information_schema.role_table_grants
  where table_name like 'shop\_%' and grantee in ('anon','authenticated');
 
-select 'anon reaches nothing in the module' as t, count(*) = 0 as pass
+-- anon reaches exactly four things, and they are the student portal's -- which
+-- has no session at all, so anon is who its callers are. Each proves the code
+-- and PIN for itself, under the same rate limit as the rest of that portal.
+select 'anon reaches only the student portal''s four functions' as t,
+       count(*) = 4 as pass
   from pg_proc p where p.proname like 'shop\_%'
    and has_function_privilege('anon', p.oid, 'execute');
+
+select 'and they are the four expected ones' as t, count(*) = 4 as pass
+  from pg_proc p
+ where p.proname in ('shop_catalogue_student','shop_orders_mine_student',
+                     'shop_order_place_student','shop_order_claim_paid_student')
+   and has_function_privilege('anon', p.oid, 'execute');
+
+-- The parent's own functions read auth.email(), which is null for anon. If one
+-- of them were ever granted, it would not leak -- it would silently do nothing,
+-- which is its own kind of bug.
+select 'no _mine function is reachable without a session' as t, count(*) = 0 as pass
+  from pg_proc p where p.proname like 'shop\_%mine'
+   and has_function_privilege('anon', p.oid, 'execute');
+
+-- The shared writer authorises nothing at all: it is handed a card its caller
+-- has already proved the right to order against.
+select 'and the order writer is callable by nobody' as t, count(*) = 0 as pass
+  from pg_proc p where p.proname = 'shop_order_open'
+   and (has_function_privilege('anon', p.oid, 'execute')
+     or has_function_privilege('authenticated', p.oid, 'execute'));
 
 -- The seam settles an order without asking who wants it settled, so nothing
 -- outside the module may call it directly.
@@ -435,7 +535,7 @@ select 'the payment seam and the two helpers are callable by nobody' as t,
    and (has_function_privilege('anon', p.oid, 'execute')
      or has_function_privilege('authenticated', p.oid, 'execute'));
 
-select 'and the thirteen entry points are reachable when logged in' as t,
-       count(*) = 13 as pass
+select 'and the seventeen entry points are reachable when logged in' as t,
+       count(*) = 17 as pass
   from pg_proc p where p.proname like 'shop\_%'
    and has_function_privilege('authenticated', p.oid, 'execute');

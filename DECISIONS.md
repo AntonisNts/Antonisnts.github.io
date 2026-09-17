@@ -650,3 +650,44 @@ on a tap. The one exception is the 56px square on the owner's own item list,
 which is an identifier rather than the picture; it crops, and it opens.
 
 **What changes it:** nothing. A photograph exists to be looked at.
+
+---
+
+## The badge is counted in the database, not in the browser
+
+An app icon's number is easy to get wrong in a way nobody notices for weeks.
+The obvious implementation is to increment a counter in the service worker on
+every push and clear it when the app opens. It is also wrong the moment a
+parent reads something on another device, or opens a note without a push
+having arrived, and the failure is silent: the icon says 3, the app says
+nothing is unread, and the parent stops believing the badge.
+
+So the number is that parent's unread count, computed from the same two tables
+the portal reads, and carried per subscription in the push payload. The service
+worker sets what it is told; the portal re-sets it on every render. Two writers,
+one definition.
+
+The cost is that the sender does a count per recipient. At the size of a school
+that is nothing, and it buys a badge that cannot disagree with the app.
+
+**What changes it:** enough recipients that the per-person count matters, which
+would mean batching by unread count rather than guessing in the browser.
+
+---
+
+## The student portal gets the same features, through its own door
+
+A student opens their card with a share code and a PIN. There is no session, so
+`auth.email()` is null and every `_mine` function correctly returns nothing.
+
+The temptation each time is to loosen the parent's function so it accepts a
+code as well. That would put two different ideas of identity inside one
+function, and the weaker one would decide. Instead the logic is split: an inner
+writer that authorises nothing, and two doorways that each prove who is calling
+in their own way — `payment_claim_open` first, and now `shop_order_open`.
+
+The student doorways are granted to `anon`, which is correct and looks alarming
+until you notice each one calls `stamp_student_card` first: rate limited, and
+checking the PIN itself rather than trusting the page.
+
+**What changes it:** nothing. One function, one notion of who is calling.

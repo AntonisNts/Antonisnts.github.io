@@ -88,14 +88,17 @@ Deno.serve(async (req) => {
       status: 200, headers: { "Content-Type": "application/json" } });
   }
 
-  const subs: Array<{ endpoint: string; p256dh: string; auth: string }> =
+  const subs: Array<{ endpoint: string; p256dh: string; auth: string; badge?: number }> =
     aud.subscriptions ?? [];
 
-  const body = JSON.stringify({
+  // Everything except the badge is the same for everybody; the badge is that
+  // parent's own unread count, so the body is built per subscription.
+  const bodyFor = (badge?: number) => JSON.stringify({
     title: trim(aud.school, 60) || "PayStamp",
     body: trim(aud.title, 120),
     url: "/app/",
     tag: "ann-" + id,
+    badge: typeof badge === "number" ? badge : undefined,
   });
 
   let sent = 0, gone = 0, failed = 0;
@@ -107,7 +110,7 @@ Deno.serve(async (req) => {
     try {
       await webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-        body,
+        bodyFor(s.badge),
         { TTL: 86400 },
       );
       sent++;

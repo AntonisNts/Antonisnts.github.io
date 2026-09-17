@@ -776,16 +776,16 @@ const CATALOGUE = [{
     const block = src.slice(begin, end);
     const outside = src.slice(0, begin) + src.slice(end);
     const mounts = (outside.match(/SHOP MODULE mount/g) || []).length;
-    ok("with a known number of mounts outside it", mounts === 5, "found " + mounts);
+    ok("with a known number of mounts outside it", mounts === 8, "found " + mounts);
 
     // The removal instructions say "delete the block and every marked line".
     // Do exactly that, then look at what is left: anything still naming the
     // module is a reference the instructions would have left dangling.
     const stripped = outside.split("\n").filter(l => !/SHOP MODULE mount/.test(l)).join("\n");
     const left = stripped.split("\n").filter(l =>
-      /PgShopItems|PgShopOrders|ShopPanel|useShopPending|useShopCards|shopCards|shopPending|shopOn|onShopItems|onShopOrders|view==="shop/.test(l));
+      /PgShopItems|PgShopOrders|ShopPanel|useShopPending|useShopCards|shopCards|shopPending|shopOn|stuShop|setStuShop|onShopItems|onShopOrders|view==="shop/.test(l));
     ok("after the documented removal, nothing calls the module",
-       !/PgShopItems|<ShopPanel|useShopPending|useShopCards|view==="shop/.test(stripped),
+       !/PgShopItems|<ShopPanel|useShopPending|useShopCards|stuShop|view==="shop/.test(stripped),
        left.slice(0, 2).map(l => l.slice(0, 140)).join(" // "));
 
     // What does survive: two handler props on PgDashboard. Both name only
@@ -798,7 +798,7 @@ const CATALOGUE = [{
     // The surviving names must not reach anything the removal deleted -- a
     // prop reading shopPending, say, would be a ReferenceError on load.
     ok("which reach nothing the removal took away",
-       !/shopPending|loadShopPending|setShopPending|shopCards|shopOn/.test(stripped),
+       !/shopPending|loadShopPending|setShopPending|shopCards|shopOn|stuShop/.test(stripped),
        left.slice(0, 2).map(l => l.slice(0, 140)).join(" // "));
     ok("and the block's own instructions describe them",
        /neither refers to anything the removal deletes/i.test(block.replace(/\n\s*/g, " ")));

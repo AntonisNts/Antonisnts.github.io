@@ -403,6 +403,98 @@ const tab = async (page, name) => {
     await browser.close();
   }
 
+  // === the shop in the student portal =======================================
+  // "some parents may have only one kid in one school only" -- and those
+  // families use the code-and-PIN portal, which had no shop at all because
+  // every shop function was keyed on a signed-in email.
+  {
+    const STU = {
+      card: { id: "card-1", name: "Andriana", level: null, share_code: "AQ3RG0",
+              payments: {}, history: [] },
+      business: { name: "Dance School", type: "Other", fee: 50, year: 2026, biz_code: "B1",
+                  inactive_months: [], levels: [], custom_card_image: null },
+      announcements: [],
+    };
+    const CAT = [{ card_id: "card-1", student: "Andriana", school: "Dance School",
+      items: [{ id: "i1", name: "Uniform", description: null, price: 50,
+                sizes: ["S", "M"], out_of_stock: false, image_url: null }] }];
+
+    const { browser, page, errors } = await open({ signedOut: true, rpc: {
+      get_student_card: STU, shop_catalogue_student: CAT,
+      shop_orders_mine_student: [],
+      shop_order_place_student: { ok: true, order: "o1", total: 50 } } });
+    await page.waitForTimeout(700);
+    await page.getByText("Quick View").click();
+    await page.waitForTimeout(500);
+    await page.locator("input.inp").first().fill("AQ3RG0");
+    await page.locator("button.btn").first().click();
+    await page.waitForTimeout(500);
+    await page.locator("input.inp").first().fill("1234");
+    await page.locator("button.btn").first().click();
+    await page.waitForTimeout(900);
+
+    const labels = (await page.locator(".tab").allInnerTexts()).map(x => x.split("\n")[0].trim());
+    ok("a student whose school sells something gets a Shop tab",
+       labels.join(",") === "Card,Shop", labels.join(","));
+
+    await tab(page, "Shop");
+    ok("with the school's items in it", /Uniform/.test(await text(page)));
+
+    await page.getByRole("button", { name: "Order", exact: true }).first().click();
+    await page.waitForTimeout(300);
+    await page.locator('.scr-chip:has-text("M")').first().click();
+    await page.locator('button:has-text("Place Order")').first().click();
+    await page.waitForTimeout(500);
+
+    const sent = await page.evaluate(() => (window.__RPC_CALLS || [])
+      .find(c => c[0] === "shop_order_place_student"));
+    // The student portal has no session, so identity is the code and the PIN --
+    // which the database re-checks under the same rate limit rather than
+    // taking this page's word for it.
+    ok("ordering proves who they are with the code and PIN",
+       sent && sent[1].p_code === "AQ3RG0" && sent[1].p_pin === "1234",
+       JSON.stringify(sent && sent[1]));
+    ok("and carries no card id, because the code already picked the card",
+       sent && sent[1].p_card_id === undefined, JSON.stringify(sent && sent[1]));
+    ok("with the item and size, and still no price",
+       sent && sent[1].p_lines[0].item_id === "i1" && sent[1].p_lines[0].size === "M"
+       && JSON.stringify(sent[1]).indexOf("price") === -1, JSON.stringify(sent && sent[1]));
+    // The parent's function must not be what a student portal calls: it reads
+    // auth.email(), which is null here, so it would silently do nothing.
+    ok("and never through the signed-in parent's function",
+       !(await page.evaluate(() => (window.__RPC_CALLS || [])
+         .some(c => c[0] === "shop_order_place"))));
+
+    await browser.close();
+    ok("no page errors in the student shop",
+       errors.filter(e => !/Failed to load resource|ERR_/.test(e)).length === 0,
+       errors.slice(0, 3).join(" | "));
+  }
+
+  // A school with the shop off gives a student no tab, same as a parent.
+  {
+    const { browser, page } = await open({ signedOut: true, rpc: {
+      get_student_card: {
+        card: { id: "card-1", name: "Andriana", level: null, share_code: "AQ3RG0",
+                payments: {}, history: [] },
+        business: { name: "Dance School", type: "Other", fee: 50, year: 2026, biz_code: "B1",
+                    inactive_months: [], levels: [], custom_card_image: null },
+        announcements: [] },
+      shop_catalogue_student: [] } });
+    await page.waitForTimeout(700);
+    await page.getByText("Quick View").click();
+    await page.waitForTimeout(500);
+    await page.locator("input.inp").first().fill("AQ3RG0");
+    await page.locator("button.btn").first().click();
+    await page.waitForTimeout(500);
+    await page.locator("input.inp").first().fill("1234");
+    await page.locator("button.btn").first().click();
+    await page.waitForTimeout(900);
+    ok("shop off: a student gets no Shop tab either",
+       await page.locator('.tab:has-text("Shop")').count() === 0);
+    await browser.close();
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

@@ -1,5 +1,8 @@
 const { open } = require("./harness");
-const SETTINGS = ["Months","Levels","Groups","Manage","Colour","Icon","Card","Remind","Announcements","Registration","Tap to Pay","Export"];
+// Colour, Icon, Card and Name are behind "Customise" now -- four rows that
+// were all the same question on a list that had grown to six groups.
+const SETTINGS = ["Months","Levels","Groups","Manage","Customise","Remind","Announcements","Registration","Tap to Pay","Export"];
+const CUSTOMISE = ["Name","Colour","Icon","Card"];
 let pass=0, fail=0;
 const ok=(n,c,d)=>{ c?(pass++,console.log("  ok   "+n)):(fail++,console.log("  FAIL "+n+(d?" — "+d:""))); };
 (async () => {
@@ -26,6 +29,31 @@ const ok=(n,c,d)=>{ c?(pass++,console.log("  ok   "+n)):(fail++,console.log("  F
     await page.locator(".tb-back").first().click();
     await page.waitForTimeout(400);
   }
+
+  // The four screens behind Customise still open, on the skin, as they did
+  // when each had a settings row of its own.
+  await page.locator(".dash-gear").first().click();
+  await page.waitForTimeout(350);
+  await page.locator(".set-ov").getByText("Customise", { exact: true }).locator("visible=true").first().click();
+  await page.waitForTimeout(550);
+  for (const name of CUSTOMISE) {
+    await page.getByText(name, { exact: true }).locator("visible=true").first().click();
+    await page.waitForTimeout(550);
+    const st = await page.evaluate(() => {
+      const r = document.querySelector(".page,.reg-page,.dash-shell");
+      return { cls: r ? r.className : null,
+               published: r ? (r.style.getPropertyValue("--accent") || "") : "" };
+    });
+    ok("Customise > " + name + " opens on the skin", /\bscr\b/.test(st.cls || ""), "root=" + st.cls);
+    // Back from one of these lands on Customise, not the dashboard -- going
+    // two levels in and one level out is how you lose people.
+    await page.locator(".tb-back").first().click();
+    await page.waitForTimeout(450);
+    ok("and comes back to Customise",
+       /Customise/.test(await page.evaluate(() => document.body.innerText)));
+  }
+  await page.locator(".tb-back").first().click();
+  await page.waitForTimeout(450);
 
   // The QR actually drawn on the Tap to Pay screen. The matrix itself is
   // covered in qr.js; what this adds is that it reaches the canvas at all --

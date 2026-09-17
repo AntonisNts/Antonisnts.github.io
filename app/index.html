@@ -1223,6 +1223,19 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
   );
 }
 
+/* Keep the number on the app icon equal to what the portal actually shows.
+
+   The service worker sets it when a push lands; this corrects it whenever the
+   portal is open, which is what stops it drifting after a parent reads
+   something on another device, or reads something here without a push having
+   arrived. Both write the same number, from the same definition of unread. */
+function syncAppBadge(n) {
+  try {
+    if (!navigator.setAppBadge) return;
+    if (n > 0) navigator.setAppBadge(n); else navigator.clearAppBadge();
+  } catch (e) { /* unsupported, or not installed: nothing to keep honest */ }
+}
+
 /* The switch itself. `compact` is the version that sits on the family portal
    until it has been dealt with; the full one lives in Account and stays there.
 
@@ -1831,7 +1844,18 @@ function ShopPhoto({ url, alt, maxHeight, dim }) {
    This is also the fix for the same jumper appearing twice: the catalogue comes
    back per card, so two siblings at one school meant the item listed twice.
    Showing one child at a time makes that impossible rather than deduplicated. */
-function ShopPanel({ accent, cards, bare }) {
+/* `student` is {code, pin} for the portal that has no login. The panel is the
+   same either way; only which four functions it calls changes, because a
+   student proves who they are with a code and a PIN rather than a session. */
+function ShopPanel({ accent, cards, bare, student }) {
+  const S = student
+    ? { cat: ["shop_catalogue_student", { p_code: student.code, p_pin: student.pin }],
+        mine: ["shop_orders_mine_student", { p_code: student.code, p_pin: student.pin }],
+        place: "shop_order_place_student",
+        claim: "shop_order_claim_paid_student",
+        extra: { p_code: student.code, p_pin: student.pin } }
+    : { cat: ["shop_catalogue_mine", {}], mine: ["shop_orders_mine", {}],
+        place: "shop_order_place", claim: "shop_order_claim_paid", extra: {} };
   const [cat, setCat]       = useState(null);
   const [orders, setOrders] = useState([]);
   const [open, setOpen]     = useState(null);   // {card_id, item, size, qty}
@@ -1846,14 +1870,20 @@ function ShopPanel({ accent, cards, bare }) {
 
   async function load() {
     try {
-      const { data: c } = await sb.rpc("shop_catalogue_mine");
+      const { data: c } = await sb.rpc(S.cat[0], S.cat[1]);
       setCat(c || []);
-      const { data: o } = await sb.rpc("shop_orders_mine");
+      const { data: o } = await sb.rpc(S.mine[0], S.mine[1]);
       setOrders(o || []);
     } catch (e) { setCat([]); }
     try {
-      const { data: l } = await sb.rpc("payment_links_mine");
-      const m = {}; (l || []).forEach(x => { m[x.card_id] = x; }); setLinks(m);
+      if (student) {
+        const { data: l } = await sb.rpc("payment_link_student",
+          { p_code: student.code, p_pin: student.pin });
+        setLinks(l && l.link ? { [(cat && cat[0] && cat[0].card_id) || "_"]: l, _any: l } : {});
+      } else {
+        const { data: l } = await sb.rpc("payment_links_mine");
+        const m = {}; (l || []).forEach(x => { m[x.card_id] = x; }); setLinks(m);
+      }
     } catch (e) { setLinks({}); }
   }
   useEffect(() => { load(); }, []);
@@ -1865,9 +1895,9 @@ function ShopPanel({ accent, cards, bare }) {
     const amt = parseFloat(claim.amount);
     if (!amt || amt <= 0) { setClaim(c => ({...c, err:"How much did you pay?"})); return; }
     setClaim(c => ({...c, err:"", busy:true}));
-    const { data: r, error } = await sb.rpc("shop_order_claim_paid", {
+    const { data: r, error } = await sb.rpc(S.claim, Object.assign({}, S.extra, {
       p_order_id: o.id, p_amount: amt, p_paid_on: claim.when,
-      p_reference: (claim.ref || "").trim() || null });
+      p_reference: (claim.ref || "").trim() || null }));
     if (error || (r && r.error)) {
       setClaim(c => ({...c, busy:false,
         err: (r && r.error === "bad_date") ? "That date is not one we can use — check the day."
@@ -1883,10 +1913,10 @@ function ShopPanel({ accent, cards, bare }) {
     const o = open;
     if (o.item.sizes && o.item.sizes.length && !o.size) { setErr("Choose a size."); return; }
     setErr(""); setBusy(true);
-    const { data: r, error } = await sb.rpc("shop_order_place", {
-      p_card_id: o.card_id,
-      p_lines: [{ item_id: o.item.id, size: o.size || null, qty: o.qty }],
-      p_note: null });
+    const { data: r, error } = await sb.rpc(S.place, Object.assign({}, S.extra,
+      student ? {} : { p_card_id: o.card_id },
+      { p_lines: [{ item_id: o.item.id, size: o.size || null, qty: o.qty }],
+        p_note: null }));
     setBusy(false);
     if (error)                      { setErr(error.message); return; }
     if (r.error === "out_of_stock") { setErr("That has just sold out."); load(); return; }
@@ -1983,13 +2013,13 @@ function ShopPanel({ accent, cards, bare }) {
 
               {/* Same two steps as the fee side: the link opens first, and only
                   then is there anything to claim. */}
-              {o.payment_status === "unpaid" && o.status !== "cancelled" && links[o.card_id] && (
+              {o.payment_status === "unpaid" && o.status !== "cancelled" && (links[o.card_id] || links._any) && (
                 <div style={{marginTop:6}}>
-                  <a href={links[o.card_id].link} target="_blank" rel="noopener noreferrer"
+                  <a href={(links[o.card_id]||links._any).link} target="_blank" rel="noopener noreferrer"
                      onClick={()=>setClaim({order_id:o.id, opened:true, form:false, amount:String(Number(o.total).toFixed(2)),
                        when:new Date().toISOString().slice(0,10), ref:"", err:"", busy:false})}
                      style={{fontSize:".74rem",color:"var(--accent)",fontWeight:700,textDecoration:"none"}}>
-                    {"Pay online" + (links[o.card_id].name ? " · " + links[o.card_id].name : "")}
+                    {"Pay online" + ((links[o.card_id]||links._any).name ? " · " + (links[o.card_id]||links._any).name : "")}
                   </a>
                   {claim && claim.order_id === o.id && claim.opened && !claim.form && (
                     <button className="scr-btn wide" style={{marginTop:8}}
@@ -3213,12 +3243,15 @@ function PgStamp({ onDone, preset, studentAuth }) {
   </>);
 }
 
-function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onName, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded, onStampTag, onStampCal, onPayLink, onPayQueue, pendingPays, onShopItems, onShopOrders }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
+function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onName, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded, onStampTag, onStampCal, onPayLink, onPayQueue, pendingPays, onShopItems, onShopOrders, onCustomise }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
       the two can never fall out of step. Grouped by what the owner is trying
       to do rather than by when each screen happened to be built. */
    const SET_GROUPS = [
      ["Students",      [["📅","Months","Manage active/inactive months",onMonths],["🎓","Levels","Edit student levels & fees",onLevels],["👥","Groups","Weekly schedule by group",onGroups],["🗂️","Manage","Create groups & assign teachers",onManage]]],
-     ["Appearance",    [["✏️","Name","Rename your school",onName],["🎨","Colour","Pick your accent colour",onTheme],["🏫","Icon","Choose your school's icon",onIcon],["🖼️","Card","Choose card design",onCustomCard]]],
+     /* Four rows that were all the same question -- what the school looks
+        like -- on a list that had grown to six groups. One row now, and the
+        four screens behind it, unchanged. */
+     ["Appearance",    [["🎨","Customise","Name, colour, icon and card",onCustomise]]],
      ["Communication", [["🔔","Remind","Send payment reminders",onRemind],["📣","Announcements","Post news to parents & students",onAnnouncements],["📝","Registration","Public sign-up links & requests",onRegistrations,pendingRegs]]],
      /* Always offered now. Calibrating is what switches the stamp on for a
         school's parents, so hiding the screen behind a flag would have left
@@ -3960,6 +3993,11 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
   // the payment history pushed off the bottom of it. Collapsed to the newest
   // few, opened by a tap.
   const [annOpen, setAnnOpen] = useState(false);
+  /* Whether this student's school sells anything, for the tab strip. Empty
+     until it answers, which is right -- a Shop tab that appears and turns out
+     to be empty is worse than one a moment late. */
+  const [stuShop, setStuShop] = useState([]);  /* SHOP MODULE mount */
+
   /* A confirmation the stamp trigger opened on this card. The student portal
      has no login, so the identity carried through is the share code and PIN
      this screen already verified -- and the database re-checks them under the
@@ -3976,6 +4014,7 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
       const { data: cl } = await sb.rpc("payment_claims_mine_student", { p_code: c, p_pin: p });
       setPayClaims(cl || []);
     } catch (e) { /* the card still works without it */ }
+    try { const { data: sh } = await sb.rpc("shop_catalogue_student", { p_code: c, p_pin: p }); setStuShop(sh || []); } catch (e) { setStuShop([]); }  /* SHOP MODULE mount */
   }
   async function onClaim(a) {
     const { data: r, error } = await sb.rpc("payment_claim_create_student",
@@ -4129,6 +4168,7 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
             )}
           </div>
           ) },
+          { key:"shop", label:"Shop", when: stuShop.length>0, render: () => <ShopPanel bare student={{code:code.trim(), pin}} /> },  /* SHOP MODULE mount */
           { key:"history", label:"History", when: hist.length>0,
             render: () => <PayHistory hist={hist} /> },
         ]} />
@@ -4214,6 +4254,40 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
         </button>
       )}
       <button className="scr-btn primary wide" disabled={!dirty} onClick={()=>onSave(sel||null)}>Save Colour</button>
+    </div>
+  );
+}
+
+/* The four appearance screens, behind one row. Each is unchanged and reachable
+   exactly as before; this only stops them taking four lines of a settings list
+   that now has six groups in it. */
+function PgCustomise({ biz, onBack, onGo }) {
+  const p = bizPal(biz);
+  const rows = [
+    ["✏️", "Name",   "Rename your school",            "name"],
+    ["🎨", "Colour", "Pick your accent colour",       "theme"],
+    ["🏫", "Icon",   "Choose your school's icon",     "icon"],
+    ["🖼️", "Card",   "Choose or upload a card image", "customCard"],
+  ];
+  return (
+    <div className="reg-page scr" style={{"--accent":p.acc}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
+        <button className="tb-back" onClick={onBack}>←</button>
+        <h2>Customise</h2>
+      </div>
+      <p>How your school looks to parents and students.</p>
+      {rows.map(([ic,lb,sub,v])=>(
+        <div key={v} onClick={()=>onGo(v)} className="scr-card"
+          style={{display:"flex",alignItems:"center",gap:14,padding:"14px 16px",
+                  marginBottom:10,cursor:"pointer"}}>
+          <div style={{fontSize:"1.25rem",width:26,textAlign:"center"}}>{ic}</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div className="scr-card-t">{lb}</div>
+            <div className="scr-card-s">{sub}</div>
+          </div>
+          <div style={{color:"var(--text3)",fontSize:"1.2rem",fontWeight:700}}>›</div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -4497,6 +4571,12 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   const [annOpenItem, setAnnOpenItem] = useState({});   // per announcement
   const [dueOpen, setDueOpen] = useState(false);        // the combined-total breakdown
   const readSet = {}; (annRead||[]).forEach(id=>{readSet[id]=true;});
+  /* Everything unread, across every child, which is exactly what the icon's
+     number should say. Run on every render of the portal, so opening a note
+     clears the badge without waiting for anything. */
+  useEffect(() => {
+    syncAppBadge((announcements||[]).filter(a=>!readSet[a.id]).length);
+  });
   const annAll = (announcements||[]).slice().sort((a,b)=>String(b.created_at||"").localeCompare(String(a.created_at||"")));
   const ANN_CAP = 4;
 
@@ -6819,17 +6899,18 @@ async function doUpdateCard(updates){
         {view==="student" && <PgStudent onBack={()=>setView("landing")} />}
         {view==="parentAuth" && stampTok && <div style={{padding:"18px 28px 0"}}><div className="info-box">Log in to confirm the payment. We will pick up where you left off.</div></div>}
         {view==="parentAuth" && <PgParentAuth onBack={()=>setView("landing")} />}
-        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onIcon={()=>goView("icon")} onName={()=>goView("name")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} onStampTag={()=>goView("stampTag")} onStampCal={()=>goView("stampCal")} onPayLink={()=>goView("payLink")} onPayQueue={()=>goView("payQueue")} pendingPays={pendingPays} onShopItems={()=>goView("shopItems")} onShopOrders={()=>goView("shopOrders")} />}
+        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onIcon={()=>goView("icon")} onName={()=>goView("name")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} onStampTag={()=>goView("stampTag")} onStampCal={()=>goView("stampCal")} onPayLink={()=>goView("payLink")} onPayQueue={()=>goView("payQueue")} pendingPays={pendingPays} onShopItems={()=>goView("shopItems")} onShopOrders={()=>goView("shopOrders")} onCustomise={()=>goView("customise")} />}
         {view==="addCard" && biz && <PgAddCard biz={biz} onBack={()=>setView("dashboard")} onCreate={doAddCard} />}
         {view==="import" && biz && <PgImport biz={biz} onBack={()=>setView("dashboard")} onImport={doImportStudents} />}
         {view==="reveal" && revealCard && <PgReveal biz={biz} card={revealCard} onDone={()=>{setRevealCard(null);setView("dashboard");}} />}
         {view==="card" && biz && card && <PgCard biz={biz} card={card} onBack={()=>setView("dashboard")} onUpdate={doUpdateCard} onRemove={doRemoveCard} />}
         {view==="months" && biz && <PgManageMonths biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveMonths} />}
         {view==="levels" && biz && <PgManageLevels biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveLevels} />}
-        {view==="customCard" && biz && <PgCustomCard biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveCard} />}
-        {view==="theme" && biz && <PgTheme biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveAccent} />}
-        {view==="icon" && biz && <PgIcon biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveIcon} />}
-        {view==="name" && biz && <PgName biz={biz} onBack={()=>setView("dashboard")} onSave={doSaveName} />}
+        {view==="customCard" && biz && <PgCustomCard biz={biz} onBack={()=>setView("customise")} onSave={doSaveCard} />}
+        {view==="theme" && biz && <PgTheme biz={biz} onBack={()=>setView("customise")} onSave={doSaveAccent} />}
+        {view==="icon" && biz && <PgIcon biz={biz} onBack={()=>setView("customise")} onSave={doSaveIcon} />}
+        {view==="name" && biz && <PgName biz={biz} onBack={()=>setView("customise")} onSave={doSaveName} />}
+        {view==="customise" && biz && <PgCustomise biz={biz} onBack={()=>setView("dashboard")} onGo={goView} />}
         {view==="stampTag" && biz && <PgStampTag biz={biz} onBack={()=>setView("dashboard")} onSaved={refresh} />}
         {view==="stampCal" && biz && <PgStampCalibrate biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="payLink" && biz && <PgPayLink biz={biz} onBack={()=>setView("dashboard")} onSaved={refresh} />}
