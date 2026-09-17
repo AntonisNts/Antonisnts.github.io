@@ -7,7 +7,7 @@ Each entry says what was decided, the reasoning, and what would change it.
 If you are about to re-open one of these, read the reasoning first: it is
 probably still true.
 
-Last reviewed 13 September 2026.
+Last reviewed 16 September 2026.
 
 ---
 
@@ -423,3 +423,230 @@ from the run.
 
 **What changes it:** nothing. This is the third time in this project that a
 test which could not fail was mistaken for one that passed.
+
+---
+
+## The shop's switch is a row in its own table, not a column on `businesses`
+
+A `shop_enabled` column would have been simpler to write and impossible to take
+back out: dropping it later means an `ALTER TABLE` on the table everything else
+in the product depends on, and until then every school carries a column for a
+feature most of them will never turn on.
+
+The switch lives in `shop_settings`, one row per school, absent by default.
+Absent means off, so a school that never touches the shop has no row, no
+column, and nothing to clean up.
+
+The same reasoning kept a parent's "I've paid" for kit off the `payment_claims`
+table. Reusing it would have been less code and would have meant editing
+`payment_claim_confirm` — a function on the fee path, which is the one path the
+shop was asked not to disturb. The claim lives on the order instead.
+
+**What changes it:** the shop ceasing to be optional. If every school has it on,
+the argument for keeping it detachable is gone.
+
+---
+
+## Kit debt and fee debt are different numbers and are never added up
+
+"Who owes me for September" is a question about lessons. A school that also
+sells jumpers still wants that answer to mean what it always meant, and a
+parent looking at a red month wants to know it is about lessons.
+
+So shop orders touch no month, no fee total and no breakdown. What is owed for
+kit is its own figure on its own screen and says so on its face: *Owed For Kit
+— separate from lesson fees*.
+
+The temptation was one "total owed" per family. It reads well and it is wrong:
+it merges a recurring obligation with a one-off purchase, and the two are
+chased differently, forgiven differently and argued about differently.
+
+**What changes it:** a school asking for a combined figure. Even then it should
+be a third number shown beside the two, not a replacement for either.
+
+---
+
+## One function settles an order, and it is granted to nobody
+
+`shop_order_mark_paid` is the only thing in the module that can turn an order
+paid. The owner ticking it off, a confirmed payment-link claim and — later — a
+card processor all call it; none of them re-implements what being paid means.
+
+It authorises nothing. It is handed an order whose caller has already
+established the right to settle it, which is why no role can execute it. Each
+entry point does its own proving, exactly as `stamp_apply_payment` does on the
+fee side.
+
+This is the same shape as the fee path for the same reason: when four triggers
+each had their own idea of what a payment was, they disagreed. Adding Stripe
+later is verifying a webhook, finding the order, and calling this with
+`p_via = 'stripe'`.
+
+**What changes it:** nothing. A second writer is how the two ledgers start
+disagreeing about the same order.
+
+---
+
+## The shop's removability is tested by removing it
+
+The module carries instructions for deleting itself. Instructions in a comment
+rot quietly: a mount added six months later without its marker leaves the
+instructions describing a removal that no longer works, and nobody finds out
+until somebody tries it.
+
+`app/test/shop.js` performs the documented removal on a copy of
+`app/index.html` — cut the block, drop every line marked `SHOP MODULE mount` —
+and boots the result in a browser. A dangling reference is a blank screen for
+every school, not only the ones that switched the shop on.
+
+Writing that test is what found the first version's real problem. The badge
+count lived in `App` as state and was passed down to the dashboard, so removing
+the module left `shopPending={shopPending}` pointing at a variable that was no
+longer declared: a `ReferenceError` on load, for everybody. The count moved
+into the module as a hook the settings row calls on the line it draws.
+
+**What changes it:** nothing.
+
+---
+
+## The family portal is a list of names, not one long scroll
+
+It used to concatenate. The amount due, then the pay-online panel, then the
+shop, then every child with their card and their school's notes unfolding
+underneath. Every feature I added put another band on the front page, and each
+one was defensible on its own.
+
+The shop is what made it undeniable. The catalogue comes back per card, so two
+siblings at one school listed the same jumper twice — above the children
+themselves. School announcements had the same flaw and nobody had noticed:
+a note to the whole school appeared once per sibling.
+
+Tapping a name now opens that child. Their card, where to pay, their notes,
+their shop.
+
+The part worth keeping in mind: this did not deduplicate anything. Showing one
+child at a time makes the duplication **impossible**, because two children are
+never on screen together. A deduplication pass would have been code that has to
+keep being right; this is a shape in which the question does not arise. It is
+also where the next feature goes — on a child's page, not on the front.
+
+Two things fell out of it. The combined "Due now" block now appears only when
+more than one card owes: with one owing card it was the row underneath it said
+twice, and the reason it used to show — that it was the only way to see what
+the €85 was made of — stopped being true once the card was one tap away. And
+the pay-online small print moved next to the thing it explains.
+
+**What changes it:** a parent with one child finding the extra tap annoying. If
+so, open straight onto their page and keep the list for families with two or
+more.
+
+---
+
+## A page is remembered by what it is, not by what was on it
+
+The child's page holds `{kind, key, title}` — "the page for child k1" — and
+rebuilds its rows from the current data on every render.
+
+The obvious alternative is to store the rows when the page opens. It is also
+wrong: unlinking a card, or moving one to a different child, changes what
+belongs on that page, and a snapshot would keep showing what was true when it
+was opened. The bug that follows is a parent unlinking a card and still seeing
+it until they navigate away — and if they act on what they see, acting on
+something that no longer exists.
+
+**What changes it:** nothing. Derive, don't snapshot.
+
+---
+
+## The notifications service worker caches nothing, and must not start
+
+A service worker exists in PayStamp for exactly one reason: a browser will not
+deliver a push notification without one. It has no `fetch` handler.
+
+The temptation is obvious — a service worker is *right there*, and making the
+app work offline looks like a free win. It is not. PayStamp is a single HTML
+file deployed by overwriting it. A worker that cached the app would keep
+serving whichever version it had cached, so a school could be looking at last
+week's app while the database had moved on: no error, no clue, and nothing they
+could do about it. Every support call would start with "try clearing your
+browser data", which is not a sentence to say to a customer.
+
+`app/test/push.js` asserts that the set of handlers is exactly install,
+activate, push and notificationclick, so adding a fetch handler fails a test
+rather than shipping.
+
+**What changes it:** a genuine need to work offline, which would then be
+designed deliberately with a version check — not acquired by accident.
+
+---
+
+## Notifications are asked for, never asked about
+
+No permission prompt appears on its own. There is a panel with a button, and
+the browser is asked only after somebody presses it.
+
+A prompt that appears unasked is the one people dismiss without reading, and a
+dismissal is not neutral: once a browser records "denied", we cannot ask again.
+Only the parent can undo it, in settings, which means the cost of asking at the
+wrong moment is that parent never being reachable again.
+
+Two consequences worth keeping. An iPhone in a Safari tab has no push machinery
+at all — not a refused permission, no API — so the panel tells them to add
+PayStamp to the Home Screen rather than offering a button that cannot work. And
+a browser with genuinely no push says nothing at all, because explaining a
+limitation somebody cannot act on is noise on a screen whose whole point is
+being quiet.
+
+**What changes it:** nothing. The one-shot nature of "denied" is not something
+better copy can recover from.
+
+---
+
+## A subscription we failed to record is undone
+
+Turning notifications on is two steps: the browser subscribes, then we store
+what it gave us. If the second fails, the first is rolled back.
+
+Otherwise the browser holds a live subscription, the panel reads it and says
+"on", and nothing is ever sent to it — because the sender works from our table,
+which never got the row. A parent who has been told they will be notified, and
+will not be, is worse off than one who was told it did not work.
+
+**What changes it:** nothing. Any state the app reports must be the state the
+sender acts on.
+
+---
+
+## A tab that opens on nothing is worse than no tab
+
+Both portals are tabbed now — Card, School, Shop, History — and a tab is drawn
+only when there is something behind it. A school that posts no notes has no
+School tab; a school that sells nothing has no Shop tab; a card with no
+payments has no History tab. With one tab left the bar disappears and the card
+is simply the page.
+
+The alternative is a fixed strip with empty states behind the dead ones, which
+looks tidier in a mockup and is worse to use: every tab is a promise, and the
+only way to find out which ones are empty is to tap them all.
+
+The cost is that the strip is not the same shape for every family, so nobody
+can learn a fixed position. That is the right trade at this size — four tabs at
+most, all labelled.
+
+**What changes it:** enough tabs that their position matters more than their
+emptiness.
+
+---
+
+## Photographs are shown whole
+
+`object-fit: cover` fills its box by cropping. For a uniform photographed head
+to toe that means cutting off the head and the feet — the two ends that say
+what it is. The first version of shop photos did exactly that, and the first
+real photograph uploaded showed the problem immediately.
+
+Everything a parent looks at uses `contain`, and any picture opens full-screen
+on a tap. The one exception is the 56px square on the owner's own item list,
+which is an identifier rather than the picture; it crops, and it opens.
+
+**What changes it:** nothing. A photograph exists to be looked at.

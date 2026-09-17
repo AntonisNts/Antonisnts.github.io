@@ -52,7 +52,7 @@ const FIXTURES = {
 
 // A chainable stand-in for the postgrest builder: every filter/modifier returns
 // itself, and awaiting it resolves with the table's fixture rows.
-function installMock(fixtures, session, rpcExtra) {
+function installMock(fixtures, session, rpcExtra, rpcError) {
   const make = (table) => {
     const box = { rows: (fixtures[table] || []).slice() };
     const b = {};
@@ -89,12 +89,44 @@ function installMock(fixtures, session, rpcExtra) {
     if (Array.isArray(v) && v.__seq) return v.length > 1 ? v.shift() : v[0];
     return v !== undefined ? v : [];
   };
+  // A database that has never had a migration run answers 404 for the
+  // functions it has never heard of. Listing a name in `rpcError` reproduces
+  // that, which is the state every already-deployed app is in the moment a new
+  // module ships and before the owner runs its SQL.
+  const broken = (rpcError || []).reduce((m, n) => (m[n] = true, m), {});
+  const FAIL = { message: "Could not find the function in the schema cache", code: "PGRST202" };
+
   window.__MOCK_SB = {
     from: (t) => make(t),
-    rpc: (name, args) => ({ then: (r) => { window.__RPC_CALLS = (window.__RPC_CALLS||[]).concat([[name, args||null]]); return r({ data: answer(name), error: null }); } }),
+    rpc: (name, args) => ({ then: (r) => { window.__RPC_CALLS = (window.__RPC_CALLS||[]).concat([[name, args||null]]); return r(broken[name] ? { data: null, error: FAIL } : { data: answer(name), error: null }); } }),
     channel: () => ({ on: function () { return this; }, subscribe: function () { return this; } }),
     removeChannel: () => {},
-    storage: { from: () => ({ upload: async () => ({ data: null, error: null }), getPublicUrl: () => ({ data: { publicUrl: "" } }) }) },
+    // Records what the app puts in a bucket, and hands back a URL shaped like
+    // a real Supabase public one -- the app parses that URL back into a path
+    // when it replaces or removes a picture, so an empty string made the
+    // replace-and-delete path untestable.
+    storage: {
+      from: (bucket) => ({
+        upload: async (path, body, opts) => {
+          window.__UPLOADS = (window.__UPLOADS || []).concat([{ bucket, path,
+            size: (body && body.size) || 0, type: (opts && opts.contentType) || null }]);
+          // One ordered log as well, because "was the replacement uploaded
+          // BEFORE the old file was deleted" is a question two separate lists
+          // cannot answer.
+          window.__STORAGE_OPS = (window.__STORAGE_OPS || []).concat(["upload:" + path]);
+          return { data: { path }, error: null };
+        },
+        remove: async (paths) => {
+          window.__REMOVED = (window.__REMOVED || []).concat(
+            paths.map((x) => ({ bucket, path: x })));
+          window.__STORAGE_OPS = (window.__STORAGE_OPS || [])
+            .concat(paths.map((x) => "remove:" + x));
+          return { data: null, error: null };
+        },
+        getPublicUrl: (path) => ({ data: { publicUrl:
+          "https://oqckztpsglcsrtyyvqrl.supabase.co/storage/v1/object/public/" + bucket + "/" + path } }),
+      }),
+    },
     auth: {
       getSession: async () => ({ data: { session }, error: null }),
       getUser: async () => ({ data: { user: session.user }, error: null }),
@@ -121,8 +153,15 @@ async function open(opts) {
   const session = opts.signedOut ? null
     : { user: { id: "u1", email: "owner@aurora.example", user_metadata: { role: opts.role || "teacher" } }, access_token: "tok" };
   await page.addInitScript(
-    `(${installMock.toString()})(${JSON.stringify(opts.fixtures || FIXTURES)}, ${JSON.stringify(session)}, ${JSON.stringify(opts.rpc || {})});`
+    `(${installMock.toString()})(${JSON.stringify(opts.fixtures || FIXTURES)}, ${JSON.stringify(session)}, ${JSON.stringify(opts.rpc || {})}, ${JSON.stringify(opts.rpcError || [])});`
   );
+
+  // Anything else that has to exist before the app's first line runs. Used to
+  // stand in for browser APIs a headless run has no real version of --
+  // Notification and PushManager, say, whose four states (grantable, granted,
+  // denied, absent) are the whole behaviour of the notifications panel and
+  // cannot otherwise be reached from a test.
+  if (opts.init) await page.addInitScript(opts.init);
 
   // Swap only the client construction; every loader above it runs for real.
   const src = fs.readFileSync(opts.appPath || APP, "utf8")

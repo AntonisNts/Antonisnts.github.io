@@ -2,7 +2,7 @@
 # Rebuild a faithful replica of the live StampCard database from an empty one,
 # so every test run starts from the same state.
 set -e
-D=/var/lib/postgresql/regtest
+D=${PGSOCKDIR:-/var/lib/postgresql/regtest}
 S="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PGHOST=$D PGPORT=5433 PGUSER=postgres
 
@@ -72,7 +72,8 @@ for f in schema.sql migration-add-phone.sql migration-approval-gate.sql \
          migration-stamp-geometry.sql migration-stamp-rotation.sql \
          migration-stamp-student.sql migration-stamp-auto.sql \
          migration-payment-link.sql \
-         migration-stamp-owner-fix.sql; do
+         migration-stamp-owner-fix.sql migration-shop.sql \
+         migration-shop-images.sql migration-push.sql; do
   # Show the real error rather than swallowing it -- a silent "FAILED: x.sql"
   # tells you nothing about which statement broke.
   if ! psql -q -v ON_ERROR_STOP=1 -f "$S/$f" >/tmp/replica-$$.log 2>&1; then

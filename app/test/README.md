@@ -38,7 +38,27 @@ node routes.js    # /stamp/TOKEN and the 404 fallback that makes it work
 node qr.js        # the QR encoder, against a reference encoder and a decoder
 node stamptrigger.js  # the stamp trigger and its calibration screen
 node paylink.js   # the payment link, and that a claim never looks like a payment
+node shop.js      # the shop module — and that it can be taken back out
+node portal.js    # both portals: a page per child, and its tabs
+node push.js      # notifications: the four device states, and the worker
 ```
+
+`push.js` cannot prove a real push arrives — that needs the Edge Function
+deployed and a real device. What it does cover is everything on this side of
+that line, including the assertion that `app/sw.js` has **no fetch handler**:
+a service worker that cached this single-file app would serve a stale version
+to a whole school with no way for them to tell.
+
+It uses `open({ init })` to stand in for `Notification` and `PushManager`,
+because a headless browser cannot be put into "denied" or stripped of push
+otherwise, and those states are most of the behaviour.
+
+`shop.js` keeps the shop out of `sweep.js`'s list on purpose. Removing the
+module should never mean editing a test that is not the module's own, so the
+shop's screens are checked for the skin and for `--accent` inside `shop.js`
+instead. Its last section performs the documented removal on a copy of
+`app/index.html` and boots what is left — a dangling reference there is a blank
+screen for every school, not just the ones that switched the shop on.
 
 `qr.js` needs no browser. It lifts `qrMatrix()` straight out of `app/index.html`
 rather than importing a copy, so what it checks is what ships.
@@ -62,9 +82,22 @@ const { browser, page } = await open({ role: "parent" }); // family portal
 const { browser, page } = await open({ signedOut: true });// login / landing
 ```
 
-`open()` also takes `viewport` and `fixtures`. The default fixtures are one
-approved music school with four students, two groups, two teachers, two
-registration links and two pending requests — enough for most screens.
+`open()` also takes `viewport`, `fixtures`, `query` and `appPath`. The default
+fixtures are one approved music school with four students, two groups, two
+teachers, two registration links and two pending requests — enough for most
+screens.
+
+`rpc` sets what each function answers. `rpcError` is its opposite: a list of
+names that answer the way a database answers a function it has never heard of.
+
+```js
+await open({ rpc: { shop_catalogue_mine: CATALOGUE } });   // the happy path
+await open({ rpcError: ["shop_catalogue_mine"] });         // migration not run
+```
+
+That second case is not hypothetical. Every school is running the deployed app
+the moment a new migration lands and before anyone runs its SQL, so a screen
+that cannot survive a missing function breaks for all of them at once.
 
 To capture what the app *writes*, wrap the mock before acting:
 
