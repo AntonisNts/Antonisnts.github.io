@@ -103,6 +103,73 @@ const STAMP_PREF = (function () {
   } catch (e) { return null; }
 })();
 
+/* ===========================================================================
+   PUSH NOTIFICATIONS -- the browser half.
+
+   Until this existed, a parent found out about an announcement by deciding to
+   go and look. Viber told them; PayStamp waited to be opened.
+
+   The VAPID public key is public by design: it is what a browser checks the
+   push request was signed by. The PRIVATE half is an Edge Function secret and
+   is not in this file, this repository, or anything a parent downloads.
+
+   The one thing worth knowing before reading further: on an iPhone, Web Push
+   only works when the app has been added to the Home Screen. In a Safari tab
+   there is no PushManager at all -- not a refused permission, no API. So the
+   panel has to tell an iPhone user to install it rather than offering a button
+   that cannot work.
+=========================================================================== */
+const VAPID_PUBLIC_KEY =
+  "BPr1LThM8CFOFAG_7heb1LLXHfte82NPAL3y16NPyIx3lkb-YomZuTK8hc7P6LjcEXZEeTwzA1k0AcVGQWGRwS4";
+
+function urlB64ToUint8(b64) {
+  const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+/* Running from the Home Screen rather than in a browser tab. iOS reports this
+   through a non-standard property; everything else uses the media query. */
+function isStandalone() {
+  try {
+    return window.navigator.standalone === true ||
+           window.matchMedia("(display-mode: standalone)").matches;
+  } catch (e) { return false; }
+}
+
+/* What this device can do about notifications, as one word:
+     "ready"    it can be turned on
+     "install"  iOS in a tab -- add to Home Screen first, then it can
+     "blocked"  the person said no; only they can undo that, in settings
+     "none"     this browser has no push at all
+*/
+function pushCapability() {
+  const hasSW = "serviceWorker" in navigator;
+  const hasPM = "PushManager" in window;
+  const hasN  = typeof Notification !== "undefined";
+  if (hasSW && hasPM && hasN) {
+    return Notification.permission === "denied" ? "blocked" : "ready";
+  }
+  // An iPhone in a Safari tab has no PushManager at all. That is not a browser
+  // that cannot do push -- it is one that has not been installed yet, and
+  // saying so is the difference between a dead end and an instruction.
+  const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent || "") ||
+              (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (iOS && !isStandalone()) return "install";
+  return "none";
+}
+
+/* The service worker exists only so the browser will deliver a push; it caches
+   nothing. Registered lazily -- when a parent actually asks for notifications
+   -- so that a portal nobody wants notifications from never installs one. */
+async function pushRegistration() {
+  const reg = await navigator.serviceWorker.register("/app/sw.js", { scope: "/app/" });
+  await navigator.serviceWorker.ready;
+  return reg;
+}
+
 /* Asked ONCE and remembered for the life of the page. The listener runs on
    every touch; this must not. Resolves to true/false without ever throwing,
    because a failure here should leave the stamp quiet rather than break a
@@ -444,6 +511,9 @@ function cardFee(card, biz) { return (card.level&&card.level.fee) ? card.level.f
 /* A row is a way in now, so it says so: a chevron, and — where there is
    something they have not read on the page behind it — one dot. */
 .fam-chev{color:var(--fam-t3);font-size:1.3rem;font-weight:400;line-height:1;flex:none;}
+.fam-push{background:var(--fam-bg2,var(--bg2));border:1px solid var(--fam-line2,var(--border));border-radius:16px;padding:16px;margin-bottom:16px;}
+.fam-push-t{font-size:.9rem;font-weight:700;color:var(--fam-t1,var(--text));margin-bottom:6px;}
+.fam-push-b{font-size:.8rem;color:var(--fam-t2,var(--text2));line-height:1.6;}
 .fam-unread{width:8px;height:8px;border-radius:99px;background:var(--accent);flex:none;}
 .fam-ok::before{
   content:"";width:15px;height:15px;border-radius:99px;flex:none;border:1.5px solid var(--fam-ok);opacity:.75;
@@ -1059,6 +1129,154 @@ function CardTile({ card, biz, onClick, selectable, checked, onToggle, index }) 
       <p style={{fontSize:".72rem",color:"var(--text2)",textAlign:"center",marginTop:18,lineHeight:1.5}}>By creating your business you agree to our <a href="/terms" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Terms of Service</a>, the <a href="/dpa" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Data Processing Agreement</a> and our <a href="/privacy" target="_blank" rel="noopener" style={{color:"var(--accent)"}}>Privacy Policy</a>.</p>
     </div>
   );
+}
+
+/* The switch itself. `compact` is the version that sits on the family portal
+   until it has been dealt with; the full one lives in Account and stays there.
+
+   Deliberately never automatic. A permission prompt that appears unasked is
+   the one people dismiss forever, and "denied" cannot be undone by us -- only
+   by the parent, in browser settings, which is a support call nobody wants.
+   So: a button, pressed on purpose, and the browser is only asked after that. */
+function PushSwitch({ compact, onDone }) {
+  const [cap, setCap]   = useState("none");
+  const [on, setOn]     = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr]   = useState("");
+  const [ready, setReady] = useState(false);
+  /* Whether they were already on when this screen opened. The compact panel
+     removes itself once notifications are on -- but not in the same breath as
+     being switched on, or the only feedback for pressing the button is the
+     button disappearing. It confirms now and is gone next time. */
+  const [wasOn, setWasOn] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const c = pushCapability();
+      if (!alive) return;
+      setCap(c);
+      if (c !== "ready") { setReady(true); return; }
+      try {
+        // Ask the browser what it already has, then ask the database whether we
+        // ever stored it. A subscription the browser kept but we never
+        // recorded -- cleared data, a restored backup -- is not "on": nothing
+        // would ever be sent to it.
+        const reg = await navigator.serviceWorker.getRegistration("/app/");
+        const sub = reg && await reg.pushManager.getSubscription();
+        if (!sub) { if (alive) { setOn(false); setReady(true); } return; }
+        const { data } = await sb.rpc("push_status", { p_endpoint: sub.endpoint });
+        if (alive) { const v = !!(data && data.on); setOn(v); setWasOn(v); setReady(true); }
+      } catch (e) { if (alive) { setOn(false); setReady(true); } }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  async function turnOn() {
+    setErr(""); setBusy(true);
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        setCap(perm === "denied" ? "blocked" : "ready");
+        setBusy(false);
+        return;
+      }
+      const reg = await pushRegistration();
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY),
+      });
+      const j = sub.toJSON();
+      const { data, error } = await sb.rpc("push_subscribe", {
+        p_endpoint: sub.endpoint,
+        p_p256dh: j.keys && j.keys.p256dh,
+        p_auth: j.keys && j.keys.auth,
+        p_user_agent: navigator.userAgent,
+      });
+      if (error || (data && data.error)) {
+        // Do not leave the browser subscribed to something we failed to record:
+        // it would look on and never ring.
+        try { await sub.unsubscribe(); } catch (e2) {}
+        throw new Error("not saved");
+      }
+      setOn(true); onDone && onDone();
+    } catch (e) {
+      setErr("Notifications could not be switched on. Try again in a moment.");
+    }
+    setBusy(false);
+  }
+
+  async function turnOff() {
+    setErr(""); setBusy(true);
+    try {
+      const reg = await navigator.serviceWorker.getRegistration("/app/");
+      const sub = reg && await reg.pushManager.getSubscription();
+      if (sub) {
+        await sb.rpc("push_unsubscribe", { p_endpoint: sub.endpoint });
+        try { await sub.unsubscribe(); } catch (e) {}
+      }
+      setOn(false); onDone && onDone();
+    } catch (e) { setErr("Could not switch them off."); }
+    setBusy(false);
+  }
+
+  if (!ready) return null;
+  // Nothing to offer and nothing to fix: say nothing rather than explain a
+  // browser limitation to somebody who cannot act on it.
+  if (cap === "none") return compact ? null : (
+    <div style={{fontSize:".82rem",color:"var(--text2)",lineHeight:1.6}}>
+      This browser cannot show notifications.
+    </div>
+  );
+
+  // The compact one has done its job once notifications are on -- but only
+  // once the parent has seen that they are.
+  if (compact && ((on && wasOn) || cap === "blocked")) return null;
+
+  const wrap = (kids) => compact
+    ? <div className="fam-push">{kids}</div>
+    : <div>{kids}</div>;
+
+  if (cap === "install") return wrap(<>
+    <div className="fam-push-t">🔔 Get told about announcements</div>
+    <div className="fam-push-b">
+      On an iPhone this only works once PayStamp is on your Home Screen.
+      Tap <strong>Share</strong> at the bottom of Safari, then
+      {" "}<strong>Add to Home Screen</strong> — then open it from there and
+      come back here.
+    </div>
+  </>);
+
+  if (cap === "blocked") return wrap(<>
+    <div className="fam-push-t">Notifications are blocked</div>
+    <div className="fam-push-b">
+      Your phone is set to refuse notifications from PayStamp. Only you can
+      change that, in your browser or phone settings — we cannot ask again.
+    </div>
+  </>);
+
+  if (on) return wrap(<>
+    <div className="fam-push-t">Notifications are on</div>
+    <div className="fam-push-b">
+      You will be told when one of your schools posts an announcement. Nothing
+      else sends a notification.
+    </div>
+    <button className="fam-pill" style={{marginTop:10}} disabled={busy} onClick={turnOff}>
+      {busy ? "…" : "Turn Off"}
+    </button>
+  </>);
+
+  return wrap(<>
+    <div className="fam-push-t">🔔 Get told about announcements</div>
+    <div className="fam-push-b">
+      Instead of opening PayStamp to check. Only announcements from your
+      children's schools — nothing else.
+    </div>
+    {err && <div className="err" style={{margin:"8px 0"}}>{err}</div>}
+    <button className="fam-pill solid" style={{marginTop:10}} disabled={busy} onClick={turnOn}>
+      {busy ? "…" : "Turn On Notifications"}
+    </button>
+  </>);
 }
 
 /* ===========================================================================
@@ -4031,6 +4249,7 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
      card or moving it to another child recomputes the rows, and a snapshot
      taken when the page opened would quietly go stale. */
   const [page, setPage] = useState(null);       // {kind:"kid"|"card"|"unassigned", key, title}
+  const [pushTick, setPushTick] = useState(0);  // re-read the switch after it changes
   const [expanded, setExpanded] = useState({});
   const [openGroups, setOpenGroups] = useState({});
   const [notesOpen, setNotesOpen] = useState({});      // per "From the school" block
@@ -4517,6 +4736,12 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
           </div>
         )}
 
+        {/* One band, and it removes itself once notifications are on -- which
+            is the only reason it is allowed on a page whose whole point is
+            being quiet. A parent who never turns it on is a parent who never
+            finds out anything, so it has to be somewhere they will see it. */}
+        <PushSwitch compact onDone={()=>setPushTick(t=>t+1)} />
+
         {/* The shop is not here any more. It belongs to a child, and putting
             it on the front page meant meeting the merchandise before meeting
             your children -- twice over, for two siblings at one school. */}
@@ -4612,6 +4837,10 @@ function PgParentSettings({ email, onBack, onDeleteAccount }) {
             <div style={{fontSize:".9rem",fontWeight:700,color:"var(--text)",overflowWrap:"anywhere"}}>{email}</div>
           </div>
         )}
+        <div className="wsec" style={{margin:"0 0 16px"}}>
+          <div className="ws-t">Notifications</div>
+          <PushSwitch />
+        </div>
         <div className="wsec" style={{margin:"0 0 16px"}}>
           <div className="ws-t">Your data</div>
           <p style={{fontSize:".82rem",color:"var(--text2)",fontWeight:600,lineHeight:1.55,marginBottom:14}}>

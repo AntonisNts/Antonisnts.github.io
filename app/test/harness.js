@@ -131,6 +131,13 @@ async function open(opts) {
     `(${installMock.toString()})(${JSON.stringify(opts.fixtures || FIXTURES)}, ${JSON.stringify(session)}, ${JSON.stringify(opts.rpc || {})}, ${JSON.stringify(opts.rpcError || [])});`
   );
 
+  // Anything else that has to exist before the app's first line runs. Used to
+  // stand in for browser APIs a headless run has no real version of --
+  // Notification and PushManager, say, whose four states (grantable, granted,
+  // denied, absent) are the whole behaviour of the notifications panel and
+  // cannot otherwise be reached from a test.
+  if (opts.init) await page.addInitScript(opts.init);
+
   // Swap only the client construction; every loader above it runs for real.
   const src = fs.readFileSync(opts.appPath || APP, "utf8")
     .replace("const sb = window.supabase.createClient(SB_URL, SB_KEY);", "const sb = window.__MOCK_SB;");
