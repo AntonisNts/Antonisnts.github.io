@@ -10,7 +10,7 @@
 # Verdicts are the `pass` column of each SELECT: t or f.
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")"
-D=/var/lib/postgresql/regtest
+D=${PGSOCKDIR:-/var/lib/postgresql/regtest}
 export PGHOST=$D PGPORT=5433 PGUSER=postgres PGDATABASE=stampcard
 
 only="${1:-}"          # optional: run one suite, e.g. ./run-tests.sh self-registration

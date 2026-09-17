@@ -39,6 +39,7 @@ node qr.js        # the QR encoder, against a reference encoder and a decoder
 node stamptrigger.js  # the stamp trigger and its calibration screen
 node paylink.js   # the payment link, and that a claim never looks like a payment
 node shop.js      # the shop module — and that it can be taken back out
+node portal.js    # the family portal: a list of names, one page per child
 ```
 
 `shop.js` keeps the shop out of `sweep.js`'s list on purpose. Removing the

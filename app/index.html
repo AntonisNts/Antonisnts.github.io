@@ -441,6 +441,10 @@ function cardFee(card, biz) { return (card.level&&card.level.fee) ? card.level.f
 .fam-kid-amt{font-size:1.35rem;font-weight:600;color:var(--owed);line-height:1;letter-spacing:-.02em;text-align:right;}
 .fam-kid-amt u{display:block;text-decoration:none;font-size:.7rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;margin-top:5px;opacity:.85;}
 .fam-ok{display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--fam-t2);font-weight:500;white-space:nowrap;}
+/* A row is a way in now, so it says so: a chevron, and — where there is
+   something they have not read on the page behind it — one dot. */
+.fam-chev{color:var(--fam-t3);font-size:1.3rem;font-weight:400;line-height:1;flex:none;}
+.fam-unread{width:8px;height:8px;border-radius:99px;background:var(--accent);flex:none;}
 .fam-ok::before{
   content:"";width:15px;height:15px;border-radius:99px;flex:none;border:1.5px solid var(--fam-ok);opacity:.75;
   background:
@@ -1363,7 +1367,14 @@ function PgShopOrders({ biz, onBack, onChanged }) {
 
 /* The parent's side. Renders nothing at all unless a school they deal with
    has the shop switched on — which is what "off leaves no trace" means. */
-function ShopPanel({ accent }) {
+/* `cards`, when given, narrows the panel to those card ids — which is how one
+   child's page shows one child's shop. Without it the panel shows everything,
+   as it did when the portal was a single scroll.
+
+   This is also the fix for the same jumper appearing twice: the catalogue comes
+   back per card, so two siblings at one school meant the item listed twice.
+   Showing one child at a time makes that impossible rather than deduplicated. */
+function ShopPanel({ accent, cards }) {
   const [cat, setCat]       = useState(null);
   const [orders, setOrders] = useState([]);
   const [open, setOpen]     = useState(null);   // {card_id, item, size, qty}
@@ -1429,19 +1440,24 @@ function ShopPanel({ accent }) {
     load();
   }
 
-  if (!cat || cat.length === 0) return null;   // no shop, no section
+  const only = cards ? (cat || []).filter(s => cards.indexOf(s.card_id) >= 0) : cat;
+  if (!only || only.length === 0) return null;   // no shop, no section
+  const mineOrders = cards ? orders.filter(o => cards.indexOf(o.card_id) >= 0) : orders;
+  // On one child's page the name above each block is the name at the top of
+  // the page. Only worth printing when the panel spans more than one card.
+  const named = only.length > 1;
 
   return (
     <div style={{marginTop:18}}>
       <div className="sec-row"><div className="sec-title">Shop</div></div>
       {note && <div className="info-box" style={{margin:"8px 0"}}>{note}</div>}
 
-      {cat.map(school => (
+      {only.map(school => (
         <div key={school.card_id} style={{marginBottom:14}}>
-          <div style={{fontSize:".72rem",color:"var(--fam-t3)",fontWeight:700,
+          {named && <div style={{fontSize:".72rem",color:"var(--fam-t3)",fontWeight:700,
                 textTransform:"uppercase",letterSpacing:".1em",margin:"6px 0 8px"}}>
             {school.student}
-          </div>
+          </div>}
 
           {(school.items || []).length === 0
             ? <div style={{fontSize:".8rem",color:"var(--fam-t3)"}}>Nothing for sale just now.</div>
@@ -1469,11 +1485,14 @@ function ShopPanel({ accent }) {
         </div>
       ))}
 
-      {orders.length > 0 && (
+      {mineOrders.length > 0 && (
         <div className="scr-card" style={{padding:14,marginTop:6}}>
           <div className="scr-lbl">Your Orders</div>
-          {orders.map(o => (
-            <div key={o.id} style={{padding:"6px 0"}}>
+          {mineOrders.map(o => (
+            /* Named so it can be told apart from the fee card's pay-online
+               panel, which now sits on the same page and says almost the same
+               words. */
+            <div key={o.id} className="shop-my-order" style={{padding:"6px 0"}}>
               <div style={{display:"flex",justifyContent:"space-between",gap:10,
                     fontSize:".8rem",color:"var(--text2)"}}>
                 <span style={{minWidth:0}}>
@@ -3997,6 +4016,21 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
     if (r && r.ok) await loadPay();
     return r;
   }
+  /* Which child's page is open, or null for the list of names.
+
+     The portal used to be one scroll: every card, every school's notes, the
+     shop and the pay-online panel, all concatenated. Each feature added
+     another band to the front page, and the shop was the one that broke it --
+     two children at one school listed the same jumper twice.
+
+     Tapping a name opens that child instead. The duplication cannot happen
+     because you never see two children at once, and the next feature goes on a
+     child's page rather than on the front.
+
+     A page is remembered by WHAT it is, not by the rows it had: unlinking a
+     card or moving it to another child recomputes the rows, and a snapshot
+     taken when the page opened would quietly go stale. */
+  const [page, setPage] = useState(null);       // {kind:"kid"|"card"|"unassigned", key, title}
   const [expanded, setExpanded] = useState({});
   const [openGroups, setOpenGroups] = useState({});
   const [notesOpen, setNotesOpen] = useState({});      // per "From the school" block
@@ -4058,12 +4092,54 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   // paid up — and Copy summary went with it, leaving the parent who still owes
   // one school no way to send it. With one card it names who and where instead
   // of repeating a bare number.
-  const showDueSummary = totalDue > 0;
+  /* Only when there is more than one card owing.
+
+     It used to show for a single owing card too, because that was the only
+     place a parent could find out what the €85 was made of. Now the card
+     itself is one tap away and shows the months, so with one owing card the
+     summary was the row underneath it said twice -- the same name, the same
+     school, the same number. */
+  const showDueSummary = totalDue > 0 && owing.length > 1;
   const single = owing.length === 1 ? owing[0] : null;
   // Named where there is one to name; counted, with the schools it spans,
   // where there is not.
   const owingSchools = [...new Set(owing.map(r=>r.biz.name))];
 
+
+  /* Notes for a set of cards, so a row can say whether there is anything to
+     go and read. Same targeting rule the notes block itself uses -- school,
+     class or that one child -- because a dot that disagreed with what is on
+     the page behind it is worse than no dot. */
+  function notesFor(secRows) {
+    const names = [], gids = [], cids = [];
+    secRows.forEach(r=>{
+      if (names.indexOf(r.biz.name)<0) names.push(r.biz.name);
+      if (r.card.groupId && gids.indexOf(r.card.groupId)<0) gids.push(r.card.groupId);
+      cids.push(r.it.cardId);
+    });
+    return annAll.filter(a=>{
+      if (names.indexOf(a.business_name)<0) return false;
+      if (a.card_id)  return cids.indexOf(a.card_id)>=0;
+      if (a.group_id) return gids.indexOf(a.group_id)>=0;
+      return true;                                   // the whole school
+    });
+  }
+  const unreadIn = (secRows) => notesFor(secRows).filter(a=>!readSet[a.id]).length;
+  const unreadFor = (r) => unreadIn([r]);
+
+  function openPage(kind, key, title) {
+    setPage({ kind, key, title });
+    window.scrollTo(0, 0);
+  }
+  function closePage() { setPage(null); window.scrollTo(0, 0); }
+
+  // Rebuilt from `rows` on every render, never snapshotted -- see setPage.
+  function pageRows(pg) {
+    if (!pg) return [];
+    if (pg.kind === "kid")  return rows.filter(r=>r.childId === pg.key);
+    if (pg.kind === "card") return rows.filter(r=>r.it.cardId === pg.key);
+    return rows.filter(r=>!r.childId || !childIds.includes(r.childId));
+  }
 
   const eyebrow = {fontSize:".64rem",fontWeight:800,textTransform:"uppercase",letterSpacing:".1em"};
   // Compares two spellings of the same person: "Afrodite Marina" vs
@@ -4075,8 +4151,7 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   // The right-hand side used to be a coloured dot on every row, whether or not
   // anything was wrong. It now carries the one signal that matters: the amount
   // due, or a quiet "Up to date". Nothing owing means nothing shouting.
-  function renderRow(r, titleOverride, footEl) {
-    const isOpen = !!expanded[r.it.cardId];
+  function renderRow(r, titleOverride, footEl, target) {
     // "Afrodite Marina" as a heading with "Afrodite marina savva" directly
     // under it is a stutter, not two facts. Containment, not equality:
     // "Andreas" and "Andreas Christou" are one person written short and long.
@@ -4088,7 +4163,7 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
     const cells = Math.max(1, r.bc);
     return (
       <div key={r.it.cardId} className="fam-kid" style={{"--accent":r.pal.acc,"--fam-paid":r.pal.acc}}>
-        <div className="fam-kid-main" onClick={()=>setExpanded(s=>({...s,[r.it.cardId]:!s[r.it.cardId]}))}>
+        <div className="fam-kid-main" onClick={()=>openPage((target&&target.kind)||"card",(target&&target.key)||r.it.cardId,title)}>
           <div className="fam-kid-mid">
             {/* The child's name leads. The school used to sit above it in
                 uppercase colour, which made the school the headline and the
@@ -4100,10 +4175,16 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
               <span>{r.biz.name}{alsoCard ? " · "+alsoCard : ""}</span>
             </div>
           </div>
-          <div style={{flex:"none"}}>
+          <div style={{flex:"none",display:"flex",alignItems:"center",gap:10}}>
+            {/* One dot, only when there is something they have not read. The
+                notes themselves are on the page behind this row now, so the
+                row has to carry the fact that there is something to go and
+                see. */}
+            {unreadFor(r) > 0 && <span className="fam-unread" aria-label="unread notes" />}
             {r.due>0
               ? <div className="fam-kid-amt">{"€"+r.due}<u>Due</u></div>
               : <div className="fam-ok">Up to date</div>}
+            <span className="fam-chev" aria-hidden="true">›</span>
           </div>
         </div>
         <div className="fam-track" role="img" aria-label={r.mp+" of "+cells+" months paid"}>
@@ -4112,27 +4193,56 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
           ))}
         </div>
         {footEl}
-        {isOpen && (
-          <div style={{padding:"0 12px 12px",borderTop:"1px solid var(--fam-line2)"}}>
-            <BizCard biz={r.biz} card={r.card} isTeacher={false} onTap={null} inactiveMonths={r.biz.inactiveMonths} />
-            {/* Under the card, not above it: the months are the truth, and a
-                pending claim must never look like it has changed them. */}
-            {payLinks[r.it.cardId] && (
-              <PayOnline link={payLinks[r.it.cardId].link} linkName={payLinks[r.it.cardId].name}
-                cardId={r.it.cardId} claims={payClaims} onClaim={onClaim} accent={r.pal.acc} />
-            )}
-            {kids.length>0 && (
-              <div style={{display:"flex",gap:6,flexWrap:"wrap",margin:"2px 0 8px",alignItems:"center"}}>
-                <span style={{fontSize:".7rem",color:"var(--fam-t3)",fontWeight:600,textTransform:"uppercase",letterSpacing:".12em"}}>Child</span>
-                {kids.map(k=>(
-                  <button key={k.id} className={"fam-pill"+(r.childId===k.id?" solid":"")} onClick={()=>onAssign(r.it.cardId, k.id)}>{k.name}</button>
-                ))}
-                <button className={"fam-pill"+(!r.childId?" solid":"")} onClick={()=>onAssign(r.it.cardId, null)}>Unassigned</button>
-              </div>
-            )}
-            <button className="fam-pill" style={{width:"100%",padding:"10px"}} onClick={()=>onUnlink(r.it.cardId, r.card.name)}>Unlink</button>
+      </div>
+    );
+  }
+
+  // ---- one card, in full -------------------------------------------------
+  // Everything that used to unfold under a row in the list. It reads the same;
+  // it simply has a page to itself now.
+  function renderDetail(r) {
+    return (
+      <div key={r.it.cardId} className="fam-kid" style={{"--accent":r.pal.acc,"--fam-paid":r.pal.acc,padding:"0 0 12px"}}>
+        <BizCard biz={r.biz} card={r.card} isTeacher={false} onTap={null} inactiveMonths={r.biz.inactiveMonths} />
+        {/* Under the card, not above it: the months are the truth, and a
+            pending claim must never look like it has changed them. */}
+        <div style={{padding:"0 12px"}}>
+          {payLinks[r.it.cardId] && (
+            <PayOnline link={payLinks[r.it.cardId].link} linkName={payLinks[r.it.cardId].name}
+              cardId={r.it.cardId} claims={payClaims} onClaim={onClaim} accent={r.pal.acc} />
+          )}
+          {/* Where the money goes, said beside the thing that takes it rather
+              than at the top of a page that no longer has a payment on it. It
+              follows whether the school has published a link: "it doesn't take
+              payments" printed above a Pay Online button reads as a
+              contradiction, and "handles" is the honest word either way --
+              the money never passes through PayStamp. */}
+          <p className="fam-fine">{payLinks[r.it.cardId]
+            ? "Pay your school directly — cash, or through their link. PayStamp only keeps the record."
+            : "Hand the money to your school — PayStamp keeps the record, it never handles payments."}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // The housekeeping — which child a card belongs to, and unlinking it. Below
+  // the card and the notes, because it is the thing a parent does once.
+  function renderCardAdmin(r) {
+    return (
+      <div key={"adm-"+r.it.cardId} style={{margin:"10px 0 0"}}>
+        {kids.length>0 && (
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",margin:"2px 0 8px",alignItems:"center"}}>
+            <span style={{fontSize:".7rem",color:"var(--fam-t3)",fontWeight:600,textTransform:"uppercase",letterSpacing:".12em"}}>Child</span>
+            {kids.map(k=>(
+              <button key={k.id} className={"fam-pill"+(r.childId===k.id?" solid":"")} onClick={()=>onAssign(r.it.cardId, k.id)}>{k.name}</button>
+            ))}
+            <button className={"fam-pill"+(!r.childId?" solid":"")} onClick={()=>onAssign(r.it.cardId, null)}>Unassigned</button>
           </div>
         )}
+        <button className="fam-pill" style={{width:"100%",padding:"10px"}}
+          onClick={()=>onUnlink(r.it.cardId, r.card.name)}>
+          {"Unlink "+r.card.name}
+        </button>
       </div>
     );
   }
@@ -4244,26 +4354,79 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
     // their school's notes attached to the same card.
     // Only for a real child: "Unassigned" is a category, not a name, so it
     // stays a heading rather than being stamped on a card as its title.
-    if (secRows.length === 1 && nameIsChild) {
-      return <div key={id}>{renderRow(secRows[0], title, renderNotes("notes-"+id, secRows, true))}</div>;
+    const target = nameIsChild ? {kind:"kid", key:id} : {kind:"unassigned", key:id};
+    if (secRows.length === 1) {
+      return <div key={id}>{renderRow(secRows[0], nameIsChild ? title : null, null, target)}</div>;
     }
+    /* A child at two schools, or with two cards at one. This was an accordion
+       that unfolded the cards in place; it is now one row that opens their
+       page, where the cards sit one under the other. */
+    const unread = unreadIn(secRows);
+    const schools = [...new Set(secRows.map(r=>r.biz.name))];
     return (
-      <div key={id} style={{marginBottom:6}}>
-        <div className="fam-sec-head" onClick={()=>setOpenGroups(s=>({...s,[id]: open?false:true}))}>
-          <b>{title}</b>
-          <span>{"("+secRows.length+")"}</span>
-          {secRows.length>1 && secDue>0 && <em>{"€"+secDue+" due"}</em>}
-          <i>{open?"▾":"▸"}</i>
+      <div key={id} className="fam-kid">
+        <div className="fam-kid-main" onClick={()=>openPage(target.kind, target.key, title)}>
+          <div className="fam-kid-mid">
+            <div className="fam-kid-name">{title}</div>
+            <div className="fam-kid-school">
+              <span className="fam-dot" style={{background:secRows[0].pal.acc}} />
+              <span>{schools.length>1
+                ? (secRows.length+" cards · "+schools.length+" schools")
+                : (secRows.length+" cards · "+schools[0])}</span>
+            </div>
+          </div>
+          <div style={{flex:"none",display:"flex",alignItems:"center",gap:10}}>
+            {unread > 0 && <span className="fam-unread" aria-label="unread notes" />}
+            {secDue>0
+              ? <div className="fam-kid-amt">{"€"+secDue}<u>Due</u></div>
+              : <div className="fam-ok">Up to date</div>}
+            <span className="fam-chev" aria-hidden="true">›</span>
+          </div>
         </div>
-        {open && <>
-          {secRows.map(r=>renderRow(r))}
-          {renderNotes("notes-"+id, secRows)}
-        </>}
       </div>
     );
   }
 
   const unassigned = rows.filter(r=>!r.childId || !childIds.includes(r.childId));
+
+  /* ---- one child's page ---------------------------------------------------
+     Everything about them, and nothing about anybody else: their card and
+     months, where to pay, their school's notes, their shop.
+
+     Unlinking the last card here empties the page, so it falls back to the
+     list rather than showing a heading with nothing under it. */
+  const openRows = pageRows(page);
+  if (page && openRows.length > 0) {
+    const notes = notesFor(openRows);
+    const pgDue = openRows.reduce((a,r)=>a+r.due, 0);
+    const cardIds = openRows.map(r=>r.it.cardId);
+    return (
+      <div className="page fam">
+        <div className="topbar">
+          <button className="tb-back" onClick={closePage} aria-label="Back to my family">←</button>
+          <h2 style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{page.title}</h2>
+          {pgDue>0
+            ? <span className="fam-kid-amt" style={{textAlign:"right"}}>{"€"+pgDue}<u>Due</u></span>
+            : <span className="fam-ok">Up to date</span>}
+        </div>
+        <div className="section">
+          {openRows.map(r=>renderDetail(r))}
+
+          {notes.length>0 && (
+            <div className="fam-kid" style={{marginTop:14}}>
+              {renderNotes("page-"+page.kind+"-"+page.key, openRows, true)}
+            </div>
+          )}
+
+          <ShopPanel cards={cardIds} />{/* SHOP MODULE mount */}
+
+          <div style={{marginTop:18}}>
+            {openRows.map(r=>renderCardAdmin(r))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page fam">
@@ -4351,13 +4514,12 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
                 parent will not stop to parse the difference between taking a
                 payment and recording one. "Handles" is the honest word: the
                 money never passes through PayStamp either way. */}
-            <p className="fam-fine">{Object.keys(payLinks).length > 0
-              ? "Pay your school directly — cash, or through their link. PayStamp only keeps the record."
-              : "Hand the money to your school — PayStamp keeps the record, it never handles payments."}</p>
           </div>
         )}
 
-        <ShopPanel />{/* SHOP MODULE mount */}
+        {/* The shop is not here any more. It belongs to a child, and putting
+            it on the front page meant meeting the merchandise before meeting
+            your children -- twice over, for two siblings at one school. */}
 
         {/* Was "Cards" beside a button labelled "Children" — two words for the
             same thing, and the heading used app jargon no parent uses. */}
@@ -4399,10 +4561,7 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
         {rows.length===0
           ? <div className="empty">No cards linked yet. Tap "+ Link".</div>
           : !grouped
-            ? <>
-                {rows.map(r=>renderRow(r))}
-                {renderNotes("notes-all", rows)}
-              </>
+            ? <>{rows.map(r=>renderRow(r))}</>
             : <>
                 {kids.map(k=>{ const sec=rows.filter(r=>r.childId===k.id); return sec.length>0 ? renderSection(k.id, k.name, sec, true) : null; })}
                 {unassigned.length>0 ? renderSection("unassigned", "Unassigned", unassigned) : null}

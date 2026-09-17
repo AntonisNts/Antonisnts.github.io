@@ -2,7 +2,7 @@
 # Rebuild a faithful replica of the live StampCard database from an empty one,
 # so every test run starts from the same state.
 set -e
-D=/var/lib/postgresql/regtest
+D=${PGSOCKDIR:-/var/lib/postgresql/regtest}
 S="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PGHOST=$D PGPORT=5433 PGUSER=postgres
 
