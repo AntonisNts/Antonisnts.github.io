@@ -103,6 +103,92 @@ const STAMP_PREF = (function () {
   } catch (e) { return null; }
 })();
 
+/* What has actually been handed over, newest first. The months grid says what
+   is settled; this says what was paid and when, which is the question a parent
+   asks when the two disagree.
+
+   `rows` is the portal's shape (several cards on one child's page); `hist` is
+   a bare list, which is what the student portal has. */
+function PayHistory({ rows, hist, named }) {
+  const items = rows
+    ? rows.reduce((a, r) => a.concat((r.card.history || [])
+        .map(h => ({ ...h, who: r.card.name }))), [])
+    : (hist || []).map(h => ({ ...h }));
+  // Newest first. Dates arrive as dd/mm/yyyy, which sorts wrongly as text, so
+  // the payment number is the order -- it is what the database counted with.
+  items.sort((a, b) => (b.n || 0) - (a.n || 0));
+  if (items.length === 0) return <div className="empty">No payments recorded yet.</div>;
+
+  return (
+    <div className="wsec" style={{margin:0}}>
+      {items.map((h, i) => (
+        <div key={i} className="hist-item">
+          <div>
+            <div className="hi-amt">{"€" + Number(h.amount || 0).toFixed(2)}</div>
+            <div className="hi-lbl">
+              {(named && h.who ? h.who + " · " : "") + "Payment #" + h.n}
+            </div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div className="hi-dt">{h.date}</div>
+            {/* Anything the school did not type by hand says where it came
+                from, so a payment a parent does not remember making has an
+                explanation attached. */}
+            {TRIGGER_LABEL[h.trigger_source] && (
+              <div style={{display:"inline-block",marginTop:6,padding:"3px 9px",borderRadius:99,
+                    background:"rgba(255,255,255,.08)",color:"var(--text2)",
+                    fontSize:".62rem",fontWeight:800,letterSpacing:".04em",textTransform:"uppercase"}}>
+                {TRIGGER_LABEL[h.trigger_source]}
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   Tabs, shared by the family portal's child page and the student portal.
+
+   Both had grown the same shape: a card, then where to pay, then the school's
+   notes, then the shop, then the payment history, all stacked down one scroll.
+   Each section is worth having; reaching the fifth meant scrolling past four.
+
+   `tabs` is [{ key, label, badge, when, render }]. A tab whose `when` is false
+   is not drawn at all -- a school with no shop should not have an empty Shop
+   tab, and a strip of tabs that are mostly dead ends is worse than no strip.
+   With one tab left there is nothing to choose between, so the bar goes away
+   and its content is simply the page.
+--------------------------------------------------------------------------- */
+function Tabs({ tabs, initial }) {
+  const live = (tabs || []).filter(t => t && t.when !== false);
+  const [cur, setCur] = useState(initial || (live[0] && live[0].key));
+
+  // What was open can disappear -- the last unpaid order settles, a note
+  // expires. Falling back beats rendering nothing with a tab still lit.
+  const active = live.find(t => t.key === cur) || live[0];
+  if (!active) return null;
+
+  return (
+    <>
+      {live.length > 1 && (
+        <div className="tabbar" role="tablist">
+          {live.map(t => (
+            <button key={t.key} role="tab" aria-selected={t.key === active.key}
+              className={"tab" + (t.key === active.key ? " on" : "")}
+              onClick={() => setCur(t.key)}>
+              {t.label}
+              {t.badge > 0 && <span className="tab-badge">{t.badge}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+      <div>{active.render()}</div>
+    </>
+  );
+}
+
 /* ===========================================================================
    PUSH NOTIFICATIONS -- the browser half.
 
@@ -511,6 +597,12 @@ function cardFee(card, biz) { return (card.level&&card.level.fee) ? card.level.f
 /* A row is a way in now, so it says so: a chevron, and — where there is
    something they have not read on the page behind it — one dot. */
 .fam-chev{color:var(--fam-t3);font-size:1.3rem;font-weight:400;line-height:1;flex:none;}
+.tabbar{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:4px;margin:0 0 16px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.tabbar::-webkit-scrollbar{display:none;}
+.tab{flex:1 0 auto;display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;background:none;border:none;cursor:pointer;font-family:var(--f);font-size:.8rem;font-weight:700;color:var(--text2);padding:10px 14px;border-radius:10px;transition:background .15s,color .15s;}
+.tab.on{background:var(--accent);color:var(--accent-ink);}
+.tab-badge{min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:var(--accent);color:var(--accent-ink);font-size:.62rem;font-weight:800;line-height:18px;text-align:center;}
+.tab.on .tab-badge{background:rgba(0,0,0,.25);color:inherit;}
 .fam-push{background:var(--fam-bg2,var(--bg2));border:1px solid var(--fam-line2,var(--border));border-radius:16px;padding:16px;margin-bottom:16px;}
 .fam-push-t{font-size:.9rem;font-weight:700;color:var(--fam-t1,var(--text));margin-bottom:6px;}
 .fam-push-b{font-size:.8rem;color:var(--fam-t2,var(--text2));line-height:1.6;}
@@ -1334,6 +1426,7 @@ function PgShopItems({ biz, onBack }) {
      so that abandoning the form uploads nothing: a file only reaches storage
      when the item it belongs to is saved. */
   const [pic, setPic]       = useState(null);   // {file, preview} | "remove" | null
+  const [bigPic, setBigPic] = useState("");     // a thumbnail tapped open
   const picRef = useRef(null);
 
   function shopPicPath(u) {
@@ -1459,8 +1552,11 @@ function PgShopItems({ biz, onBack }) {
           <div key={it.id} className="scr-card" style={{marginBottom:10,padding:16,
                 opacity: it.archived ? .55 : 1}}>
             <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
-              {it.image_url && <img src={it.image_url} alt="" style={{width:56,height:56,
-                objectFit:"cover",borderRadius:12,flexShrink:0,background:"var(--bg)"}} />}
+              {/* Square and cropped is right for a 56px thumbnail -- it is an
+                  identifier, not the picture. The picture is one tap away. */}
+              {it.image_url && <img src={it.image_url} alt="" onClick={()=>setBigPic(it.image_url)}
+                style={{width:56,height:56,objectFit:"cover",borderRadius:12,flexShrink:0,
+                        background:"var(--bg)",cursor:"zoom-in"}} />}
               <div style={{minWidth:0,flex:1}}>
                 <div className="scr-card-t">{it.name}{it.archived ? " · archived" : ""}</div>
                 {it.description && <div className="scr-card-s">{it.description}</div>}
@@ -1519,8 +1615,10 @@ function PgShopItems({ biz, onBack }) {
                 hand. */}
             {shownPic ? (
               <div style={{position:"relative",marginBottom:8}}>
-                <img src={shownPic} alt="" style={{display:"block",width:"100%",maxHeight:220,
-                  objectFit:"cover",borderRadius:14,background:"var(--bg)"}} />
+                {/* What they are about to publish, whole -- cropping the
+                    preview would hide exactly what they need to check. */}
+                <img src={shownPic} alt="" style={{display:"block",width:"100%",maxHeight:300,
+                  objectFit:"contain",borderRadius:14,background:"var(--bg)"}} />
                 <button className="scr-btn" style={{marginTop:8,width:"100%"}}
                   onClick={()=>{ setPic("remove"); if(picRef.current) picRef.current.value=""; }}>
                   Remove Photo
@@ -1541,6 +1639,15 @@ function PgShopItems({ biz, onBack }) {
             {busy ? "Saving…" : "Save Item"}
           </button>
           <button className="scr-btn wide" style={{marginTop:10}} onClick={()=>{setEdit(null);setPic(null);setErr("");}}>Cancel</button>
+        </div>
+      )}
+
+      {bigPic && (
+        <div className="photo-lightbox" onClick={()=>setBigPic("")}
+          style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:400,
+                  background:"rgba(0,0,0,.92)",display:"flex",alignItems:"center",
+                  justifyContent:"center",padding:16}}>
+          <img src={bigPic} alt="" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain",borderRadius:8}} />
         </div>
       )}
     </div>
@@ -1661,6 +1768,60 @@ function PgShopOrders({ biz, onBack, onChanged }) {
 }
 
 
+/* Which of this parent's cards have a shop behind them, for the tab strip.
+   A hook rather than a fetch in the portal, so the portal never names a shop
+   function and removing the module takes this with it. Empty until it answers,
+   which is right: a Shop tab that appears and then turns out to be empty is
+   worse than one that appears a moment late. */
+function useShopCards() {
+  const [ids, setIds] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const { data } = await sb.rpc("shop_catalogue_mine");
+        if (alive) setIds((data || []).map(x => x.card_id));
+      } catch (e) { /* module's SQL not run yet */ }
+    })();
+    return () => { alive = false; };
+  }, []);
+  return ids;
+}
+
+/* A photograph, at the size it was taken.
+
+   `cover` crops to fill its box, which for a garment photographed head to toe
+   means cutting off the head and the feet -- the two ends that say what it is.
+   `contain` keeps the whole frame, and tapping opens it larger still, because
+   the one thing a parent wants from a picture of a uniform is to see the
+   uniform. */
+function ShopPhoto({ url, alt, maxHeight, dim }) {
+  const [big, setBig] = useState(false);
+  if (!url) return null;
+  return (
+    <>
+      <img src={url} alt={alt || ""} loading="lazy"
+        onClick={(e)=>{ e.stopPropagation(); setBig(true); }}
+        style={{display:"block",width:"100%",maxHeight:maxHeight||260,objectFit:"contain",
+                borderRadius:12,marginBottom:10,background:"var(--bg)",cursor:"zoom-in",
+                opacity: dim ? .5 : 1}} />
+      {big && (
+        <div className="photo-lightbox" onClick={()=>setBig(false)}
+          style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:400,
+                  background:"rgba(0,0,0,.92)",display:"flex",alignItems:"center",
+                  justifyContent:"center",padding:16}}>
+          <img src={url} alt={alt || ""}
+            style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain",borderRadius:8}} />
+          <button onClick={()=>setBig(false)} aria-label="Close"
+            style={{position:"absolute",top:"max(16px, env(safe-area-inset-top))",right:16,
+                    width:40,height:40,borderRadius:99,border:"none",cursor:"pointer",
+                    background:"rgba(255,255,255,.16)",color:"#fff",fontSize:"1.2rem"}}>✕</button>
+        </div>
+      )}
+    </>
+  );
+}
+
 /* The parent's side. Renders nothing at all unless a school they deal with
    has the shop switched on — which is what "off leaves no trace" means. */
 /* `cards`, when given, narrows the panel to those card ids — which is how one
@@ -1670,7 +1831,7 @@ function PgShopOrders({ biz, onBack, onChanged }) {
    This is also the fix for the same jumper appearing twice: the catalogue comes
    back per card, so two siblings at one school meant the item listed twice.
    Showing one child at a time makes that impossible rather than deduplicated. */
-function ShopPanel({ accent, cards }) {
+function ShopPanel({ accent, cards, bare }) {
   const [cat, setCat]       = useState(null);
   const [orders, setOrders] = useState([]);
   const [open, setOpen]     = useState(null);   // {card_id, item, size, qty}
@@ -1744,8 +1905,10 @@ function ShopPanel({ accent, cards }) {
   const named = only.length > 1;
 
   return (
-    <div style={{marginTop:18}}>
-      <div className="sec-row"><div className="sec-title">Shop</div></div>
+    <div style={bare ? null : {marginTop:18}}>
+      {/* Inside a tab called Shop, a heading saying Shop is the same word
+          twice. */}
+      {!bare && <div className="sec-row"><div className="sec-title">Shop</div></div>}
       {note && <div className="info-box" style={{margin:"8px 0"}}>{note}</div>}
 
       {only.map(school => (
@@ -1761,11 +1924,7 @@ function ShopPanel({ accent, cards }) {
             <div key={it.id} className="scr-card" style={{marginBottom:8,padding:14}}>
               {/* The catalogue has always returned image_url; nothing drew it,
                   so an item with a photograph showed none. */}
-              {it.image_url && (
-                <img src={it.image_url} alt="" loading="lazy" style={{display:"block",width:"100%",
-                  maxHeight:200,objectFit:"cover",borderRadius:12,marginBottom:10,
-                  background:"var(--bg)",opacity: it.out_of_stock ? .5 : 1}} />
-              )}
+              <ShopPhoto url={it.image_url} alt={it.name} dim={it.out_of_stock} />
               <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
                 <div style={{minWidth:0}}>
                   <div className="scr-card-t">{it.name}</div>
@@ -1866,10 +2025,7 @@ function ShopPanel({ accent, cards }) {
       {open && (
         <div onClick={()=>setOpen(null)} style={{position:"fixed",left:0,right:0,top:0,bottom:0,zIndex:300,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div onClick={e=>e.stopPropagation()} className="scr-card" style={{maxWidth:360,padding:22,width:"100%"}}>
-            {open.item.image_url && (
-              <img src={open.item.image_url} alt="" style={{display:"block",width:"100%",
-                maxHeight:160,objectFit:"cover",borderRadius:12,marginBottom:12,background:"var(--bg)"}} />
-            )}
+            <ShopPhoto url={open.item.image_url} alt={open.item.name} maxHeight={200} />
             <div className="scr-card-t" style={{marginBottom:4}}>{open.item.name}</div>
             <div className="scr-card-s" style={{marginBottom:14}}>{"€"+Number(open.item.price).toFixed(2)+" each"}</div>
 
@@ -3919,22 +4075,23 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
           <div style={{width:24}} />
         </div>
         <div style={{padding:"0 16px 16px"}}>
-          <BizCard biz={biz} card={card} isTeacher={false} onTap={null} inactiveMonths={inactive} />
-          {/* Same panel the family portal uses, and the same rule: it sits
-              under the months because the months are what is true. */}
-          {payLink && (
-            <PayOnline link={payLink.link} linkName={payLink.name}
-              cardId={null} claims={payClaims} onClaim={onClaim} />
-          )}
-        </div>
-        {/* Between the months grid and Payment History, and always open. As a
-            speaker icon in the top corner this was a notification a student had
-            to already suspect existed: nothing on the screen said there was
-            anything to read. It renders nothing at all when there is nothing —
-            an empty "no announcements" box would be the same problem inverted,
-            taking space to say nothing. */}
-        {anns.length>0 && (
-          <div className="wsec">
+        {/* The same three tabs the family portal's child page has, and for the
+            same reason: this was a card, then where to pay, then every note the
+            school ever posted, then the payment history -- with the history
+            pushed off the bottom by a school that posts often. */}
+        <Tabs tabs={[
+          { key:"card", label:"Card", render: () => <>
+              <BizCard biz={biz} card={card} isTeacher={false} onTap={null} inactiveMonths={inactive} />
+              {/* Same panel the family portal uses, and the same rule: it sits
+                  under the months because the months are what is true. */}
+              {payLink && (
+                <PayOnline link={payLink.link} linkName={payLink.name}
+                  cardId={null} claims={payClaims} onClaim={onClaim} />
+              )}
+            </> },
+          { key:"school", label:"School", when: anns.length>0,
+            badge: showUnread ? annUnread : 0, render: () => (
+          <div className="wsec" style={{margin:0}}>
             <div className="ws-t">
               From the school
               {showUnread && <span className="stu-new">{annUnread+" new"}</span>}
@@ -3971,18 +4128,11 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
               </button>
             )}
           </div>
-        )}
-        {hist.length>0 && (
-          <div className="wsec">
-            <div className="ws-t">Payment history</div>
-            {hist.map((h,i)=>(
-              <div key={i} className="hist-item">
-                <div><div className="hi-amt">{"€"+h.amount.toFixed(2)}</div><div className="hi-lbl">{"Payment #"+h.n}</div></div>
-                <div className="hi-dt">{h.date}</div>
-              </div>
-            ))}
-          </div>
-        )}
+          ) },
+          { key:"history", label:"History", when: hist.length>0,
+            render: () => <PayHistory hist={hist} /> },
+        ]} />
+        </div>
       </div>
     );
   }
@@ -4339,6 +4489,7 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
      taken when the page opened would quietly go stale. */
   const [page, setPage] = useState(null);       // {kind:"kid"|"card"|"unassigned", key, title}
   const [pushTick, setPushTick] = useState(0);  // re-read the switch after it changes
+  const shopCards = useShopCards();  /* SHOP MODULE mount */
   const [expanded, setExpanded] = useState({});
   const [openGroups, setOpenGroups] = useState({});
   const [notesOpen, setNotesOpen] = useState({});      // per "From the school" block
@@ -4708,6 +4859,7 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
     const notes = notesFor(openRows);
     const pgDue = openRows.reduce((a,r)=>a+r.due, 0);
     const cardIds = openRows.map(r=>r.it.cardId);
+    const pageHist = openRows.reduce((a,r)=>a.concat(r.card.history||[]), []);
     return (
       <div className="page fam">
         <div className="topbar">
@@ -4718,19 +4870,21 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
             : <span className="fam-ok">Up to date</span>}
         </div>
         <div className="section">
-          {openRows.map(r=>renderDetail(r))}
-
-          {notes.length>0 && (
-            <div className="fam-kid" style={{marginTop:14}}>
-              {renderNotes("page-"+page.kind+"-"+page.key, openRows, true)}
-            </div>
-          )}
-
-          <ShopPanel cards={cardIds} />{/* SHOP MODULE mount */}
-
-          <div style={{marginTop:18}}>
-            {openRows.map(r=>renderCardAdmin(r))}
-          </div>
+          <Tabs tabs={[
+            { key:"card", label:"Card", render: () => <>
+                {openRows.map(r=>renderDetail(r))}
+                <div style={{marginTop:18}}>{openRows.map(r=>renderCardAdmin(r))}</div>
+              </> },
+            { key:"school", label:"School", when: notes.length>0, badge: unreadIn(openRows),
+              render: () => (
+                <div className="fam-kid">
+                  {renderNotes("page-"+page.kind+"-"+page.key, openRows, true)}
+                </div>
+              ) },
+            { key:"shop", label:"Shop", when: (shopCards||[]).some(id => cardIds.indexOf(id) >= 0), render: () => <ShopPanel cards={cardIds} bare /> },  /* SHOP MODULE mount */
+            { key:"history", label:"History", when: pageHist.length>0,
+              render: () => <PayHistory rows={openRows} /> },
+          ]} />
         </div>
       </div>
     );

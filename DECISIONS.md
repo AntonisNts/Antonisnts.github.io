@@ -614,3 +614,39 @@ will not be, is worse off than one who was told it did not work.
 
 **What changes it:** nothing. Any state the app reports must be the state the
 sender acts on.
+
+---
+
+## A tab that opens on nothing is worse than no tab
+
+Both portals are tabbed now — Card, School, Shop, History — and a tab is drawn
+only when there is something behind it. A school that posts no notes has no
+School tab; a school that sells nothing has no Shop tab; a card with no
+payments has no History tab. With one tab left the bar disappears and the card
+is simply the page.
+
+The alternative is a fixed strip with empty states behind the dead ones, which
+looks tidier in a mockup and is worse to use: every tab is a promise, and the
+only way to find out which ones are empty is to tap them all.
+
+The cost is that the strip is not the same shape for every family, so nobody
+can learn a fixed position. That is the right trade at this size — four tabs at
+most, all labelled.
+
+**What changes it:** enough tabs that their position matters more than their
+emptiness.
+
+---
+
+## Photographs are shown whole
+
+`object-fit: cover` fills its box by cropping. For a uniform photographed head
+to toe that means cutting off the head and the feet — the two ends that say
+what it is. The first version of shop photos did exactly that, and the first
+real photograph uploaded showed the problem immediately.
+
+Everything a parent looks at uses `contain`, and any picture opens full-screen
+on a tap. The one exception is the 56px square on the owner's own item list,
+which is an identifier rather than the picture; it crops, and it opens.
+
+**What changes it:** nothing. A photograph exists to be looked at.

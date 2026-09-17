@@ -18,6 +18,16 @@ let pass = 0, fail = 0;
 const ok = (n, c, d) => { c ? (pass++, console.log("  ok   " + n))
                             : (fail++, console.log("  FAIL " + n + (d ? " — " + d : ""))); };
 const text = (page) => page.evaluate(() => document.body.innerText);
+// A child's page is tabbed now. The shop is behind the Shop tab, which only
+// appears when that school sells something -- so a missing tab is itself a
+// finding, not a locator to work around.
+const openShopTab = async (page) => {
+  const tab = page.locator('.tab:has-text("Shop")');
+  if (await tab.count() === 0) return false;
+  await tab.first().click();
+  await page.waitForTimeout(400);
+  return true;
+};
 // A real 1x1 PNG. compressImage decodes whatever it is given, so a text file
 // pretending to be an image would fail for the wrong reason.
 const PNG = Buffer.from(
@@ -59,7 +69,8 @@ const CATALOGUE = [{
     await page.waitForTimeout(500);
 
     const t = await text(page);
-    ok("shop off: no Shop heading in the portal", !/\bShop\b/i.test(t), t.slice(0, 300));
+    ok("shop off: no Shop tab at all", await page.locator('.tab:has-text("Shop")').count() === 0);
+    ok("shop off: nor the word anywhere in the portal", !/\bShop\b/i.test(t), t.slice(0, 300));
     ok("shop off: no empty state standing in for it", !/Nothing for sale/i.test(t));
     ok("shop off: nothing to order", await page.getByText("Order", { exact: true }).count() === 0);
     await browser.close();
@@ -81,6 +92,8 @@ const CATALOGUE = [{
     const t = await text(page);
     ok("migration not run: the portal still renders the card", /Elena Georgiou/.test(t));
     ok("migration not run: and shows no shop", !/Nothing for sale/i.test(t));
+    ok("migration not run: and offers no Shop tab",
+       await page.locator('.tab:has-text("Shop")').count() === 0);
     await browser.close();
   }
 
@@ -94,9 +107,8 @@ const CATALOGUE = [{
     await page.locator(".fam-kid-main").first().click();
     await page.waitForTimeout(500);
 
+    ok("the school's shop gets a tab of its own", await openShopTab(page));
     let t = await text(page);
-    // Headings and labels are shouted by CSS; innerText reflects that.
-    ok("the Shop section appears when the school has it on", /Shop/i.test(t));
     ok("items are listed under the child they are for",
        /Elena Georgiou/.test(t) && /School Jumper/.test(t));
     ok("with the price as the school set it", /€22\.50/.test(t));
@@ -168,6 +180,7 @@ const CATALOGUE = [{
     await page.waitForTimeout(700);
     await page.locator(".fam-kid-main").first().click();
     await page.waitForTimeout(500);
+    await openShopTab(page);
     await page.getByRole("button", { name: "Order", exact: true }).first().click();
     await page.waitForTimeout(300);
     await page.locator('.scr-chip:has-text("S")').first().click();
@@ -197,8 +210,9 @@ const CATALOGUE = [{
     await page.waitForTimeout(700);
     await page.locator(".fam-kid-main").first().click();
     await page.waitForTimeout(500);
+    await openShopTab(page);
 
-    // The fee card's own pay-online panel is on this page too and says almost
+    // The fee card's own pay-online panel is on the Card tab and says almost
     // the same words, so everything below is scoped to the order it belongs to.
     const o1 = page.locator(".shop-my-order").first();
 
@@ -531,12 +545,79 @@ const CATALOGUE = [{
     await page.waitForTimeout(700);
     await page.locator(".fam-kid-main").first().click();
     await page.waitForTimeout(600);
+    await openShopTab(page);
     ok("the photo reaches the parent's shop", await page.locator('img[src="' + PIC + '"]').count() >= 1);
 
     await page.getByRole("button", { name: "Order", exact: true }).first().click();
     await page.waitForTimeout(300);
     ok("and is on the order dialog, so they see what they are buying",
        await page.locator('.scr-card img[src="' + PIC + '"]').count() >= 1);
+    // A uniform photographed head to toe loses the head and the feet to
+    // `cover` -- the two ends that say what it is.
+    const fit = await page.locator('img[src="' + PIC + '"]').first()
+      .evaluate(el => getComputedStyle(el).objectFit);
+    ok("shown whole rather than cropped to fill", fit === "contain", fit);
+
+    // And larger still on a tap, because a small `contain` box is a small
+    // picture -- the point of a photo of a uniform is to see the uniform.
+    // The order dialog is still open over the item card.
+    await page.locator('button:has-text("Cancel")').last().click();
+    await page.waitForTimeout(300);
+
+    await page.locator('.scr-card img[src="' + PIC + '"]').first().click();
+    await page.waitForTimeout(300);
+    ok("tapping it opens the whole picture",
+       await page.locator(".photo-lightbox").count() === 1);
+    // The fixture URL never loads, so a measured width says nothing. What the
+    // lightbox promises is the constraint: as big as the screen allows, whole.
+    const big = await page.locator('.photo-lightbox img').first()
+      .evaluate(el => { const c = getComputedStyle(el);
+        return { maxW: c.maxWidth, maxH: c.maxHeight, fit: c.objectFit,
+                 overlay: getComputedStyle(el.parentElement).position }; });
+    ok("as large as the screen allows, and still whole",
+       big.maxW === "100%" && big.maxH === "100%" && big.fit === "contain"
+       && big.overlay === "fixed", JSON.stringify(big));
+    await page.locator(".photo-lightbox").click();
+    await page.waitForTimeout(250);
+    ok("and closes again on a tap", await page.locator(".photo-lightbox").count() === 0);
+    await browser.close();
+  }
+
+  // --- the owner can see what they published --------------------------------
+  {
+    const URL0 = "https://x.supabase.co/storage/v1/object/public/shop-images/" + BIZ_ID + "/item-7.jpg";
+    const { browser, page } = await open({
+      rpc: { shop_items_list: { ok: true, enabled: true, items: [
+        { id: "it1", name: "Uniform", description: null, price: 50, sizes: [],
+          stock: null, image_url: URL0, archived: false }] } } });
+    await page.waitForTimeout(600);
+    await page.locator(".dash-gear").first().click();
+    await page.waitForTimeout(350);
+    await page.locator(".set-ov").getByText("Items", { exact: true }).locator("visible=true").first().click();
+    await page.waitForTimeout(600);
+
+    // A 56px square is an identifier, not the picture, so cropping it is right.
+    const thumb = await page.locator('img[src="' + URL0 + '"]').first()
+      .evaluate(el => ({ fit: getComputedStyle(el).objectFit,
+                         w: Math.round(el.getBoundingClientRect().width) }));
+    ok("the owner's list shows a square thumbnail", thumb.fit === "cover" && thumb.w === 56,
+       JSON.stringify(thumb));
+
+    await page.locator('img[src="' + URL0 + '"]').first().click();
+    await page.waitForTimeout(300);
+    ok("and the whole picture on a tap", await page.locator(".photo-lightbox").count() === 1);
+
+    await page.locator(".photo-lightbox").click();
+    await page.waitForTimeout(250);
+    await page.locator('button:has-text("Edit")').first().click();
+    await page.waitForTimeout(300);
+    // The preview is what they are about to publish; cropping it would hide
+    // exactly what they need to check.
+    // Scoped to the form: the list's 56px thumbnail is on screen too, and it
+    // is meant to be cropped.
+    const prev = await page.locator('.scr-card:has-text("Edit Item") img').first()
+      .evaluate(el => getComputedStyle(el).objectFit);
+    ok("and the edit preview is not cropped either", prev === "contain", prev);
     await browser.close();
   }
 
@@ -695,16 +776,16 @@ const CATALOGUE = [{
     const block = src.slice(begin, end);
     const outside = src.slice(0, begin) + src.slice(end);
     const mounts = (outside.match(/SHOP MODULE mount/g) || []).length;
-    ok("with a known number of mounts outside it", mounts === 4, "found " + mounts);
+    ok("with a known number of mounts outside it", mounts === 5, "found " + mounts);
 
     // The removal instructions say "delete the block and every marked line".
     // Do exactly that, then look at what is left: anything still naming the
     // module is a reference the instructions would have left dangling.
     const stripped = outside.split("\n").filter(l => !/SHOP MODULE mount/.test(l)).join("\n");
     const left = stripped.split("\n").filter(l =>
-      /PgShopItems|PgShopOrders|ShopPanel|useShopPending|shopPending|onShopItems|onShopOrders|view==="shop/.test(l));
+      /PgShopItems|PgShopOrders|ShopPanel|useShopPending|useShopCards|shopCards|shopPending|shopOn|onShopItems|onShopOrders|view==="shop/.test(l));
     ok("after the documented removal, nothing calls the module",
-       !/PgShopItems|<ShopPanel|useShopPending|view==="shop/.test(stripped),
+       !/PgShopItems|<ShopPanel|useShopPending|useShopCards|view==="shop/.test(stripped),
        left.slice(0, 2).map(l => l.slice(0, 140)).join(" // "));
 
     // What does survive: two handler props on PgDashboard. Both name only
@@ -717,7 +798,7 @@ const CATALOGUE = [{
     // The surviving names must not reach anything the removal deleted -- a
     // prop reading shopPending, say, would be a ReferenceError on load.
     ok("which reach nothing the removal took away",
-       !/shopPending|loadShopPending|setShopPending/.test(stripped),
+       !/shopPending|loadShopPending|setShopPending|shopCards|shopOn/.test(stripped),
        left.slice(0, 2).map(l => l.slice(0, 140)).join(" // "));
     ok("and the block's own instructions describe them",
        /neither refers to anything the removal deletes/i.test(block.replace(/\n\s*/g, " ")));
