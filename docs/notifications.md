@@ -103,6 +103,28 @@ Share → Add to Home Screen → open it from there → then turn notifications 
 
 Android works in an ordinary tab.
 
+### The student portal
+
+The same switch is on a student's Card tab. A family with one child at one
+school never makes an account, and `push_subscribe` reads `auth.email()` — so
+until `migration-push-student.sql` the switch could not work for them at all.
+
+A student's subscription belongs to a **card** rather than an email. The
+endpoint is still the browser's, so a phone that moves between the two portals
+changes owner rather than ringing twice; a check constraint makes a row with
+both owners, or neither, impossible.
+
+A code and a PIN already open that student's card, their fees and their
+school's announcements. Having those announcements pushed is the same
+information arriving sooner, not new information.
+
+**Students get the banner but not the number.** The count has to be that
+person's unread total, and the student portal records what has been read in
+`localStorage` on the device — the database has never been told. A student
+subscription therefore carries no badge and the icon stays bare, rather than
+showing a number that would be wrong. Giving students the number too means
+recording "seen" server-side, which is a separate piece of work.
+
 ---
 
 ## The number on the app icon
@@ -205,8 +227,9 @@ the Edge Function and the webhook. Nothing outside those objects was changed.
 |---|---|
 | `supabase/migration-push.sql` | one table, five functions, its own removal instructions |
 | `supabase/migration-push-badge.sql` | the unread count that becomes the icon's number |
+| `supabase/migration-push-student.sql` | notifications for the code-and-PIN portal |
 | `supabase/functions/push-announcement/index.ts` | the sender |
 | `app/sw.js` | the service worker — push only, no caching |
 | `app/index.html` | `PushSwitch`, and the VAPID public key |
-| `supabase/test/test-push.sql` | 51 assertions |
-| `app/test/push.js` | 58 assertions |
+| `supabase/test/test-push.sql` | 72 assertions |
+| `app/test/push.js` | 67 assertions |

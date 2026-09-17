@@ -691,3 +691,41 @@ until you notice each one calls `stamp_student_card` first: rate limited, and
 checking the PIN itself rather than trusting the page.
 
 **What changes it:** nothing. One function, one notion of who is calling.
+
+---
+
+## Students get the notification but not the number
+
+A student subscription carries no badge count, and the icon stays bare for them
+even though the banner arrives.
+
+The count has to be that person's unread total — that is the whole reason it is
+computed in the database rather than guessed in the browser. But the student
+portal records what has been read in `localStorage`, on the device: the server
+has never been told. Any number it sent would be the count of announcements
+that exist, not the count they have not seen, and it would never go down.
+
+A badge that only ever goes up is worse than no badge. So the payload omits it,
+and the service worker leaves the icon alone when it is missing — which was
+already the behaviour for a payload from an older sender.
+
+**What changes it:** recording "seen" server-side for students, which would also
+make their read state follow them between devices. Worth doing, not worth
+bundling into this.
+
+---
+
+## One subscription, one owner, enforced by the database
+
+`push_subscriptions` can belong to a parent (by email) or to a student (by
+card), and a check constraint says exactly one, never both and never neither.
+
+The constraint is not decoration. Writing it immediately failed the test that
+moves a phone from a student's card back to a parent's account: the parent's
+`push_subscribe` set the email on conflict and left the card id behind. Without
+the constraint that row would have matched both halves of the audience query
+and that phone would have been sent every announcement twice — which is the
+kind of bug nobody reports, they just turn notifications off.
+
+**What changes it:** nothing. A row no query can find, or that two queries both
+find, is worth refusing at write time.
