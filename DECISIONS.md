@@ -729,3 +729,42 @@ kind of bug nobody reports, they just turn notifications off.
 
 **What changes it:** nothing. A row no query can find, or that two queries both
 find, is worth refusing at write time.
+
+---
+
+## A school owner's subscription is an ordinary one
+
+`push_subscriptions.parent_email` holds a school owner's email as readily as a
+parent's. Adding a `business_id` column for owners would have been the tidier
+-looking choice and it would have been wrong: an owner IS a signed-in account
+with an email, so the row already exists in the right shape. What differs is
+who asks for it, and that is a query, not a column.
+
+The column's NAME is now slightly misleading — it means "the account this
+browser belongs to", not "a parent". Renaming it in a live database is
+cosmetics with downtime attached, so it is a comment instead.
+
+This is the second time the shape held: students needed a card, which genuinely
+was a new kind of owner and got a column. Owners did not.
+
+**What changes it:** nothing. A column per role would mean an audience query
+per role, and three ways for one endpoint to be found twice.
+
+---
+
+## Nothing notifies a school about work it did itself
+
+A school hears about three things: a sign-up, a shop order, and a parent
+claiming they paid. All three arrive from outside and wait for a decision.
+
+Deliberately excluded: payments the school records itself, stamps, taps, QR
+confirmations. Those are things they just did — a phone buzzing to tell you
+about the button you pressed a second ago is the notification that makes
+somebody switch all of them off, and that is not recoverable. We cannot ask
+again once a browser records "denied".
+
+The screen lists exactly what will arrive and exactly what will not, because
+the promise is the thing being agreed to.
+
+**What changes it:** a school asking to be told about something specific. Added
+one at a time, never as a category.

@@ -127,6 +127,44 @@ recording "seen" server-side, which is a separate piece of work.
 
 ---
 
+## The school's own side
+
+A school found out that something was waiting on them by opening PayStamp and
+looking. The badges in the settings sheet only tell somebody already in the
+app — the same problem the parents had.
+
+**Settings → Communication → Notifications** now carries the same switch. Three
+things reach a school, and nothing else:
+
+| when | it says |
+|---|---|
+| a student asks to join through a sign-up link | *New sign-up · Christos Demetriou asked to join* |
+| somebody orders from the shop | *New order · Afrodite ordered €25.00* |
+| a parent says they paid online | *Payment to check · Afrodite says they paid €45.00* |
+
+Payments the school records itself, stamps and taps never send anything.
+
+**No new plumbing.** An owner is a signed-in person with an email, so their
+subscription is stored exactly as a parent's is — `push_subscriptions` gains
+nothing and `migration-push-owner.sql` creates no table and alters none. What
+is new is one function that answers "who owns this school, and what should they
+be told".
+
+A school still waiting for approval is told nothing: it cannot open its own
+dashboard, so a notification would point at something it cannot reach.
+
+**No badge here either.** The number on the icon is the family portal's and it
+means unread announcements. A second writer with a different meaning is exactly
+the drift that made us count it in the database to begin with.
+
+### Setting it up
+
+1. Run `supabase/migration-push-owner.sql`
+2. Deploy `supabase/functions/push-owner-alert` — same secret, Verify JWT off
+3. Three webhooks, all **Insert only**, all POSTing to that function with the
+   same `x-push-secret` header: on `registration_requests`, `shop_orders` and
+   `payment_claims`
+
 ## The number on the app icon
 
 A banner and a badge are two different things: `showNotification()` puts the
@@ -228,8 +266,10 @@ the Edge Function and the webhook. Nothing outside those objects was changed.
 | `supabase/migration-push.sql` | one table, five functions, its own removal instructions |
 | `supabase/migration-push-badge.sql` | the unread count that becomes the icon's number |
 | `supabase/migration-push-student.sql` | notifications for the code-and-PIN portal |
+| `supabase/migration-push-owner.sql` | what a school itself is told |
+| `supabase/functions/push-owner-alert/index.ts` | the sender for those three |
 | `supabase/functions/push-announcement/index.ts` | the sender |
 | `app/sw.js` | the service worker — push only, no caching |
 | `app/index.html` | `PushSwitch`, and the VAPID public key |
-| `supabase/test/test-push.sql` | 72 assertions |
-| `app/test/push.js` | 67 assertions |
+| `supabase/test/test-push.sql` | 86 assertions |
+| `app/test/push.js` | 81 assertions |

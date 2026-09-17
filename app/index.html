@@ -1243,7 +1243,7 @@ function syncAppBadge(n) {
    the one people dismiss forever, and "denied" cannot be undone by us -- only
    by the parent, in browser settings, which is a support call nobody wants.
    So: a button, pressed on purpose, and the browser is only asked after that. */
-function PushSwitch({ compact, onDone, student }) {
+function PushSwitch({ compact, onDone, student, owner }) {
   /* `student` is {code, pin}: the portal with no account, where identity is a
      share code and a PIN the database re-checks for itself. Only which three
      functions are called changes. */
@@ -1370,7 +1370,9 @@ function PushSwitch({ compact, onDone, student }) {
   if (on) return wrap(<>
     <div className="fam-push-t">Notifications are on</div>
     <div className="fam-push-b">
-      {student
+      {owner
+        ? "You will be told when a sign-up, an order or a payment claim arrives. Nothing else sends a notification."
+        : student
         ? "You will be told when your school posts an announcement. Nothing else sends a notification."
         : "You will be told when one of your schools posts an announcement. Nothing else sends a notification."}
     </div>
@@ -1380,9 +1382,13 @@ function PushSwitch({ compact, onDone, student }) {
   </>);
 
   return wrap(<>
-    <div className="fam-push-t">🔔 Get told about announcements</div>
+    <div className="fam-push-t">
+      {owner ? "🔔 Get told when something needs you" : "🔔 Get told about announcements"}
+    </div>
     <div className="fam-push-b">
-      {student
+      {owner
+        ? "Sign-ups, shop orders and payments people say they have made."
+        : student
         ? "Instead of opening PayStamp to check. Only announcements from your school — nothing else."
         : "Instead of opening PayStamp to check. Only announcements from your children's schools — nothing else."}
     </div>
@@ -3252,7 +3258,7 @@ function PgStamp({ onDone, preset, studentAuth }) {
   </>);
 }
 
-function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onName, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded, onStampTag, onStampCal, onPayLink, onPayQueue, pendingPays, onShopItems, onShopOrders, onCustomise }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
+function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCustomCard, onTheme, onIcon, onName, onExport, onRemind, onFamily, showFamily, onLogout, levelFilter, setLevelFilter, sort, setSort, onNewYear, onDeleteAccount, onAnnouncements, onGroups, onManage, onRegistrations, onRemoveCards, viewBy, setViewBy, expanded, setExpanded, onStampTag, onStampCal, onPayLink, onPayQueue, pendingPays, onShopItems, onShopOrders, onCustomise, onNotify }) {   const [search, setSearch] = useState("");   const [sheet, setSheet] = useState(false);   const [filtersOpen, setFiltersOpen] = useState(false);   const [selectMode, setSelectMode] = useState(false);   const [selected, setSelected] = useState({});   const [delAsk, setDelAsk] = useState(false);   const [deleting, setDeleting] = useState(false);   let touchStartY = 0;   let touchStartTop = 0;   const p = bizPal(biz);   const allCards = Object.values(biz.cards||{});   const year = biz.year||new Date().getFullYear();   const nowIdx = new Date().getMonth();   const inactive = biz.inactiveMonths||[];   const levels = biz.levels||[];   const hasLevels = levels.length > 0;   const paidNow = allCards.filter(c=>((c.payments||{})[ymOf(year,nowIdx)]||{}).paid).length;   const totalOwed = allCards.reduce((a,c)=> a + getStudentMonthStatus(c,biz,year).owedTotal, 0);   const collected = allCards.reduce((a,c)=> a + (((c.payments||{})[ymOf(year,nowIdx)]||{}).amount || 0), 0);   const groupCount = (biz.groups||[]).length;   /* Self-registrations waiting on a decision. Surfaced on the settings button so a new one is noticed without opening the sheet. */   const pendingRegs = (biz.regRequests||[]).filter(r=>r.status==="pending").length;   /* One definition, read by the phone sheet and the desktop column alike, so
       the two can never fall out of step. Grouped by what the owner is trying
       to do rather than by when each screen happened to be built. */
    const SET_GROUPS = [
@@ -3261,7 +3267,8 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
         like -- on a list that had grown to six groups. One row now, and the
         four screens behind it, unchanged. */
      ["Appearance",    [["🎨","Customise","Name, colour, icon and card",onCustomise]]],
-     ["Communication", [["🔔","Remind","Send payment reminders",onRemind],["📣","Announcements","Post news to parents & students",onAnnouncements],["📝","Registration","Public sign-up links & requests",onRegistrations,pendingRegs]]],
+     ["Communication", [["📳","Notifications","Be told when something needs you",onNotify],
+                        ["🔔","Remind","Send payment reminders",onRemind],["📣","Announcements","Post news to parents & students",onAnnouncements],["📝","Registration","Public sign-up links & requests",onRegistrations,pendingRegs]]],
      /* Always offered now. Calibrating is what switches the stamp on for a
         school's parents, so hiding the screen behind a flag would have left
         nobody able to reach the thing that enables it. */
@@ -4269,6 +4276,45 @@ function PgDashboard({ biz, onCard, onAdd, onImport, onMonths, onLevels, onCusto
         </button>
       )}
       <button className="scr-btn primary wide" disabled={!dirty} onClick={()=>onSave(sel||null)}>Save Colour</button>
+    </div>
+  );
+}
+
+/* The school's own notifications.
+
+   The badges in the settings sheet only tell somebody who is already in the
+   app, which is the problem parents had before push existed. Same switch, same
+   machinery -- an owner is a signed-in person with an email, so their
+   subscription is stored exactly as a parent's is. */
+function PgNotify({ biz, onBack }) {
+  const p = bizPal(biz);
+  return (
+    <div className="reg-page scr" style={{"--accent":p.acc}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
+        <button className="tb-back" onClick={onBack}>←</button>
+        <h2>Notifications</h2>
+      </div>
+      <p>Be told on your phone when something arrives that is waiting on you,
+         instead of finding it next time you open PayStamp.</p>
+
+      <div className="scr-card" style={{padding:16,marginBottom:16}}>
+        <PushSwitch owner />
+      </div>
+
+      <div className="scr-card" style={{padding:16}}>
+        <div className="scr-lbl">What you will be told about</div>
+        <div style={{fontSize:".8rem",color:"var(--text2)",lineHeight:1.7}}>
+          • A student asking to join through your sign-up link<br />
+          • An order from your shop<br />
+          • A parent saying they have paid online
+        </div>
+        {/* Said plainly, because the thing that makes somebody turn
+            notifications off is the first one they did not want. */}
+        <div style={{fontSize:".75rem",color:"var(--text3)",lineHeight:1.6,marginTop:12}}>
+          Nothing else. Payments you record yourself, stamps and taps never
+          send you anything.
+        </div>
+      </div>
     </div>
   );
 }
@@ -6914,7 +6960,7 @@ async function doUpdateCard(updates){
         {view==="student" && <PgStudent onBack={()=>setView("landing")} />}
         {view==="parentAuth" && stampTok && <div style={{padding:"18px 28px 0"}}><div className="info-box">Log in to confirm the payment. We will pick up where you left off.</div></div>}
         {view==="parentAuth" && <PgParentAuth onBack={()=>setView("landing")} />}
-        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onIcon={()=>goView("icon")} onName={()=>goView("name")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} onStampTag={()=>goView("stampTag")} onStampCal={()=>goView("stampCal")} onPayLink={()=>goView("payLink")} onPayQueue={()=>goView("payQueue")} pendingPays={pendingPays} onShopItems={()=>goView("shopItems")} onShopOrders={()=>goView("shopOrders")} onCustomise={()=>goView("customise")} />}
+        {view==="dashboard" && biz && <PgDashboard biz={biz} onCard={id=>{setCardId(id);goView("card");}} onAdd={()=>goView("addCard")} onMonths={()=>goView("months")} onLevels={()=>goView("levels")} onCustomCard={()=>goView("customCard")} onTheme={()=>goView("theme")} onIcon={()=>goView("icon")} onName={()=>goView("name")} onExport={()=>goView("export")} onRemind={()=>goView("remind")} onFamily={()=>{setMode("parent");goView("parentDash");}} showFamily={myCards.length>0} onLogout={doLogout} levelFilter={dashFilter} setLevelFilter={setDashFilter} sort={dashSort} setSort={setDashSort} viewBy={dashViewBy} setViewBy={setDashViewBy} expanded={dashExpanded} setExpanded={setDashExpanded} onNewYear={doStartNewYear} onDeleteAccount={doDeleteBusiness} onAnnouncements={()=>goView("announcements")} onGroups={()=>goView("groups")} onManage={()=>goView("manage")} onRegistrations={()=>goView("registrations")} onImport={()=>goView("import")} onRemoveCards={doRemoveCards} onStampTag={()=>goView("stampTag")} onStampCal={()=>goView("stampCal")} onPayLink={()=>goView("payLink")} onPayQueue={()=>goView("payQueue")} pendingPays={pendingPays} onShopItems={()=>goView("shopItems")} onShopOrders={()=>goView("shopOrders")} onCustomise={()=>goView("customise")} onNotify={()=>goView("notify")} />}
         {view==="addCard" && biz && <PgAddCard biz={biz} onBack={()=>setView("dashboard")} onCreate={doAddCard} />}
         {view==="import" && biz && <PgImport biz={biz} onBack={()=>setView("dashboard")} onImport={doImportStudents} />}
         {view==="reveal" && revealCard && <PgReveal biz={biz} card={revealCard} onDone={()=>{setRevealCard(null);setView("dashboard");}} />}
@@ -6926,6 +6972,7 @@ async function doUpdateCard(updates){
         {view==="icon" && biz && <PgIcon biz={biz} onBack={()=>setView("customise")} onSave={doSaveIcon} />}
         {view==="name" && biz && <PgName biz={biz} onBack={()=>setView("customise")} onSave={doSaveName} />}
         {view==="customise" && biz && <PgCustomise biz={biz} onBack={()=>setView("dashboard")} onGo={goView} />}
+        {view==="notify" && biz && <PgNotify biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="stampTag" && biz && <PgStampTag biz={biz} onBack={()=>setView("dashboard")} onSaved={refresh} />}
         {view==="stampCal" && biz && <PgStampCalibrate biz={biz} onBack={()=>setView("dashboard")} />}
         {view==="payLink" && biz && <PgPayLink biz={biz} onBack={()=>setView("dashboard")} onSaved={refresh} />}

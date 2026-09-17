@@ -75,7 +75,7 @@ for f in schema.sql migration-add-phone.sql migration-approval-gate.sql \
          migration-stamp-owner-fix.sql migration-shop.sql \
          migration-shop-images.sql migration-push.sql \
          migration-shop-student.sql migration-push-badge.sql \
-         migration-push-student.sql; do
+         migration-push-student.sql migration-push-owner.sql; do
   # Show the real error rather than swallowing it -- a silent "FAILED: x.sql"
   # tells you nothing about which statement broke.
   if ! psql -q -v ON_ERROR_STOP=1 -f "$S/$f" >/tmp/replica-$$.log 2>&1; then
