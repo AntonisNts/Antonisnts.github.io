@@ -193,6 +193,10 @@ const CATALOGUE = [{
     await page.locator(".fam-kid-main").first().click();
     await page.waitForTimeout(500);
 
+    // The fee card's own pay-online panel is on this page too and says almost
+    // the same words, so everything below is scoped to the order it belongs to.
+    const o1 = page.locator(".shop-my-order").first();
+
     let t = await text(page);
     ok("the parent can see what they have ordered", /Your Orders/i.test(t) && /2 × School Jumper \(M\)/.test(t));
     ok("a ready order says it is ready to collect", /Ready to collect/i.test(t));
@@ -206,26 +210,26 @@ const CATALOGUE = [{
     // Two steps, same as the fee side: the link opens first.
     ok("an unpaid order offers the school's link", /Pay online · Revolut/i.test(t));
     ok("with nothing to claim before the link has been opened",
-       await page.getByText("I've paid", { exact: true }).count() === 0);
+       await o1.getByText("I've paid", { exact: true }).count() === 0);
 
-    const href = await page.locator('a:has-text("Pay online")').first().getAttribute("href");
+    const href = await o1.locator("a").first().getAttribute("href");
     ok("pointing at the school's own link", href === "https://revolut.me/antonis", String(href));
 
     const fees = await page.evaluate(() => document.body.innerText);
-    await page.locator('a:has-text("Pay online")').first().click();
+    await o1.locator("a").first().click();
     await page.waitForTimeout(300);
     ok("after opening it, the parent can say they paid",
-       await page.getByText("I've paid", { exact: true }).count() === 1);
+       await o1.getByText("I've paid", { exact: true }).count() === 1);
 
-    await page.locator('button:has-text("I\'ve paid")').first().click();
+    await o1.locator('button:has-text("I\'ve paid")').first().click();
     await page.waitForTimeout(300);
     t = await text(page);
     ok("the form is prefilled with what the order costs", /45\.00/.test(
-       await page.locator('input[type="number"]').first().inputValue()));
+       await o1.locator('input[type="number"]').first().inputValue()));
     ok("and says plainly that this marks nothing paid",
        /does not mark anything paid/i.test(t), t.slice(0, 300));
 
-    await page.locator('button:has-text("Tell The School")').first().click();
+    await o1.locator('button:has-text("Tell The School")').first().click();
     await page.waitForTimeout(500);
     const claimed = await page.evaluate(() => (window.__RPC_CALLS || []).find(c => c[0] === "shop_order_claim_paid"));
     ok("the claim is against the ORDER, not against the fee ledger",

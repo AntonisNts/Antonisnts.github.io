@@ -54,9 +54,15 @@ questions and the screen asks them separately.
 
 ## What a parent sees
 
-A **Shop** section in the family portal, under the months, with the items for
-each of their children. They are told whether something is available, never how
-many are left — the count is the school's business.
+A **Shop** section on that child's page in the family portal — tap the child's
+name, and their school's items are under their card. They are told whether
+something is available, never how many are left; the count is the school's
+business.
+
+It is deliberately not on the portal's front page. The catalogue comes back per
+card, so two siblings at one school meant the same jumper listed twice, above
+the children themselves. Showing one child at a time makes that impossible
+rather than deduplicating it after the fact.
 
 Ordering asks for a size and a quantity. Prices are never sent from the browser:
 the order carries item ids, sizes and quantities, and the database prices every

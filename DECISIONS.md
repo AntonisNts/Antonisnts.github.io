@@ -506,3 +506,52 @@ longer declared: a `ReferenceError` on load, for everybody. The count moved
 into the module as a hook the settings row calls on the line it draws.
 
 **What changes it:** nothing.
+
+---
+
+## The family portal is a list of names, not one long scroll
+
+It used to concatenate. The amount due, then the pay-online panel, then the
+shop, then every child with their card and their school's notes unfolding
+underneath. Every feature I added put another band on the front page, and each
+one was defensible on its own.
+
+The shop is what made it undeniable. The catalogue comes back per card, so two
+siblings at one school listed the same jumper twice — above the children
+themselves. School announcements had the same flaw and nobody had noticed:
+a note to the whole school appeared once per sibling.
+
+Tapping a name now opens that child. Their card, where to pay, their notes,
+their shop.
+
+The part worth keeping in mind: this did not deduplicate anything. Showing one
+child at a time makes the duplication **impossible**, because two children are
+never on screen together. A deduplication pass would have been code that has to
+keep being right; this is a shape in which the question does not arise. It is
+also where the next feature goes — on a child's page, not on the front.
+
+Two things fell out of it. The combined "Due now" block now appears only when
+more than one card owes: with one owing card it was the row underneath it said
+twice, and the reason it used to show — that it was the only way to see what
+the €85 was made of — stopped being true once the card was one tap away. And
+the pay-online small print moved next to the thing it explains.
+
+**What changes it:** a parent with one child finding the extra tap annoying. If
+so, open straight onto their page and keep the list for families with two or
+more.
+
+---
+
+## A page is remembered by what it is, not by what was on it
+
+The child's page holds `{kind, key, title}` — "the page for child k1" — and
+rebuilds its rows from the current data on every render.
+
+The obvious alternative is to store the rows when the page opens. It is also
+wrong: unlinking a card, or moving one to a different child, changes what
+belongs on that page, and a snapshot would keep showing what was true when it
+was opened. The bug that follows is a parent unlinking a card and still seeing
+it until they navigate away — and if they act on what they see, acting on
+something that no longer exists.
+
+**What changes it:** nothing. Derive, don't snapshot.
