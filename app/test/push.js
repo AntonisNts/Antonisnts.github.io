@@ -14,7 +14,7 @@
 //   - the browser is only asked for permission after a deliberate press
 //   - a subscription we failed to record is undone, not left looking "on"
 //   - the service worker shows what it was sent, and does not cache the app
-const { open } = require("./harness");
+const { open, FIXTURES } = require("./harness");
 const fs = require("fs");
 
 let pass = 0, fail = 0;
@@ -82,11 +82,17 @@ const stub = (o) => `(() => {
       ready: Promise.resolve(reg),
     },
   });
+  window.__BADGE = [];
+  navigator.setAppBadge = async (n) => { window.__BADGE.push(n); };
+  navigator.clearAppBadge = async () => { window.__BADGE.push(0); };
   if (S.ua) Object.defineProperty(navigator, "userAgent", { value: S.ua, configurable: true });
 })()`;
 
-const openPortal = (o, rpc) => open({
+// `reads` is announcement_reads rows, not an RPC: the app selects them from
+// the table directly, so overriding a function name would have done nothing.
+const openPortal = (o, rpc, reads) => open({
   role: "parent", init: stub(o),
+  fixtures: Object.assign({}, FIXTURES, { announcement_reads: reads || [] }),
   rpc: Object.assign({ get_my_cards: CARDS, push_status: { on: false } }, rpc || {}) });
 
 (async () => {
@@ -357,6 +363,64 @@ const openPortal = (o, rpc) => open({
     await browser.close();
   }
 
+  // === the number on the app icon ===========================================
+  // "why doesn't it show 1 as a notification on the home page icon like
+  //  StoryReel has 197?" -- because a banner and a badge are two different
+  //  things, and only the first was being set.
+  {
+    const NOTE = (n) => Array.from({ length: n }, (_, i) => ({
+      id: "a" + i, business_name: "Aurora Music School", title: "Note " + i,
+      body: "x", created_at: "2026-09-1" + i + "T09:00:00Z", target_kind: "all" }));
+
+    const { browser, page } = await openPortal({}, { get_my_announcements: NOTE(3) },
+      [{ announcement_id: "a0" }]);
+    await page.waitForTimeout(900);
+    const b = await page.evaluate(() => window.__BADGE);
+    // Two unread of three. The badge must equal what the portal shows, not how
+    // many pushes were sent -- a badge that disagrees is worse than none.
+    ok("the icon carries the unread count", b[b.length - 1] === 2, JSON.stringify(b));
+    await browser.close();
+  }
+
+  {
+    const { browser, page } = await openPortal({}, {
+      get_my_announcements: [{ id: "a1", business_name: "Aurora Music School",
+        title: "Read", body: "x", created_at: "2026-09-10T09:00:00Z", target_kind: "all" }] },
+      [{ announcement_id: "a1" }]);
+    await page.waitForTimeout(900);
+    const b = await page.evaluate(() => window.__BADGE);
+    ok("and is cleared when there is nothing unread", b[b.length - 1] === 0, JSON.stringify(b));
+    await browser.close();
+  }
+
+  // The worker sets it too, from the count the sender worked out -- counting in
+  // the worker would drift the moment they read something on another device.
+  {
+    const { browser, page } = await open({ role: "parent", rpc: { get_my_cards: CARDS } });
+    const SW = fs.readFileSync(__dirname + "/../sw.js", "utf8");
+    const r = await page.evaluate(([src]) => {
+      const handlers = {}, badges = [];
+      const self = {
+        addEventListener: (k, fn) => { handlers[k] = fn; },
+        skipWaiting: () => {}, clients: { claim: () => {} },
+        navigator: { setAppBadge: (n) => badges.push(n),
+                     clearAppBadge: () => badges.push(0) },
+        registration: { showNotification: () => {} },
+      };
+      new Function("self", src)(self);
+      const ev = (d) => ({ data: { json: () => d }, waitUntil: () => {} });
+      handlers.push(ev({ title: "S", body: "b", badge: 4 }));
+      handlers.push(ev({ title: "S", body: "b", badge: 0 }));
+      handlers.push(ev({ title: "S", body: "b" }));     // no badge in the payload
+      return badges;
+    }, [SW]);
+    ok("a push sets the badge to what the sender counted", r[0] === 4, JSON.stringify(r));
+    ok("and clears it when that count is zero", r[1] === 0, JSON.stringify(r));
+    // An older sender, or a payload without one, must not blank a correct badge.
+    ok("a payload with no count leaves the badge alone", r.length === 2, JSON.stringify(r));
+    await browser.close();
+  }
+
   // === the sending half, as far as it can be checked here ===================
   // The Edge Function cannot run in this harness. What can be checked is that
   // it has not been written with the private key or the authentication check
@@ -372,6 +436,9 @@ const openPortal = (o, rpc) => open({
        /push_audience/.test(fn));
     ok("and prunes endpoints the push service says are gone",
        /410/.test(fn) && /push_mark_gone/.test(fn));
+    // The badge is per person, so the payload cannot be built once and reused.
+    ok("the badge is built per subscription, not once for everybody",
+       /bodyFor\(s\.badge\)/.test(fn), "");
     // A key pasted into a file is a key in git history forever.
     ok("NO PRIVATE KEY IS IN THE REPOSITORY",
        /Deno\.env\.get\("VAPID_PRIVATE_KEY"\)/.test(fn) &&

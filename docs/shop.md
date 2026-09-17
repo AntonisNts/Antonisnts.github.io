@@ -83,6 +83,19 @@ are left; the count is the school's business.
 The tab appears only when that child's school actually sells something. A tab
 that opens on nothing is a promise the page does not keep.
 
+### The student portal
+
+Students who open their card with a code and a PIN get the same **Shop** tab.
+Some families have one child at one school and never make an account, and
+until `migration-shop-student.sql` the shop did not exist for them at all —
+every shop function was keyed on a signed-in email.
+
+Their orders are recorded as `student:CODE`, the same shape payment claims use,
+so the order queue says where an order came from. Nothing about what an order
+*is* is duplicated: `shop_order_place` and `shop_order_place_student` both
+prove who is calling and then hand off to one writer, `shop_order_open`, which
+is granted to nobody.
+
 It is deliberately not on the portal's front page. The catalogue comes back per
 card, so two siblings at one school meant the same jumper listed twice, above
 the children themselves. Showing one child at a time makes that impossible
@@ -161,6 +174,7 @@ instructions above are checked rather than asserted.
 |---|---|
 | `supabase/migration-shop.sql` | the whole database half, including its own removal instructions |
 | `supabase/migration-shop-images.sql` | storage policies for item photos — optional, no table touched |
-| `supabase/test/test-shop.sql` | 74 assertions |
+| `supabase/migration-shop-student.sql` | the shop for the code-and-PIN portal |
+| `supabase/test/test-shop.sql` | 95 assertions |
 | `app/index.html` | the block between the `SHOP MODULE` markers |
 | `app/test/shop.js` | 125 assertions, including the removal |

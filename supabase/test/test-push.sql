@@ -193,6 +193,68 @@ select 'an announcement that does not exist is not an error to guess at' as t,
 
 
 \echo
+\echo '=== B2. the number on the app icon ==='
+-- A badge that disagrees with what is inside the app is worse than no badge,
+-- so it is this parent's unread count by the portal's own rules -- not "how
+-- many pushes we sent", which is what counting in the browser would give.
+-- Section B left the Sharks note switched off and expired, which would make
+-- the numbers below depend on what ran before them. Put it back, so this
+-- section's counts can be read off its own fixture.
+update public.announcements set is_active = true, expires_at = null
+ where id = 'd4000000-0000-0000-0000-000000000002';
+select pg_temp.act_as_service();
+
+select 'a subscription carries a badge count' as t,
+       (select (s->>'badge') is not null
+          from jsonb_array_elements(
+            public.push_audience('d4000000-0000-0000-0000-000000000001')->'subscriptions') s
+         limit 1) as pass;
+
+-- Mum has two children at this school and three notes exist: one for the whole
+-- school, one for Sharks (Afrodite), one just for Anais. All three reach her.
+select 'and it counts every note that reaches them' as t,
+       (select (s->>'badge')::int = 3
+          from jsonb_array_elements(
+            public.push_audience('d4000000-0000-0000-0000-000000000001')->'subscriptions') s
+         where s->>'endpoint' = 'https://push.example.com/ep/mum-phone') as pass;
+
+-- Dad has one child in Sharks: the whole-school note and the Sharks note, not
+-- the one for Anais.
+select 'counted per person, not per school' as t,
+       (select (s->>'badge')::int = 2
+          from jsonb_array_elements(
+            public.push_audience('d4000000-0000-0000-0000-000000000001')->'subscriptions') s
+         where s->>'endpoint' = 'https://push.example.com/ep/dad-phone') as pass;
+
+-- Reading one drops the count, which is what makes the badge follow the app.
+insert into public.announcement_reads(parent_id, announcement_id)
+  values ('d0000000-0000-0000-0000-0000000000c0','d4000000-0000-0000-0000-000000000001')
+on conflict do nothing;
+select pg_temp.act_as_service();
+select 'reading one takes it off the count' as t,
+       (select (s->>'badge')::int = 2
+          from jsonb_array_elements(
+            public.push_audience('d4000000-0000-0000-0000-000000000001')->'subscriptions') s
+         where s->>'endpoint' = 'https://push.example.com/ep/mum-phone') as pass;
+select 'and only for the person who read it' as t,
+       (select (s->>'badge')::int = 2
+          from jsonb_array_elements(
+            public.push_audience('d4000000-0000-0000-0000-000000000001')->'subscriptions') s
+         where s->>'endpoint' = 'https://push.example.com/ep/dad-phone') as pass;
+
+select 'somebody with no children at this school is not in it at all' as t,
+       not exists (
+         select 1 from jsonb_array_elements(
+           public.push_audience('d4000000-0000-0000-0000-000000000001')->'subscriptions') s
+          where s->>'endpoint' = 'https://push.example.com/ep/other') as pass;
+
+-- The count is one person's business, so nobody else may ask for it.
+select 'a parent cannot ask what anybody is unread on' as t,
+       (select not has_function_privilege('authenticated','public.push_unread_count(text)','execute')
+           and not has_function_privilege('anon','public.push_unread_count(text)','execute')) as pass;
+
+
+\echo
 \echo '=== C. a dead endpoint stops being tried ==='
 select pg_temp.act_as_service();
 select 'the sender can mark an endpoint gone' as t,
@@ -258,7 +320,7 @@ select 'one table was added' as t, count(*) = 1 as pass
   from information_schema.tables
  where table_schema = 'public' and table_name = 'push_subscriptions';
 
-select 'and five functions, all prefixed push_' as t, count(*) = 5 as pass
+select 'and six functions, all prefixed push_' as t, count(*) = 6 as pass
   from pg_proc where proname like 'push\_%';
 
 -- The announcements table is what this reads. If it were altered, removing

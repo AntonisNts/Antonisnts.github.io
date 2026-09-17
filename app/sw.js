@@ -29,6 +29,21 @@ self.addEventListener("push", (event) => {
     if (event.data) d = Object.assign(d, event.data.json());
   } catch (e) { /* not JSON: keep the default */ }
 
+  // The banner and the number on the icon are two different things. An
+  // installed web app can set both; doing only the first is why the icon stayed
+  // bare while the notification arrived.
+  //
+  // The count comes from the sender, because it has to be this parent's unread
+  // total rather than "how many pushes we sent" -- a badge that disagrees with
+  // what is inside the app is worse than no badge. Counting here would drift
+  // the moment they read something on another device.
+  if (typeof d.badge === "number" && self.navigator && self.navigator.setAppBadge) {
+    try {
+      if (d.badge > 0) self.navigator.setAppBadge(d.badge);
+      else self.navigator.clearAppBadge();
+    } catch (e) { /* not supported here; the notification still shows */ }
+  }
+
   event.waitUntil(self.registration.showNotification(d.title, {
     body: d.body || "",
     icon: "/app/icon-192.png",
