@@ -452,6 +452,78 @@ const openPortal = (o, rpc, reads) => open({
     await browser.close();
   }
 
+  // === the school's own side ================================================
+  // A school finds out something is waiting on them by opening the app. The
+  // badges in the settings sheet only tell somebody already looking, which is
+  // the problem parents had before push existed.
+  {
+    const { browser, page, errors } = await open({
+      init: stub({}), rpc: { push_status: { on: false }, push_subscribe: { ok: true } } });
+    await page.waitForTimeout(700);
+    await page.locator(".dash-gear").first().click();
+    await page.waitForTimeout(400);
+    await page.locator(".set-ov").getByText("Notifications", { exact: true })
+      .locator("visible=true").first().click();
+    await page.waitForTimeout(600);
+
+    let t = await text(page);
+    ok("the owner has a notifications screen", /Be told on your phone/i.test(t), t.slice(0, 200));
+    // Worded for a school, not a parent: they are not being told about
+    // announcements, they are being told somebody is waiting on them.
+    ok("worded for a school, not a parent",
+       /something needs you/i.test(t) && !/children's schools/i.test(t), t.slice(0, 400));
+    // The thing that makes somebody turn notifications off is the first one
+    // they did not want, so the screen lists exactly what will arrive.
+    ok("and says exactly what will arrive",
+       /asking to join/i.test(t) && /order from your shop/i.test(t) &&
+       /saying they have paid/i.test(t), t.slice(0, 500));
+    ok("and what will not", /Nothing else/i.test(t) && /stamps and taps/i.test(t));
+
+    ok("the browser has not been asked yet",
+       (await page.evaluate(() => window.__PUSH.asked)) === 0);
+
+    await page.locator('button:has-text("Turn On Notifications")').first().click();
+    await page.waitForTimeout(700);
+    // An owner is a signed-in person with an email, so this is the ordinary
+    // subscribe -- no new plumbing, and no new column.
+    const sent = await page.evaluate(() => (window.__RPC_CALLS || [])
+      .find(c => c[0] === "push_subscribe"));
+    ok("an owner subscribes through the ordinary function",
+       sent && sent[1].p_endpoint === "https://push.example.com/ep/abc123",
+       JSON.stringify(sent && sent[1]));
+    ok("and it confirms", /Notifications are on/i.test(await text(page)));
+
+    await browser.close();
+    ok("no page errors on the owner's screen",
+       errors.filter(e => !/Failed to load resource|ERR_/.test(e)).length === 0,
+       errors.slice(0, 3).join(" | "));
+  }
+
+  // The sender, as far as it can be checked without deploying it.
+  {
+    const fn = fs.readFileSync(
+      __dirname + "/../../supabase/functions/push-owner-alert/index.ts", "utf8");
+    ok("the owner sender authenticates its caller too",
+       /PUSH_HOOK_SECRET/.test(fn) && /401/.test(fn) && /sameSecret/.test(fn));
+    // A webhook naming any table it liked would be a way to probe the database
+    // through a function that trusts what it is told.
+    ok("and only accepts the three tables it was built for",
+       /registration_requests/.test(fn) && /shop_orders/.test(fn) &&
+       /payment_claims/.test(fn) && /TABLES\.includes/.test(fn));
+    ok("it reads the wording from the database, not from itself",
+       /push_owner_alert/.test(fn));
+    // Two writers with two meanings is the drift that made us count the badge
+    // in the database in the first place.
+    ok("and sends NO badge, which belongs to the family portal",
+       !/badge/.test(fn.replace(/\/\/[^\n]*/g, "")), "");
+
+    const sql = fs.readFileSync(__dirname + "/../../supabase/migration-push-owner.sql", "utf8");
+    ok("no ordinary user can ask who owns a school",
+       /revoke all on function public\.push_owner_alert\(text,uuid\) from public, anon, authenticated/.test(sql));
+    ok("and the migration adds no table and alters none",
+       !/create table|alter table/i.test(sql));
+  }
+
   // === the number on the app icon ===========================================
   // "why doesn't it show 1 as a notification on the home page icon like
   //  StoryReel has 197?" -- because a banner and a badge are two different

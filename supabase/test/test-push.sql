@@ -48,9 +48,13 @@ insert into auth.users(id, email) values
   ('d0000000-0000-0000-0000-0000000000c2','push-other@t.example')
 on conflict do nothing;
 
-insert into public.businesses(id, owner_id, biz_code, name, type, fee, year)
+-- approval_status matters: a school awaiting approval cannot open its own
+-- dashboard, and push_owner_alert refuses to point it at something it cannot
+-- reach. The column defaults to 'pending', so leaving it out made every owner
+-- assertion in B4 quietly return not_approved.
+insert into public.businesses(id, owner_id, biz_code, name, type, fee, year, approval_status)
 values ('d1000000-0000-0000-0000-000000000001','d0000000-0000-0000-0000-00000000000a',
-        'PUSH01','Push Dance School','Dance',50,2026)
+        'PUSH01','Push Dance School','Dance',50,2026,'approved')
 on conflict do nothing;
 
 insert into public.groups(id, business_id, name) values
@@ -350,6 +354,102 @@ select 'but still cannot ask who else is subscribed' as t,
 
 
 \echo
+\echo '=== B4. the school''s own side ==='
+-- A school finds out something is waiting on them by opening the app. The
+-- badges in the settings sheet only tell somebody already looking, which is
+-- the problem parents had before push existed.
+select pg_temp.act_as('d0000000-0000-0000-0000-00000000000a','push-owner@t.example');
+select 'the owner subscribes like anybody else -- no new plumbing' as t,
+       (public.push_subscribe('https://push.example.com/ep/owner','OPK','OAK','Mac')->>'ok')::boolean as pass;
+
+insert into public.registration_requests(id, business_id, first_name, last_name, status)
+  values ('d5000000-0000-0000-0000-000000000001','d1000000-0000-0000-0000-000000000001',
+          'Christos','Demetriou','pending')
+on conflict do nothing;
+
+select pg_temp.act_as_service();
+select 'a sign-up reaches the owner' as t,
+       (select (public.push_owner_alert('registration_requests','d5000000-0000-0000-0000-000000000001')->>'ok')::boolean) as pass;
+
+select 'named, so the banner says who' as t,
+       public.push_owner_alert('registration_requests','d5000000-0000-0000-0000-000000000001')->>'body'
+         like '%Christos Demetriou%' as pass;
+
+select 'with the school as the title' as t,
+       public.push_owner_alert('registration_requests','d5000000-0000-0000-0000-000000000001')->>'title'
+         = 'Push Dance School' as pass;
+
+select 'and only the owner''s browser in the audience' as t,
+       (select count(*) = 1 and bool_and(s->>'endpoint' = 'https://push.example.com/ep/owner')
+          from jsonb_array_elements(
+            public.push_owner_alert('registration_requests','d5000000-0000-0000-0000-000000000001')->'subscriptions') s) as pass;
+
+-- Parents of that school must NOT hear about its sign-ups or its orders.
+select 'no parent is in an owner alert' as t,
+       not exists (
+         select 1 from jsonb_array_elements(
+           public.push_owner_alert('registration_requests','d5000000-0000-0000-0000-000000000001')->'subscriptions') s
+          where s->>'endpoint' in ('https://push.example.com/ep/mum-phone',
+                                   'https://push.example.com/ep/stu-a')) as pass;
+
+-- An owner alert carries no badge: the icon's number is the family portal's
+-- and means unread announcements. Two writers, two meanings, is the drift.
+select 'an owner alert carries no badge' as t,
+       (select bool_and((s->'badge') is null)
+          from jsonb_array_elements(
+            public.push_owner_alert('registration_requests','d5000000-0000-0000-0000-000000000001')->'subscriptions') s) as pass;
+
+-- A request already dealt with is not news.
+insert into public.registration_requests(id, business_id, first_name, last_name, status)
+  values ('d5000000-0000-0000-0000-000000000002','d1000000-0000-0000-0000-000000000001',
+          'Anna','Solomou','approved')
+on conflict do nothing;
+select 'a sign-up already decided says nothing' as t,
+       public.push_owner_alert('registration_requests','d5000000-0000-0000-0000-000000000002')->>'error'
+         = 'nothing_to_say' as pass;
+
+-- A payment claim, which is the one that costs money to miss.
+insert into public.payment_claims(id, business_id, card_id, claimed_by, amount, paid_on, status)
+  values ('d6000000-0000-0000-0000-000000000001','d1000000-0000-0000-0000-000000000001',
+          'd2000000-0000-0000-0000-0000000000ca','push-mum@t.example', 45, current_date, 'pending')
+on conflict do nothing;
+select 'a payment claim reaches the owner' as t,
+       (public.push_owner_alert('payment_claims','d6000000-0000-0000-0000-000000000001')->>'ok')::boolean as pass;
+select 'saying who and how much' as t,
+       public.push_owner_alert('payment_claims','d6000000-0000-0000-0000-000000000001')->>'body'
+         like '%Afrodite says they paid €45.00%' as pass;
+
+select 'a table nobody registered is refused rather than guessed at' as t,
+       public.push_owner_alert('cards','d2000000-0000-0000-0000-0000000000ca')->>'error'
+         = 'unknown_table' as pass;
+select 'and a row that does not exist says so' as t,
+       public.push_owner_alert('shop_orders','d6000000-0000-0000-0000-0000000000ff')->>'error'
+         = 'nothing_to_say' as pass;
+
+-- A school still waiting to be approved cannot open its own dashboard, so
+-- telling it about an order would point at something it cannot reach.
+select pg_temp.act_as(null,null);
+update public.businesses set approval_status = 'pending'
+ where id = 'd1000000-0000-0000-0000-000000000001';
+select pg_temp.act_as_service();
+select 'a school awaiting approval is told nothing' as t,
+       public.push_owner_alert('registration_requests','d5000000-0000-0000-0000-000000000001')->>'error'
+         = 'not_approved' as pass;
+select pg_temp.act_as(null,null);
+update public.businesses set approval_status = 'approved'
+ where id = 'd1000000-0000-0000-0000-000000000001';
+
+select 'only the sender may ask who owns a school' as t,
+       (select not has_function_privilege('authenticated','public.push_owner_alert(text,uuid)','execute')
+           and not has_function_privilege('anon','public.push_owner_alert(text,uuid)','execute')
+           and has_function_privilege('service_role','public.push_owner_alert(text,uuid)','execute')) as pass;
+
+-- Put the owner's subscription out of the way of the counts in section C.
+select pg_temp.act_as('d0000000-0000-0000-0000-00000000000a','push-owner@t.example');
+select public.push_unsubscribe('https://push.example.com/ep/owner') is not null as _setup;
+
+
+\echo
 \echo '=== C. a dead endpoint stops being tried ==='
 select pg_temp.act_as_service();
 select 'the sender can mark an endpoint gone' as t,
@@ -416,7 +516,7 @@ select 'one table was added' as t, count(*) = 1 as pass
   from information_schema.tables
  where table_schema = 'public' and table_name = 'push_subscriptions';
 
-select 'and nine functions, all prefixed push_' as t, count(*) = 9 as pass
+select 'and ten functions, all prefixed push_' as t, count(*) = 10 as pass
   from pg_proc where proname like 'push\_%';
 
 -- The announcements table is what this reads. If it were altered, removing
