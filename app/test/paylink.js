@@ -242,6 +242,102 @@ const PARENT_CARDS = [{
     await browser.close();
   }
 
+  // === coming back from paying =============================================
+  // Tapping the link leaves PayStamp, and on an iPhone returning to a Home
+  // Screen app RELOADS it. Every piece of React state goes -- including which
+  // child's page was open and the fact that the link had been opened -- so the
+  // parent landed on the list of names with no way to say they had paid, which
+  // is the entire point of the round trip.
+  {
+    const TWO = [
+      PARENT_CARDS[0],
+      { card: { id: "card-2", name: "Anais Ion", level: null, share_code: "SC1002",
+                payments: {}, history: [] },
+        business: { name: "Aurora Music School", type: "Music", fee: 45, year: 2026,
+                    biz_code: "STAMP01", inactive_months: [], levels: [], custom_card_image: null } },
+    ];
+    const { browser, page, errors } = await open({
+      role: "parent",
+      rpc: { get_my_cards: TWO, payment_links_mine: LINK, payment_claims_mine: [],
+             payment_claim_create: { ok: true, claim: "c1", name: "Elena Georgiou" } } });
+    await page.waitForTimeout(800);
+    await page.locator(".fam-kid-main").first().click();
+    await page.waitForTimeout(600);
+    ok("a parent opens their child and finds the link", /Pay Online/i.test(await text(page)));
+
+    await page.locator('a:has-text("Pay Online")').first().click();
+    await page.waitForTimeout(400);
+    const flag = await page.evaluate(() => localStorage.getItem("ps_paying"));
+    ok("leaving to pay is written down before going",
+       !!flag && JSON.parse(flag).card === "card-1", String(flag));
+
+    // What iOS does on the way back.
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(1300);
+
+    const t = await text(page);
+    ok("RETURNING REOPENS THE CHILD THEY LEFT FROM",
+       /Elena Georgiou/.test(t) && !/Anais Ion/.test(t), t.slice(0, 200));
+    // The flag is read by two things and they want different lifetimes: the
+    // portal uses it once to navigate, the panel needs it until something is
+    // said. Clearing it in the portal is what broke this the first time.
+    ok("and the claim is offered, not lost with the rest of the state",
+       await page.locator('button:has-text("paid")').count() === 1);
+
+    await page.locator('button:has-text("paid")').first().click();
+    await page.waitForTimeout(300);
+    await page.locator('input[type="number"]').first().fill("90");
+    await page.locator('button:has-text("Tell The School")').first().click();
+    await page.waitForTimeout(500);
+    ok("telling the school clears the trip",
+       (await page.evaluate(() => localStorage.getItem("ps_paying"))) === null);
+
+    await browser.close();
+    ok("no page errors on the way back",
+       errors.filter(e => !/Failed to load resource|ERR_/.test(e)).length === 0,
+       errors.slice(0, 3).join(" | "));
+  }
+
+  // Coming back and saying nothing must not drag them into that child forever.
+  {
+    const { browser, page } = await open({
+      role: "parent",
+      rpc: { get_my_cards: PARENT_CARDS, payment_links_mine: LINK, payment_claims_mine: [] } });
+    await page.waitForTimeout(800);
+    await page.locator(".fam-kid-main").first().click();
+    await page.waitForTimeout(600);
+    await page.locator('a:has-text("Pay Online")').first().click();
+    await page.waitForTimeout(400);
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(1300);
+    ok("the first return reopens the child", /Pay Online/i.test(await text(page)));
+
+    // They change their mind and close the app. Next time it is an ordinary
+    // visit, not a detour into whoever they were paying for last week.
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(1300);
+    ok("a second visit lands on the list, not back inside that child",
+       await page.locator(".fam-kid-main").count() > 0, (await text(page)).slice(0, 200));
+    await browser.close();
+  }
+
+  // A stale intent is not a detour either: "I am about to pay" stops being
+  // true after a couple of hours.
+  {
+    const { browser, page } = await open({
+      role: "parent",
+      init: `try { localStorage.setItem("ps_paying", JSON.stringify({
+               card: "card-1", at: Date.now() - 3 * 60 * 60 * 1000 })); } catch (e) {}`,
+      rpc: { get_my_cards: PARENT_CARDS, payment_links_mine: LINK, payment_claims_mine: [] } });
+    await page.waitForTimeout(1000);
+    ok("a trip from hours ago is ignored",
+       await page.locator(".fam-kid-main").count() > 0, (await text(page)).slice(0, 200));
+    ok("and forgotten rather than left to expire again",
+       (await page.evaluate(() => localStorage.getItem("ps_paying"))) === null);
+    await browser.close();
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

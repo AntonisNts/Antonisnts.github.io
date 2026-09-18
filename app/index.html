@@ -2126,8 +2126,55 @@ function ShopPanel({ accent, cards, bare, student }) {
    NOT PAID, because it is: the card behind this panel still shows the month
    owing, and a parent who reads this as done will be surprised later.
 --------------------------------------------------------------------------- */
+/* Going off to pay and coming back.
+
+   Tapping the link leaves PayStamp, and on an iPhone coming back to a Home
+   Screen app RELOADS it. Every piece of React state goes: which child's page
+   was open, and the fact that the link had been opened at all -- so the parent
+   returned to the list of names with no way to say they had paid, which is the
+   whole point of the round trip.
+
+   So the intent is written down before leaving, and read back on the way in.
+   localStorage, not sessionStorage, because a reload is the good case: iOS may
+   also discard the app entirely. It expires, because "I am about to pay" stops
+   being true after a couple of hours, and a stale flag would drag a parent
+   back into a child's page days later for no reason. */
+const PAY_INTENT = "ps_paying";
+const PAY_INTENT_TTL = 2 * 60 * 60 * 1000;
+
+function payIntentSet(cardId) {
+  try {
+    localStorage.setItem(PAY_INTENT, JSON.stringify({ card: cardId || null, at: Date.now() }));
+  } catch (e) { /* private mode: the round trip just works as it did before */ }
+}
+function payIntentGet() {
+  try {
+    const v = JSON.parse(localStorage.getItem(PAY_INTENT) || "null");
+    if (!v || typeof v.at !== "number") return null;
+    if (Date.now() - v.at > PAY_INTENT_TTL) { payIntentClear(); return null; }
+    return v;
+  } catch (e) { return null; }
+}
+function payIntentClear() {
+  try { localStorage.removeItem(PAY_INTENT); } catch (e) {}
+}
+/* Two things read this flag and they want different lifetimes: the portal uses
+   it once, to reopen the page that was left; the pay panel needs it to survive
+   until the parent has actually said something. So the portal marks it landed
+   rather than clearing it -- clearing it there is what stopped "I've paid"
+   appearing the first time this was written. */
+function payIntentLand() {
+  const v = payIntentGet();
+  if (!v) return;
+  try { localStorage.setItem(PAY_INTENT, JSON.stringify({ ...v, landed: true })); } catch (e) {}
+}
+
 function PayOnline({ link, linkName, cardId, claims, onClaim, accent }) {
-  const [opened, setOpened] = useState(false);
+  // Opened already, if they left to pay and the app reloaded on the way back.
+  const [opened, setOpened] = useState(() => {
+    const v = payIntentGet();
+    return !!v && (v.card === (cardId || null));
+  });
   const [form, setForm]     = useState(false);
   const [amount, setAmount] = useState("");
   const [when, setWhen]     = useState(new Date().toISOString().slice(0,10));
@@ -2152,6 +2199,7 @@ function PayOnline({ link, linkName, cardId, claims, onClaim, accent }) {
     if (r && r.error === "no_link")         { setErr("The school is not taking online payments just now."); return; }
     if (r && r.error)                       { setErr("That did not go through. Try again."); return; }
     setForm(false); setAmount(""); setRef("");
+    payIntentClear();
   }
 
   if (pending) return (
@@ -2187,7 +2235,7 @@ function PayOnline({ link, linkName, cardId, claims, onClaim, accent }) {
       </div>
 
       <a href={link} target="_blank" rel="noopener noreferrer"
-         onClick={()=>setOpened(true)}
+         onClick={()=>{ payIntentSet(cardId); setOpened(true); }}
          className="scr-btn primary wide"
          style={{display:"block",textAlign:"center",textDecoration:"none",boxSizing:"border-box"}}>
         Pay Online
@@ -4623,6 +4671,18 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
      card or moving it to another child recomputes the rows, and a snapshot
      taken when the page opened would quietly go stale. */
   const [page, setPage] = useState(null);       // {kind:"kid"|"card"|"unassigned", key, title}
+  /* Coming back from paying. The link left PayStamp and iOS reloaded the app on
+     the way in, so the child's page this parent was standing on is gone -- they
+     land on the list of names with nothing offering to record the payment they
+     just made. Reopen the page they left from.
+
+     Only once: the flag is cleared here rather than on submit, so a parent who
+     comes back and decides not to say anything is not dragged into that child
+     again on their next visit. Told-the-school clears it too. */
+  const [payBack, setPayBack] = useState(() => {
+    const v = payIntentGet();
+    return v && !v.landed ? v : null;    // reopen once, not on every visit
+  });
   const [pushTick, setPushTick] = useState(0);  // re-read the switch after it changes
   const shopCards = useShopCards();  /* SHOP MODULE mount */
   const [expanded, setExpanded] = useState({});
@@ -4726,6 +4786,20 @@ function PgParentDashboard({ items, kids, announcements, annRead, onMarkAnnRead,
   }
   const unreadIn = (secRows) => notesFor(secRows).filter(a=>!readSet[a.id]).length;
   const unreadFor = (r) => unreadIn([r]);
+
+  useEffect(() => {
+    if (!payBack || page) return;
+    const r = rows.find(x => x.it.cardId === payBack.card);
+    setPayBack(null);
+    payIntentLand();                     // used for navigation; still live for the panel
+    if (!r) return;                      // that card is gone, or not theirs now
+    // The page the child is ON, not necessarily a page of their own: a child
+    // with two cards has one page holding both.
+    const kid = r.childId && childIds.includes(r.childId);
+    setPage(kid
+      ? { kind: "kid",  key: r.childId,    title: childName(r.childId) || r.card.name }
+      : { kind: "card", key: r.it.cardId,  title: r.card.name });
+  }, [payBack, rows.length]);
 
   function openPage(kind, key, title) {
     setPage({ kind, key, title });

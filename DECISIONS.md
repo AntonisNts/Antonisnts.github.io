@@ -768,3 +768,31 @@ the promise is the thing being agreed to.
 
 **What changes it:** a school asking to be told about something specific. Added
 one at a time, never as a category.
+
+---
+
+## Leaving PayStamp to pay is written down before you go
+
+Tapping a school's payment link leaves the app. On an iPhone, returning to a
+Home Screen web app RELOADS it — every piece of React state is gone. The parent
+who had opened their child's page, tapped Pay Online and paid came back to the
+list of names, with nothing offering to record what they had just done. Which is
+the entire point of the round trip.
+
+So the intent — which card, and when — goes into `localStorage` before the link
+opens, and is read on the way in. `localStorage` rather than `sessionStorage`
+because a reload is the *good* case; iOS may discard the app altogether.
+
+Two details that are not obvious until it is wrong:
+
+**It expires.** After two hours "I am about to pay" stops being true, and a
+stale flag would drag a parent into some child's page days later for no reason.
+
+**Two readers, two lifetimes.** The portal uses it once, to reopen the page that
+was left; the pay panel needs it to survive until the parent has actually said
+something. The first version had the portal clear it, which meant the panel
+found nothing and "I've paid" never appeared — the bug fixed, then reintroduced
+three lines later. The portal marks it *landed* instead.
+
+**What changes it:** a browser that reliably restores state on return. Not worth
+detecting; the flag costs nothing when the app did not reload.
