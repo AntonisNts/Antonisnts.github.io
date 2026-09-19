@@ -64,8 +64,26 @@ they were on the day.
 
 ## Orders
 
-Settings → **Shop Orders**. The row carries a count of what is waiting: new
-orders, plus any where a parent says they have paid.
+Settings → **Shop Orders**. The settings row carries a count of what is
+waiting: new orders, plus any where a parent says they have paid.
+
+The screen is sliced three ways, because a school asks three different
+questions:
+
+| | |
+|---|---|
+| **To do** | Something is waiting on you — an order to prepare or hand over, or a claim to check. A collected order with a claim on it is still here, because it still needs a decision. |
+| **Unpaid** | Who owes you. Includes orders already collected. |
+| **Done** | Nothing left to do about it. |
+
+An order can be in two of them at once — new *and* unpaid — and that is the
+point: they are answers to different questions, not a status each order has one
+of. Every order is in at least one.
+
+Rows are one line each and fold open. Nine orders used to be nine tall cards
+with three full-width buttons apiece, so the list was mostly buttons and a
+school could not see at a glance what it had to do. The list is for reading;
+acting on one order is a deliberate second tap.
 
 An order moves **new → ready → collected**, or is **cancelled** at any point
 before it is collected. Cancelling puts counted stock back.
@@ -177,4 +195,4 @@ instructions above are checked rather than asserted.
 | `supabase/migration-shop-student.sql` | the shop for the code-and-PIN portal |
 | `supabase/test/test-shop.sql` | 95 assertions |
 | `app/index.html` | the block between the `SHOP MODULE` markers |
-| `app/test/shop.js` | 125 assertions, including the removal |
+| `app/test/shop.js` | 128 assertions, including the removal |

@@ -796,3 +796,43 @@ three lines later. The portal marks it *landed* instead.
 
 **What changes it:** a browser that reliably restores state on return. Not worth
 detecting; the flag costs nothing when the app did not reload.
+
+---
+
+## The order queue is sliced by question, not by status
+
+Shop Orders is filtered three ways: **To do**, **Unpaid**, **Done**. An order
+can be in two at once, and that is deliberate.
+
+The obvious design is one tab per status — new, ready, collected, cancelled —
+because that is what the column holds. It is also the wrong grouping: a school
+does not think "show me the ready ones", it thinks "what do I have to hand over"
+and "who owes me money". Those are different questions and an order can be the
+answer to both. A jumper that has been collected and not paid for is nothing to
+do with preparing orders and everything to do with the money.
+
+So the slices are questions, and "Done" is defined as neither of the other two
+rather than as a status. That way every order is somewhere, and Done means what
+it says: nothing left to do about this one.
+
+**What changes it:** a school wanting to work through one status at a time,
+which would be a sort rather than a filter.
+
+---
+
+## A list is for reading; acting is a second tap
+
+Each order row was a card carrying two full-width primary buttons and a red
+Cancel. Nine orders made a screen that was mostly buttons, where every row
+shouted equally and none of them could be skimmed.
+
+Rows are one line now — student, items, price, two small status words — and
+fold open to reveal the actions. Reading the list and acting on one order are
+different jobs, and only the first happens nine times in a row.
+
+The cost is a tap before every action. That is the right trade at this density:
+finding the order is the slow part, and pressing the button once you have found
+it is not.
+
+**What changes it:** a school that mostly acts on the first row it sees, which
+would argue for the actions being inline on the top row only.

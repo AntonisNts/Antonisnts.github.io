@@ -597,6 +597,16 @@ function cardFee(card, biz) { return (card.level&&card.level.fee) ? card.level.f
 /* A row is a way in now, so it says so: a chevron, and — where there is
    something they have not read on the page behind it — one dot. */
 .fam-chev{color:var(--fam-t3);font-size:1.3rem;font-weight:400;line-height:1;flex:none;}
+.ord{background:var(--bg2);border:1px solid var(--border);border-radius:14px;margin-bottom:8px;overflow:hidden;}
+.ord-main{display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;}
+.ord-who{font-size:.92rem;font-weight:700;color:var(--text);}
+.ord-what{font-size:.76rem;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ord-tags{font-size:.64rem;font-weight:700;color:var(--text2);margin-top:5px;text-transform:uppercase;letter-spacing:.06em;display:flex;gap:6px;align-items:center;}
+.ord-dot{opacity:.5;}
+.ord-amt{font-size:1rem;font-weight:800;color:var(--accent);}
+.ord-open{padding:0 14px 14px;border-top:1px solid var(--border);padding-top:12px;}
+.ord-note{font-size:.76rem;color:var(--text2);font-style:italic;margin-bottom:10px;}
+.ord-claim{font-size:.76rem;color:var(--partial);line-height:1.5;margin-bottom:10px;}
 .tabbar{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:4px;margin:0 0 16px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
 .tabbar::-webkit-scrollbar{display:none;}
 .tab{flex:1 0 auto;display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;background:none;border:none;cursor:pointer;font-family:var(--f);font-size:.8rem;font-weight:700;color:var(--text2);padding:10px 14px;border-radius:10px;transition:background .15s,color .15s;}
@@ -1711,6 +1721,45 @@ function PgShopOrders({ biz, onBack, onChanged }) {
   const orders = (q && q.orders) || [];
   const NEXT = { new:"ready", ready:"collected" };
 
+  /* Nine orders were nine tall cards, each with two full-width buttons and a
+     Cancel, all in one scroll. The school could not see at a glance what it
+     had to DO, and every row shouted equally.
+
+     Two changes. A filter, because the three questions a school actually asks
+     are different questions: what do I have to prepare or hand over, who owes
+     me money, and what happened. And the buttons live behind the row rather
+     than in it -- the list is for reading, and acting on one order is a
+     deliberate second step. */
+  const [filter, setFilter] = useState("todo");
+  const [openRow, setOpenRow] = useState(null);
+
+  const live      = (o) => o.status !== "cancelled";
+  // Something is waiting on the school: an order to prepare or hand over, or a
+  // claim to check. A collected order with a claim on it still needs a
+  // decision, which is why this is not simply "not collected".
+  const isTodo    = (o) => live(o) && (o.status === "new" || o.status === "ready"
+                                       || o.payment_status === "claimed");
+  const isUnpaid  = (o) => live(o) && o.payment_status !== "paid";
+  const isDone    = (o) => !isTodo(o) && !isUnpaid(o) || o.status === "cancelled";
+
+  const counts = {
+    todo:   orders.filter(isTodo).length,
+    unpaid: orders.filter(isUnpaid).length,
+    done:   orders.filter(isDone).length,
+  };
+  const shown = orders.filter(filter === "todo" ? isTodo
+                            : filter === "unpaid" ? isUnpaid : isDone);
+
+  const EMPTY = { todo:   "Nothing waiting on you.",
+                  unpaid: "Everything is paid for.",
+                  done:   "Nothing collected yet." };
+
+  const payWord = (o) => o.payment_status === "paid"
+    ? ("Paid" + (o.paid_via ? " · " + o.paid_via : ""))
+    : o.payment_status === "claimed" ? "Says paid" : "Unpaid";
+  const payColour = (o) => o.payment_status === "paid" ? "var(--green)"
+    : o.payment_status === "claimed" ? "var(--partial)" : "var(--owed)";
+
   return (
     <div className="reg-page scr" style={{"--accent":p.acc}}>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
@@ -1732,63 +1781,83 @@ function PgShopOrders({ biz, onBack, onChanged }) {
         </div>
       )}
 
+      {q && orders.length > 0 && (
+        <div className="tabbar" role="tablist">
+          {[["todo","To do"],["unpaid","Unpaid"],["done","Done"]].map(([k,lb])=>(
+            <button key={k} role="tab" aria-selected={filter===k}
+              className={"tab"+(filter===k?" on":"")} onClick={()=>{setFilter(k);setOpenRow(null);}}>
+              {lb}{counts[k] > 0 && <span className="tab-badge">{counts[k]}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
       {busy && !q ? <div className="empty">Loading…</div>
-       : orders.length === 0 ? <div className="empty">No orders.</div>
-       : orders.map(o => (
-        <div key={o.id} className="scr-card" style={{marginBottom:10,padding:16,
-              opacity: (o.status==="collected"||o.status==="cancelled") ? .6 : 1}}>
-          <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
-            <div style={{minWidth:0}}>
-              <div className="scr-card-t">{o.student}</div>
-              {(o.lines||[]).map((l,i)=>(
-                <div key={i} className="scr-card-s">
-                  {l.qty + " × " + l.name + (l.size ? " (" + l.size + ")" : "")}
-                </div>
-              ))}
-              {o.note && <div style={{fontSize:".72rem",color:"var(--text2)",marginTop:4,fontStyle:"italic"}}>{o.note}</div>}
+       : orders.length === 0 ? <div className="empty">No orders yet.</div>
+       : shown.length === 0 ? <div className="empty">{EMPTY[filter]}</div>
+       : shown.map(o => (
+        <div key={o.id} className="ord" style={{opacity: o.status==="cancelled" ? .5 : 1}}>
+          {/* The whole row opens the actions. Reading the list and acting on
+              one order are different jobs, and only one of them happens nine
+              times in a row. */}
+          <div className="ord-main" onClick={()=>setOpenRow(openRow===o.id?null:o.id)}>
+            <div style={{minWidth:0,flex:1}}>
+              <div className="ord-who">{o.student}</div>
+              <div className="ord-what">
+                {(o.lines||[]).map(l => l.qty + " × " + l.name + (l.size ? " (" + l.size + ")" : "")).join(", ")
+                  || "No items"}
+              </div>
+              <div className="ord-tags">
+                <span style={{color:payColour(o),fontWeight:800}}>{payWord(o)}</span>
+                <span className="ord-dot">·</span>
+                <span>{o.status}</span>
+              </div>
+            </div>
+            <div style={{textAlign:"right",flexShrink:0,display:"flex",alignItems:"center",gap:10}}>
+              <div className="ord-amt">{"€"+Number(o.total).toFixed(2)}</div>
+              <span className="fam-chev" aria-hidden="true">{openRow===o.id ? "⌄" : "›"}</span>
+            </div>
+          </div>
+
+          {openRow === o.id && (
+            <div className="ord-open">
+              {o.note && <div className="ord-note">{o.note}</div>}
+              {/* A claim is somebody's word, and the school is being asked to
+                  take it. What they said, and when, belongs next to the button
+                  that accepts it. */}
               {o.payment_status === "claimed" && (
-                <div style={{fontSize:".72rem",color:"var(--partial)",marginTop:6,lineHeight:1.5}}>
+                <div className="ord-claim">
                   {"Says they paid €" + Number(o.claim_amount||0).toFixed(2)
                     + (o.claim_date ? " on " + new Date(o.claim_date).toLocaleDateString("en-GB") : "")
                     + (o.claim_ref ? " · " + o.claim_ref : "")}
                 </div>
               )}
-            </div>
-            <div style={{textAlign:"right",flexShrink:0}}>
-              <div style={{fontSize:"1.05rem",fontWeight:800,color:"var(--accent)"}}>{"€"+Number(o.total).toFixed(2)}</div>
-              <div style={{fontSize:".62rem",fontWeight:800,letterSpacing:".06em",textTransform:"uppercase",marginTop:6,
-                    color: o.payment_status==="paid" ? "var(--green)"
-                         : o.payment_status==="claimed" ? "var(--partial)" : "var(--owed)"}}>
-                {o.payment_status === "paid" ? ("Paid" + (o.paid_via ? " · " + o.paid_via : ""))
-                  : o.payment_status === "claimed" ? "Says paid" : "Unpaid"}
-              </div>
-              <div style={{fontSize:".62rem",fontWeight:700,color:"var(--text2)",marginTop:4,textTransform:"uppercase",letterSpacing:".06em"}}>{o.status}</div>
-            </div>
-          </div>
 
-          <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
-            {NEXT[o.status] && <button className="scr-btn primary" style={{flex:"1 1 45%"}} disabled={busy}
-              onClick={()=>call("shop_order_set_status",{p_order_id:o.id,p_status:NEXT[o.status]},
-                "Marked " + NEXT[o.status] + ".")}>
-              {"Mark " + NEXT[o.status]}
-            </button>}
-            {o.payment_status !== "paid" && <button className="scr-btn primary" style={{flex:"1 1 45%"}} disabled={busy}
-              onClick={()=>call("shop_order_mark_paid_owner",
-                {p_order_id:o.id, p_via: o.payment_status === "claimed" ? "link" : "manual"},
-                "Marked paid.")}>
-              {o.payment_status === "claimed" ? "Confirm Payment" : "Mark Paid"}
-            </button>}
-            {o.payment_status === "paid" && <button className="scr-btn" style={{flex:"1 1 45%"}} disabled={busy}
-              onClick={()=>call("shop_order_unmark_paid",{p_order_id:o.id},"Set back to unpaid.")}>
-              Undo Paid
-            </button>}
-            {o.status !== "cancelled" && o.status !== "collected" &&
-              <button className="scr-btn danger" style={{flex:"1 1 45%"}} disabled={busy}
-                onClick={()=>call("shop_order_set_status",{p_order_id:o.id,p_status:"cancelled"},
-                  "Cancelled. Any counted stock has gone back.")}>
-                Cancel
-              </button>}
-          </div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {NEXT[o.status] && <button className="scr-btn primary" style={{flex:"1 1 45%"}} disabled={busy}
+                  onClick={()=>call("shop_order_set_status",{p_order_id:o.id,p_status:NEXT[o.status]},
+                    "Marked " + NEXT[o.status] + ".")}>
+                  {"Mark " + NEXT[o.status]}
+                </button>}
+                {o.payment_status !== "paid" && <button className="scr-btn primary" style={{flex:"1 1 45%"}} disabled={busy}
+                  onClick={()=>call("shop_order_mark_paid_owner",
+                    {p_order_id:o.id, p_via: o.payment_status === "claimed" ? "link" : "manual"},
+                    "Marked paid.")}>
+                  {o.payment_status === "claimed" ? "Confirm Payment" : "Mark Paid"}
+                </button>}
+                {o.payment_status === "paid" && <button className="scr-btn" style={{flex:"1 1 45%"}} disabled={busy}
+                  onClick={()=>call("shop_order_unmark_paid",{p_order_id:o.id},"Set back to unpaid.")}>
+                  Undo Paid
+                </button>}
+                {o.status !== "cancelled" && o.status !== "collected" &&
+                  <button className="scr-btn danger" style={{flex:"1 1 45%"}} disabled={busy}
+                    onClick={()=>call("shop_order_set_status",{p_order_id:o.id,p_status:"cancelled"},
+                      "Cancelled. Any counted stock has gone back.")}>
+                    Cancel
+                  </button>}
+              </div>
+            </div>
+          )}
         </div>
       ))}
     </div>

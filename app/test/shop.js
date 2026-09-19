@@ -18,6 +18,20 @@ let pass = 0, fail = 0;
 const ok = (n, c, d) => { c ? (pass++, console.log("  ok   " + n))
                             : (fail++, console.log("  FAIL " + n + (d ? " — " + d : ""))); };
 const text = (page) => page.evaluate(() => document.body.innerText);
+// The orders screen is filtered and its rows fold. Opening one by the student's
+// name is how a school reaches it, so that is how the tests reach it too.
+const ordTab = async (page, name) => {
+  await page.locator('.tab:has-text("' + name + '")').first().click();
+  await page.waitForTimeout(350);
+};
+// Tapping a row TOGGLES it, so a blind click closes one that is already open.
+const openOrder = async (page, who) => {
+  const row = page.locator('.ord:has-text("' + who + '")').first();
+  if (await row.locator(".ord-open").count() === 0) {
+    await row.locator(".ord-main").click();
+    await page.waitForTimeout(350);
+  }
+};
 // A child's page is tabbed now. The shop is behind the Shop tab, which only
 // appears when that school sells something -- so a missing tab is itself a
 // finding, not a locator to work around.
@@ -664,6 +678,14 @@ const CATALOGUE = [{
     ok("the orders screen opens on the shared skin and publishes --accent",
        /\bscr\b/.test(skin.cls || "") && !!skin.published, JSON.stringify(skin));
 
+    // Nine orders were nine tall cards each with three full-width buttons.
+    // The three questions a school asks are different questions.
+    const tabs = (await page.locator(".tab").allInnerTexts()).map(x => x.split("\n")[0].trim());
+    ok("the orders are sliced by what the school has to do",
+       tabs.join(",") === "To do,Unpaid,Done", tabs.join(","));
+    ok("and it opens on what is waiting on them",
+       await page.locator('.tab.on:has-text("To do")').count() === 1);
+
     let t = await text(page);
     ok("THE LEDGERS STAY SEPARATE: the kit total says so on its face",
        /Owed For Kit/i.test(t) && /€63\.00/.test(t) && /separate from lesson fees/i.test(t), t.slice(0, 300));
@@ -672,25 +694,41 @@ const CATALOGUE = [{
 
     ok("orders are listed by student with their lines",
        /Elena Georgiou/.test(t) && /2 × School Jumper \(M\)/.test(t));
-    ok("a note from the parent is shown", /Collecting Friday/.test(t));
     // innerText reflects text-transform, so these badges arrive shouting.
     ok("an unpaid order reads as unpaid", /Unpaid/i.test(t));
-    ok("a claim reads as a claim, not as payment", /Says paid/i.test(t) && /Says they paid €18\.00/i.test(t));
-    ok("with the reference the parent gave", /REV-4410/.test(t));
-    ok("a settled one says how it was settled", /Paid · manual/i.test(t));
+    ok("a claim reads as a claim, not as payment", /Says paid/i.test(t));
 
+    // The detail -- the note, what they said they paid, the reference -- is
+    // behind the row. The list is for reading; acting on one order is a
+    // deliberate second step.
+    await openOrder(page, "Elena Georgiou");
+    ok("opening a row shows the parent's note", /Collecting Friday/.test(await text(page)));
+
+    await openOrder(page, "Andreas Pavlou");
+    t = await text(page);
+    ok("and what they said they paid, beside the button that accepts it",
+       /Says they paid €18\.00/i.test(t), t.slice(0, 300));
+    ok("with the reference they gave", /REV-4410/.test(t));
+
+    await ordTab(page, "Done");
+    ok("a settled one says how it was settled", /Paid · manual/i.test(await text(page)));
+
+    await ordTab(page, "To do");
+    await openOrder(page, "Elena Georgiou");
     await page.locator('button:has-text("Mark ready")').first().click();
     await page.waitForTimeout(400);
     let call = await page.evaluate(() => (window.__RPC_CALLS || []).find(c => c[0] === "shop_order_set_status"));
     ok("a new order moves to ready", call && call[1].p_order_id === "o1" && call[1].p_status === "ready",
        JSON.stringify(call && call[1]));
 
+    await openOrder(page, "Elena Georgiou");
     await page.locator('button:has-text("Mark Paid")').first().click();
     await page.waitForTimeout(400);
     call = await page.evaluate(() => (window.__RPC_CALLS || []).find(c => c[0] === "shop_order_mark_paid_owner"));
     ok("marking paid by hand is recorded as done by hand",
        call && call[1].p_order_id === "o1" && call[1].p_via === "manual", JSON.stringify(call && call[1]));
 
+    await openOrder(page, "Andreas Pavlou");
     await page.locator('button:has-text("Confirm Payment")').first().click();
     await page.waitForTimeout(400);
     call = await page.evaluate(() => (window.__RPC_CALLS || [])
@@ -720,6 +758,7 @@ const CATALOGUE = [{
     await page.locator(".set-ov").getByText("Shop Orders", { exact: true }).locator("visible=true").first().click();
     await page.waitForTimeout(600);
 
+    await openOrder(page, "Elena Georgiou");
     ok("a paid order offers no second Mark Paid",
        await page.getByRole("button", { name: "Mark Paid" }).count() === 0);
     await page.locator('button:has-text("Undo Paid")').first().click();
@@ -755,6 +794,7 @@ const CATALOGUE = [{
     await page.waitForTimeout(350);
     await page.locator(".set-ov").getByText("Shop Orders", { exact: true }).locator("visible=true").first().click();
     await page.waitForTimeout(600);
+    await openOrder(page, "Elena Georgiou");
     await page.locator('button:has-text("Mark Paid")').first().click();
     await page.waitForTimeout(400);
     ok("the seam's refusal to settle twice is said in English",
